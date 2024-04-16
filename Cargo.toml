@@ -1,0 +1,7 @@
+[package]
+name = "texas-hold-em"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cards = { path = "../cards" }
