@@ -85,6 +85,63 @@ impl Card {
     pub fn new(rank: Rank, suit: Suit) -> Self {
         Self { rank, suit }
     }
+
+    pub fn to_unicode(self) -> char {
+        match (self.rank, self.suit) {
+            (Rank::Two, Suit::Club) => '🃒',
+            (Rank::Three, Suit::Club) => '🃓',
+            (Rank::Four, Suit::Club) => '🃔',
+            (Rank::Five, Suit::Club) => '🃕',
+            (Rank::Six, Suit::Club) => '🃖',
+            (Rank::Seven, Suit::Club) => '🃗',
+            (Rank::Eight, Suit::Club) => '🃘',
+            (Rank::Nine, Suit::Club) => '🃙',
+            (Rank::Ten, Suit::Club) => '🃚',
+            (Rank::Jack, Suit::Club) => '🃛',
+            (Rank::Queen, Suit::Club) => '🃝',
+            (Rank::King, Suit::Club) => '🃞',
+            (Rank::Ace, Suit::Club) => '🃑',
+            (Rank::Two, Suit::Diamond) => '🃂',
+            (Rank::Three, Suit::Diamond) => '🃃',
+            (Rank::Four, Suit::Diamond) => '🃄',
+            (Rank::Five, Suit::Diamond) => '🃅',
+            (Rank::Six, Suit::Diamond) => '🃆',
+            (Rank::Seven, Suit::Diamond) => '🃇',
+            (Rank::Eight, Suit::Diamond) => '🃈',
+            (Rank::Nine, Suit::Diamond) => '🃉',
+            (Rank::Ten, Suit::Diamond) => '🃊',
+            (Rank::Jack, Suit::Diamond) => '🃋',
+            (Rank::Queen, Suit::Diamond) => '🃍',
+            (Rank::King, Suit::Diamond) => '🃎',
+            (Rank::Ace, Suit::Diamond) => '🃁',
+            (Rank::Two, Suit::Heart) => '🂲',
+            (Rank::Three, Suit::Heart) => '🂳',
+            (Rank::Four, Suit::Heart) => '🂴',
+            (Rank::Five, Suit::Heart) => '🂵',
+            (Rank::Six, Suit::Heart) => '🂶',
+            (Rank::Seven, Suit::Heart) => '🂷',
+            (Rank::Eight, Suit::Heart) => '🂸',
+            (Rank::Nine, Suit::Heart) => '🂹',
+            (Rank::Ten, Suit::Heart) => '🂺',
+            (Rank::Jack, Suit::Heart) => '🂻',
+            (Rank::Queen, Suit::Heart) => '🂽',
+            (Rank::King, Suit::Heart) => '🂾',
+            (Rank::Ace, Suit::Heart) => '🂱',
+            (Rank::Two, Suit::Spade) => '🂢',
+            (Rank::Three, Suit::Spade) => '🂣',
+            (Rank::Four, Suit::Spade) => '🂤',
+            (Rank::Five, Suit::Spade) => '🂥',
+            (Rank::Six, Suit::Spade) => '🂦',
+            (Rank::Seven, Suit::Spade) => '🂧',
+            (Rank::Eight, Suit::Spade) => '🂨',
+            (Rank::Nine, Suit::Spade) => '🂩',
+            (Rank::Ten, Suit::Spade) => '🂪',
+            (Rank::Jack, Suit::Spade) => '🂫',
+            (Rank::Queen, Suit::Spade) => '🂭',
+            (Rank::King, Suit::Spade) => '🂮',
+            (Rank::Ace, Suit::Spade) => '🂡',
+        }
+    }
 }
 
 impl fmt::Display for Card {
