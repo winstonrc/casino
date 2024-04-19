@@ -1,22 +1,23 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use cards::card::Card;
 use cards::deck::Deck;
 use cards::hand::Hand;
+use uuid::Uuid;
 
 use crate::hand_rankings::rank_hand;
 use crate::player::Player;
 
 pub struct Game {
     deck: Deck,
-    players: Vec<Player>,
+    players: HashSet<Player>,
     game_over: bool,
 }
 
 impl Game {
     pub fn new() -> Self {
         let deck = Deck::new();
-        let players = Vec::new();
+        let players = HashSet::new();
         let game_over = false;
 
         Self {
@@ -32,14 +33,24 @@ impl Game {
     }
 
     pub fn add_player_with_chips(&mut self, player_name: &str, chips: u32) {
+        let identifier = Uuid::new_v4();
+
         let player = Player {
+            identifier,
             name: player_name.to_string(),
             chips,
         };
 
-        println!("Welcome {}!", &player.name);
-        println!("You have {} chips.", &player.chips);
-        self.players.push(player);
+        println!(
+            "{} bought in with {} chips. Good luck!",
+            &player.name, &player.chips
+        );
+        self.players.insert(player);
+    }
+
+    // todo: implement
+    pub fn remove_player(&mut self, player: &Player) {
+        self.players.remove(player);
     }
 
     pub fn is_game_over(&self) -> bool {
@@ -75,16 +86,18 @@ impl Game {
         let mut player_hands: HashMap<Player, Hand> = HashMap::new();
 
         for player in self.players.clone() {
+            println!();
             let hand = self.deal_hand();
             println!("Hand dealt to {}.", player.name);
 
             player_hands.insert(player, hand.clone());
 
-            // todo: remove after testing
+            // todo: refactor hand ranking logic
             let mut cards_to_rank: Vec<&Card> = Vec::new();
             cards_to_rank.push(&hand.cards[0]);
             cards_to_rank.push(&hand.cards[1]);
             let hand_rank = rank_hand(cards_to_rank);
+            // todo: remove after testing
             println!("{:?}", hand_rank);
         }
     }
@@ -99,7 +112,7 @@ impl Game {
 
         let hand = Hand { cards };
 
-        // todo: remove after testing
+        // todo: update to only show user's hand
         hand.print_symbols();
 
         hand

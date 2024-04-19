@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 cards = { path = "../cards" }
+uuid = { version = "1.8.0", features = ["v4"] }
