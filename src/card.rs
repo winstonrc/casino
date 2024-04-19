@@ -86,7 +86,7 @@ impl Card {
         Self { rank, suit }
     }
 
-    pub fn to_unicode(self) -> char {
+    pub fn to_symbol(self) -> char {
         match (self.rank, self.suit) {
             (Rank::Two, Suit::Club) => '🃒',
             (Rank::Three, Suit::Club) => '🃓',
@@ -216,6 +216,7 @@ mod tests {
             rank: two,
         };
         assert_eq!(two_of_clubs_card.to_string(), "2♣");
+        assert_eq!(two_of_clubs_card.to_symbol(), '🃒');
 
         let seven = Rank::Seven;
         let diamond = Suit::Diamond;
@@ -224,6 +225,7 @@ mod tests {
             rank: seven,
         };
         assert_eq!(seven_of_diamonds_card.to_string(), "7♦");
+        assert_eq!(seven_of_diamonds_card.to_symbol(), '🃇');
 
         let king = Rank::King;
         let heart = Suit::Heart;
@@ -232,6 +234,7 @@ mod tests {
             rank: king,
         };
         assert_eq!(king_of_hearts_card.to_string(), "K♥");
+        assert_eq!(king_of_hearts_card.to_symbol(), '🂾');
 
         let ace = Rank::Ace;
         let spade = Suit::Spade;
@@ -240,5 +243,6 @@ mod tests {
             rank: ace,
         };
         assert_eq!(ace_of_spades_card.to_string(), "A♠");
+        assert_eq!(ace_of_spades_card.to_symbol(), '🂡');
     }
 }
