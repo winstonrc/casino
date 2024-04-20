@@ -118,6 +118,8 @@ impl Game {
                 // todo: remove after testing
                 println!("{:?}", hand_rank);
 
+                // todo: add logic to check for high card when players have equal results with the same 4 cards.
+                // e.g. both are using a Tow Pair or Four of a Kind on the table but one has a higher card in their hand.
                 if best_hand.is_none() {
                     best_hand = Some(hand_rank);
                     leading_players.insert(player.clone());
