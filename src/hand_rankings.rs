@@ -6,30 +6,28 @@ use std::fmt;
 pub enum HandRank {
     /// Simple value of the card.
     /// Lowest: 2 – Highest: Ace.
-    HighCard(u32),
+    HighCard(u8),
     /// Two cards with the same value.
-    Pair(u32),
+    Pair([u8; 2]),
     /// Two times two cards with the same value.
-    TwoPair(u32),
+    TwoPair([u8; 4]),
     /// Three cards with the same value.
-    ThreeOfAKind(u32),
+    ThreeOfAKind([u8; 3]),
     /// Sequence of 5 cards in increasing value, not of the same suit.
     /// Ace can precede 2 and follow up King.
-    Straight(u32),
+    Straight([u8; 5]),
     /// 5 cards of the same suit, not in sequential order.
-    Flush(u32),
+    Flush([u8; 5]),
     /// Combination of three of a kind and a pair/
-    FullHouse(u32),
+    FullHouse([u8; 5]),
     /// Four cards of the same value.
-    FourOfAKind(u32),
+    FourOfAKind([u8; 4]),
     /// Straight of the same suit.
-    StraightFlush(u32),
-    /// Straight comprising 10 - Ace of the same suit.
-    RoyalFlush(u32),
+    StraightFlush([u8; 5]),
 }
 
 impl HandRank {
-    fn rank_name(value: u32) -> String {
+    fn rank_name(value: u8) -> String {
         let rank = match value {
             2 => Rank::Two,
             3 => Rank::Three,
@@ -60,24 +58,21 @@ impl HandRank {
 impl fmt::Display for HandRank {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let printable = match self {
-            HandRank::HighCard(value) => format!("a High Card of {}", HandRank::rank_name(*value)),
-            HandRank::Pair(cards) => format!("a Pair of {}s", HandRank::rank_name(*cards)),
-            HandRank::TwoPair(cards) => format!("Two Pairs of {}", HandRank::rank_name(*cards)),
-            HandRank::ThreeOfAKind(cards) => {
-                format!("Three of a Kind of {}", HandRank::rank_name(*cards))
-            }
-            HandRank::Straight(cards) => format!("a Straight of {}", HandRank::rank_name(*cards)),
-            HandRank::Flush(cards) => format!("a Flush of {}", HandRank::rank_name(*cards)),
-            HandRank::FullHouse(cards) => {
-                format!("a Full House of {}", HandRank::rank_name(*cards))
-            }
-            HandRank::FourOfAKind(cards) => {
-                format!("Four of a Kind of {}", HandRank::rank_name(*cards))
-            }
+            HandRank::HighCard(value) => format!("a High Card"),
+            HandRank::Pair(cards) => format!("a Pair"),
+            HandRank::TwoPair(cards) => format!("Two Pairs"),
+            HandRank::ThreeOfAKind(cards) => format!("Three of a Kind"),
+            HandRank::Straight(cards) => format!("a Straight"),
+            HandRank::Flush(cards) => format!("a Flush"),
+            HandRank::FullHouse(cards) => format!("a Full House"),
+            HandRank::FourOfAKind(cards) => format!("Four of a Kind"),
             HandRank::StraightFlush(cards) => {
-                format!("a Straight Flush of {}", HandRank::rank_name(*cards))
+                if *cards == [10, 11, 12, 13, 14] {
+                    format!("a Royal Flush")
+                } else {
+                    format!("a Straight Flush")
+                }
             }
-            HandRank::RoyalFlush(cards) => format!("a Royal Flush {}", HandRank::rank_name(*cards)),
         };
 
         write!(f, "{}", printable)
@@ -90,53 +85,63 @@ pub fn rank_hand(cards: Vec<&Card>) -> HandRank {
         panic!("Expected the cards count to be equal to 2 (pre-flop), 5 (post-flop), 6 (post-turn), or 7 (post-river) to rank the hand.\nThe cards count provided was: {}.", cards.len())
     }
 
-    if is_royal_flush(&cards) {
-        return get_royal_flush_value(&cards);
+    let (is_straight_flush, straight_flush_value) = check_for_straight_flush(&cards);
+
+    if is_straight_flush {
+        return HandRank::StraightFlush(straight_flush_value.unwrap());
     }
 
-    if is_straight_flush(&cards) {
-        return get_straight_flush_value(&cards);
+    let (is_four_of_a_kind, four_of_a_kind_value) = check_for_four_of_a_kind(&cards);
+
+    if is_four_of_a_kind {
+        return HandRank::FourOfAKind(four_of_a_kind_value.unwrap());
     }
 
-    if is_four_of_a_kind(&cards) {
-        return get_four_of_a_kind_value(&cards);
+    let (is_full_house, full_house_value) = check_for_full_house(&cards);
+
+    if is_full_house {
+        return HandRank::FullHouse(full_house_value.unwrap());
     }
 
-    if is_full_house(&cards) {
-        return get_full_house_value(&cards);
+    let (is_flush, flush_value) = check_for_flush(&cards);
+
+    if is_flush {
+        return HandRank::Flush(flush_value.unwrap());
     }
 
-    if is_flush(&cards) {
-        return get_flush_value(&cards);
+    let (is_straight, straight_value) = check_for_straight(&cards);
+
+    if is_straight {
+        return HandRank::Straight(straight_value.unwrap());
     }
 
-    if is_straight(&cards) {
-        return get_straight_value(&cards);
+    let (is_three_of_a_kind, three_of_a_kind_value) = check_for_three_of_a_kind(&cards);
+
+    if is_three_of_a_kind {
+        return HandRank::ThreeOfAKind(three_of_a_kind_value.unwrap());
     }
 
-    if is_three_of_a_kind(&cards) {
-        return get_three_of_a_kind_value(&cards);
-    }
+    let (is_two_pair, two_pair_value) = check_for_two_pair(&cards);
 
-    if is_two_pair(&cards) {
-        return get_two_pair_value(&cards);
+    if is_two_pair {
+        return HandRank::TwoPair(two_pair_value.unwrap());
     }
 
     let (is_pair, pair_value) = check_for_pair(&cards);
 
     if is_pair {
-        return HandRank::Pair(pair_value.unwrap().into());
+        return HandRank::Pair(pair_value.unwrap());
     }
 
     let high_card_value = get_high_card_value(&cards);
-    HandRank::HighCard(high_card_value.into())
+    HandRank::HighCard(high_card_value)
 }
 
 /// Returns: A u8 representing the value of the highest card provided for a HandRank::HighCard.
 ///
 /// Note: Unlike the other ranking methods, this does not return a tuple with a bool since it is executed last after exhausting all other hand ranking options.
 ///
-/// Example: An Ace high card will return 14.
+/// Example: An Ace-high card will return 14.
 fn get_high_card_value(cards: &Vec<&Card>) -> u8 {
     let mut high_card_value: u8 = 0;
     for card in cards {
@@ -152,10 +157,10 @@ fn get_high_card_value(cards: &Vec<&Card>) -> u8 {
 
 /// Checks if the provided cards contain a HandRank::Pair.
 ///
-/// Returns: A tuple containing a bool and an Option containing the numerical value of the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [u8; 2] representing the relevant cards if any.
 ///
 /// Example: a pair of 2s will return (true, 22), and a pair of Kings (13s) will return (true, 1313).
-fn check_for_pair(cards: &Vec<&Card>) -> (bool, Option<u8>) {
+fn check_for_pair(cards: &Vec<&Card>) -> (bool, Option<[u8; 2]>) {
     if cards.len() < 2 {
         return (false, None);
     }
@@ -177,9 +182,8 @@ fn check_for_pair(cards: &Vec<&Card>) -> (bool, Option<u8>) {
 
     if high_pair_rank_value > 0 {
         // Convert the high rank into a pair
-        // e.g. 2 -> 22
-        let pair_value = high_pair_rank_value * 10 + high_pair_rank_value;
-        return (true, Some(pair_value));
+        // e.g. 2 -> [2, 2]
+        return (true, Some([high_pair_rank_value; 2]));
     }
 
     (false, None)
@@ -187,46 +191,32 @@ fn check_for_pair(cards: &Vec<&Card>) -> (bool, Option<u8>) {
 
 /// Checks if the provided cards contain a HandRank::TwoPair.
 ///
-/// Returns: A tuple containing a bool and an Option containing the numerical value of the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [u8; 4] representing the relevant cards if any.
 ///
 /// Example: A pair of 2s and a pair of Kings (13s) will return (true, 221313).
-fn is_two_pair(cards: &Vec<&Card>) -> bool {
+fn check_for_two_pair(cards: &Vec<&Card>) -> (bool, Option<[u8; 4]>) {
     if cards.len() < 4 {
-        return false;
+        return (false, None);
     }
 
     // todo: implement
 
-    false
-}
-
-fn get_two_pair_value(cards: &Vec<&Card>) -> HandRank {
-    // todo: implement
-    let value = 0;
-
-    HandRank::TwoPair(value)
+    (false, None)
 }
 
 /// Checks if the provided cards contain a HandRank::ThreeOfAKind.
 ///
-/// Returns: A tuple containing a bool and an Option containing the numerical value of the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [u8; 3] representing the relevant cards if any.
 ///
 /// Example: Three 2s will return (true, 222).
-fn is_three_of_a_kind(cards: &Vec<&Card>) -> bool {
+fn check_for_three_of_a_kind(cards: &Vec<&Card>) -> (bool, Option<[u8; 3]>) {
     if cards.len() < 3 {
-        return false;
+        return (false, None);
     }
 
     // todo: implement
 
-    false
-}
-
-fn get_three_of_a_kind_value(cards: &Vec<&Card>) -> HandRank {
-    // todo: implement
-    let value = 0;
-
-    HandRank::ThreeOfAKind(value)
+    (false, None)
 }
 
 // todo: implement
@@ -234,16 +224,16 @@ fn get_three_of_a_kind_value(cards: &Vec<&Card>) -> HandRank {
 ///
 /// This also checks for both Ace low and Ace high when determining if a straight is present.
 ///
-/// Returns: A tuple containing a bool and an Option containing the numerical value of the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [u8; 5] representing the relevant cards if any.
 ///
 /// Example: A straight of 2, 3, 4, 5, and 6 will return (true, 23456).
 ///
 /// Example: A straight of Ace (low = 1), 2, 3, 4, and 5 will return (true, 12345).
 ///
 /// Example: A straight of 10, J (11), Q (12), K (13), Ace (high = 14) will return (true, 1011121314).
-fn is_straight(cards: &Vec<&Card>) -> bool {
+fn check_for_straight(cards: &Vec<&Card>) -> (bool, Option<[u8; 5]>) {
     if cards.len() < 5 {
-        return false;
+        return (false, None);
     }
 
     let sorted_cards = sort_cards_by_rank(cards);
@@ -257,7 +247,7 @@ fn is_straight(cards: &Vec<&Card>) -> bool {
         // todo: implement
     }
 
-    false
+    (false, None)
 }
 
 // todo: implement
@@ -277,126 +267,73 @@ fn sort_cards_by_rank(cards: &Vec<&Card>) -> Vec<Card> {
     sorted_cards
 }
 
-fn get_straight_value(cards: &Vec<&Card>) -> HandRank {
-    // todo: implement
-    let value = 0;
-
-    HandRank::Straight(value)
-}
-
 /// Checks if the provided cards contain a HandRank::Flush.
 ///
-/// Returns: A tuple containing a bool and an Option containing the numerical value of the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [u8; 5] representing the relevant cards if any.
 ///
 /// Example: A flush of 2♥, 5♥, 7♥, 9♥, and J♥ (11♥) will return (true, 257911).
-fn is_flush(cards: &Vec<&Card>) -> bool {
+fn check_for_flush(cards: &Vec<&Card>) -> (bool, Option<[u8; 5]>) {
     if cards.len() < 5 {
-        return false;
+        return (false, None);
     }
 
     // todo: implement
 
-    false
-}
-
-fn get_flush_value(cards: &Vec<&Card>) -> HandRank {
-    // todo: implement
-    let value = 0;
-
-    HandRank::Flush(value)
+    (false, None)
 }
 
 /// Checks if the provided cards contain a HandRank::FullHouse.
 ///
-/// Returns: A tuple containing a bool and an Option containing the numerical value of the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [u8; 5] representing the relevant cards if any.
 ///
 /// Example: Two 2s and three 3s will return (true, 22333).
-fn is_full_house(cards: &Vec<&Card>) -> bool {
+fn check_for_full_house(cards: &Vec<&Card>) -> (bool, Option<[u8; 5]>) {
     if cards.len() < 5 {
-        return false;
+        return (false, None);
     }
 
     // todo: implement
 
-    false
-}
-
-fn get_full_house_value(cards: &Vec<&Card>) -> HandRank {
-    // todo: implement
-    let value = 0;
-
-    HandRank::FullHouse(value)
+    (false, None)
 }
 
 /// Checks if the provided cards contain a HandRank::FourOfAKind.
 ///
-/// Returns: A tuple containing a bool and an Option containing the numerical value of the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [u8; 4] representing the relevant cards if any.
 ///
 /// Example: Four 2s will return (true, 2222).
-fn is_four_of_a_kind(cards: &Vec<&Card>) -> bool {
+fn check_for_four_of_a_kind(cards: &Vec<&Card>) -> (bool, Option<[u8; 4]>) {
     if cards.len() < 4 {
-        return false;
+        return (false, None);
     }
 
     // todo: implement
 
-    false
-}
-
-fn get_four_of_a_kind_value(cards: &Vec<&Card>) -> HandRank {
-    // todo: implement
-    let value = 0;
-
-    HandRank::FourOfAKind(value)
+    (false, None)
 }
 
 /// Checks if the provided cards contain a HandRank::StraightFlush.
 ///
-/// Returns: A tuple containing a bool and an Option containing the numerical value of the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [u8; 5] representing the relevant cards if any.
 ///
 /// Example: A flush of 2♣, 3♣, 4♣, 5♣, and 6♣ will return (true, 23456).
 ///
-/// Example: A flush of A♦ (low = 1♦), 2♦, 3♦, 4♦, and 5♦ will return (true, 12345).
-fn is_straight_flush(cards: &Vec<&Card>) -> bool {
-    if is_straight(cards) && is_flush(cards) {
-        return true;
-    }
-
-    false
-}
-
-fn get_straight_flush_value(cards: &Vec<&Card>) -> HandRank {
-    // todo: implement
-    let value = 0;
-
-    HandRank::StraightFlush(value)
-}
-
-/// Checks if the provided cards contain a HandRank::RoyalFlush.
+/// Example: An Ace-low flush of A♦ (low = 1♦), 2♦, 3♦, 4♦, and 5♦ will return (true, 12345).
 ///
-/// Returns: A tuple containing a bool and an Option containing the numerical value of the relevant cards if any.
-///
-/// Note: This is the highest variant of a HandRank::StraightFlush and may be removed in the future if it is determined to be redundant.
-///
-/// Example: A flush of 10♠, J♠ (11♠), Q♠ (12♠), K♠ (13♠) and A♠ (high = 14♠) will return (true, 1011121314).
-fn is_royal_flush(cards: &Vec<&Card>) -> bool {
+/// Example: An Ace-high flush (aka Royal Flush) of 10♠, J♠ (11♠), Q♠ (12♠), K♠ (13♠) and A♠ (high = 14♠) will return (true, 1011121314).
+fn check_for_straight_flush(cards: &Vec<&Card>) -> (bool, Option<[u8; 5]>) {
     if cards.len() < 5 {
-        return false;
+        return (false, None);
     }
 
-    if is_straight_flush(cards) {
-        // todo: implement
-        // Check cards contain 10 - Ace
+    let (is_straight, straight_value) = check_for_straight(cards);
+    let (is_flush, flush_value) = check_for_flush(cards);
+
+    if is_straight && is_flush {
+        return (true, straight_value);
     }
 
-    false
-}
-
-fn get_royal_flush_value(cards: &Vec<&Card>) -> HandRank {
-    // todo: implement
-    let value = 0;
-
-    HandRank::RoyalFlush(value)
+    (false, None)
 }
 
 #[cfg(test)]
@@ -425,15 +362,18 @@ mod tests {
 
     #[test]
     fn hand_rankings_are_ordered_correctly() {
-        assert!(HandRank::HighCard(14) < HandRank::Pair(22));
-        assert!(HandRank::Pair(1313) < HandRank::TwoPair(2233));
-        assert!(HandRank::TwoPair(13131414) < HandRank::ThreeOfAKind(222));
-        assert!(HandRank::ThreeOfAKind(141414) < HandRank::Straight(12345));
-        assert!(HandRank::Straight(1011121314) < HandRank::Flush(257911));
-        assert!(HandRank::Flush(257911) < HandRank::FullHouse(22333));
-        assert!(HandRank::FullHouse(1313141414) < HandRank::FourOfAKind(2222));
-        assert!(HandRank::FourOfAKind(14141414) < HandRank::StraightFlush(12345));
-        assert!(HandRank::StraightFlush(910111213) < HandRank::RoyalFlush(1011121314));
+        assert!(HandRank::HighCard(14) < HandRank::Pair([2, 2]));
+        assert!(HandRank::Pair([13, 13]) < HandRank::TwoPair([2, 2, 3, 3]));
+        assert!(HandRank::TwoPair([13, 13, 14, 14]) < HandRank::ThreeOfAKind([2, 2, 2]));
+        assert!(HandRank::ThreeOfAKind([14, 14, 14]) < HandRank::Straight([1, 2, 3, 4, 5]));
+        assert!(HandRank::Straight([10, 11, 12, 13, 14]) < HandRank::Flush([2, 5, 7, 9, 11]));
+        assert!(HandRank::Flush([2, 5, 7, 9, 11]) < HandRank::FullHouse([2, 2, 3, 3, 3]));
+        assert!(HandRank::FullHouse([13, 13, 14, 14, 14]) < HandRank::FourOfAKind([2, 2, 2, 2]));
+        assert!(HandRank::FourOfAKind([14, 14, 14, 14]) < HandRank::StraightFlush([1, 2, 3, 4, 5]));
+        assert!(
+            HandRank::StraightFlush([9, 10, 11, 12, 13])
+                < HandRank::StraightFlush([10, 11, 12, 13, 14])
+        );
     }
 
     #[test]
@@ -465,7 +405,7 @@ mod tests {
         let mut cards: Vec<&Card> = vec![&card1, &card2, &card3, &card4, &card5, &card6, &card7];
         let hand_rank = rank_hand(cards);
 
-        assert_eq!(hand_rank, HandRank::Pair(22));
+        assert_eq!(hand_rank, HandRank::Pair([2, 2]));
     }
 
     #[test]
@@ -481,7 +421,7 @@ mod tests {
         let mut cards: Vec<&Card> = vec![&card1, &card2, &card3, &card4, &card5, &card6, &card7];
         let hand_rank = rank_hand(cards);
 
-        assert_eq!(hand_rank, HandRank::TwoPair(221313));
+        assert_eq!(hand_rank, HandRank::TwoPair([2, 2, 13, 13]));
     }
 
     #[test]
@@ -497,7 +437,7 @@ mod tests {
         let mut cards: Vec<&Card> = vec![&card1, &card2, &card3, &card4, &card5, &card6, &card7];
         let hand_rank = rank_hand(cards);
 
-        assert_eq!(hand_rank, HandRank::ThreeOfAKind(222));
+        assert_eq!(hand_rank, HandRank::ThreeOfAKind([2, 2, 2]));
     }
 
     #[test]
@@ -513,7 +453,7 @@ mod tests {
         let mut cards: Vec<&Card> = vec![&card1, &card2, &card3, &card4, &card5, &card6, &card7];
         let hand_rank = rank_hand(cards);
 
-        assert_eq!(hand_rank, HandRank::Straight(23456));
+        assert_eq!(hand_rank, HandRank::Straight([2, 3, 4, 5, 6]));
     }
 
     #[test]
@@ -529,7 +469,7 @@ mod tests {
         let mut cards: Vec<&Card> = vec![&card1, &card2, &card3, &card4, &card5, &card6, &card7];
         let hand_rank = rank_hand(cards);
 
-        assert_eq!(hand_rank, HandRank::Straight(12345));
+        assert_eq!(hand_rank, HandRank::Straight([1, 2, 3, 4, 5]));
     }
 
     #[test]
@@ -545,7 +485,7 @@ mod tests {
         let mut cards: Vec<&Card> = vec![&card1, &card2, &card3, &card4, &card5, &card6, &card7];
         let hand_rank = rank_hand(cards);
 
-        assert_eq!(hand_rank, HandRank::Straight(12345));
+        assert_eq!(hand_rank, HandRank::Straight([10, 11, 12, 13, 14]));
     }
 
     #[test]
@@ -561,7 +501,7 @@ mod tests {
         let mut cards: Vec<&Card> = vec![&card1, &card2, &card3, &card4, &card5, &card6, &card7];
         let hand_rank = rank_hand(cards);
 
-        assert_eq!(hand_rank, HandRank::Flush(257911));
+        assert_eq!(hand_rank, HandRank::Flush([2, 5, 7, 9, 11]));
     }
 
     #[test]
@@ -577,7 +517,7 @@ mod tests {
         let mut cards: Vec<&Card> = vec![&card1, &card2, &card3, &card4, &card5, &card6, &card7];
         let hand_rank = rank_hand(cards);
 
-        assert_eq!(hand_rank, HandRank::FullHouse(22333));
+        assert_eq!(hand_rank, HandRank::FullHouse([2, 2, 3, 3, 3]));
     }
 
     #[test]
@@ -593,7 +533,7 @@ mod tests {
         let mut cards: Vec<&Card> = vec![&card1, &card2, &card3, &card4, &card5, &card6, &card7];
         let hand_rank = rank_hand(cards);
 
-        assert_eq!(hand_rank, HandRank::FourOfAKind(2222));
+        assert_eq!(hand_rank, HandRank::FourOfAKind([2, 2, 2, 2]));
     }
 
     #[test]
@@ -609,7 +549,7 @@ mod tests {
         let mut cards: Vec<&Card> = vec![&card1, &card2, &card3, &card4, &card5, &card6, &card7];
         let hand_rank = rank_hand(cards);
 
-        assert_eq!(hand_rank, HandRank::Straight(23456));
+        assert_eq!(hand_rank, HandRank::Straight([2, 3, 4, 5, 6]));
     }
 
     #[test]
@@ -625,11 +565,11 @@ mod tests {
         let mut cards: Vec<&Card> = vec![&card1, &card2, &card3, &card4, &card5, &card6, &card7];
         let hand_rank = rank_hand(cards);
 
-        assert_eq!(hand_rank, HandRank::StraightFlush(12345));
+        assert_eq!(hand_rank, HandRank::StraightFlush([1, 2, 3, 4, 5]));
     }
 
     #[test]
-    fn royal_flush_aka_ace_high_straight_flush_is_ranked_correctly() {
+    fn ace_high_straight_flush_aka_royal_flush_is_ranked_correctly() {
         // Also tests to ignore the lower flush for 9 - K
         let card1 = Card::new(Rank::Nine, Suit::Spade);
         let card2 = Card::new(Rank::Ten, Suit::Spade);
@@ -642,6 +582,6 @@ mod tests {
         let mut cards: Vec<&Card> = vec![&card1, &card2, &card3, &card4, &card5, &card6, &card7];
         let hand_rank = rank_hand(cards);
 
-        assert_eq!(hand_rank, HandRank::RoyalFlush(1011121314));
+        assert_eq!(hand_rank, HandRank::StraightFlush([10, 11, 12, 13, 14]));
     }
 }
