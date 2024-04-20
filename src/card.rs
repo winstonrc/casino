@@ -4,7 +4,7 @@ use strum::EnumIter;
 /// Numerical values for the ranks.
 ///
 /// Ranks contain Two through Ace (high by default).
-#[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, PartialEq, PartialOrd)]
 pub enum Rank {
     Two = 2,
     Three = 3,
@@ -50,7 +50,7 @@ impl From<Rank> for char {
 /// A suit can be a Club, Diamond, Heart, or Spade, which are ranked from lowest to highest value.
 ///
 /// Suit values are based on the values for the game Bridge.
-#[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, PartialEq, PartialOrd)]
 pub enum Suit {
     Club = 0,
     Diamond = 1,
@@ -176,18 +176,18 @@ mod tests {
         assert_eq!(Rank::King.value(), 13);
         assert_eq!(Rank::Ace.value(), 14);
 
-        assert!(Rank::Two.value() < Rank::Three.value());
-        assert!(Rank::Three.value() < Rank::Four.value());
-        assert!(Rank::Four.value() < Rank::Five.value());
-        assert!(Rank::Five.value() < Rank::Six.value());
-        assert!(Rank::Six.value() < Rank::Seven.value());
-        assert!(Rank::Seven.value() < Rank::Eight.value());
-        assert!(Rank::Eight.value() < Rank::Nine.value());
-        assert!(Rank::Nine.value() < Rank::Ten.value());
-        assert!(Rank::Ten.value() < Rank::Jack.value());
-        assert!(Rank::Jack.value() < Rank::Queen.value());
-        assert!(Rank::Queen.value() < Rank::King.value());
-        assert!(Rank::King.value() < Rank::Ace.value());
+        assert!(Rank::Two < Rank::Three);
+        assert!(Rank::Three < Rank::Four);
+        assert!(Rank::Four < Rank::Five);
+        assert!(Rank::Five < Rank::Six);
+        assert!(Rank::Six < Rank::Seven);
+        assert!(Rank::Seven < Rank::Eight);
+        assert!(Rank::Eight < Rank::Nine);
+        assert!(Rank::Nine < Rank::Ten);
+        assert!(Rank::Ten < Rank::Jack);
+        assert!(Rank::Jack < Rank::Queen);
+        assert!(Rank::Queen < Rank::King);
+        assert!(Rank::King < Rank::Ace);
     }
 
     #[test]
@@ -202,9 +202,9 @@ mod tests {
         assert_eq!(Suit::Heart.value(), 2);
         assert_eq!(Suit::Spade.value(), 3);
 
-        assert!(Suit::Club.value() < Suit::Diamond.value());
-        assert!(Suit::Diamond.value() < Suit::Heart.value());
-        assert!(Suit::Heart.value() < Suit::Spade.value());
+        assert!(Suit::Club < Suit::Diamond);
+        assert!(Suit::Diamond < Suit::Heart);
+        assert!(Suit::Heart < Suit::Spade);
     }
 
     #[test]
