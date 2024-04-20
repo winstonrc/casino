@@ -1,8 +1,9 @@
 use cards::card::{Card, Rank, Suit};
 use std::collections::HashMap;
+use std::fmt;
 
-#[derive(Debug)]
-pub enum HandValue {
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+pub enum HandRank {
     /// Simple value of the card.
     /// Lowest: 2 – Highest: Ace.
     HighCard(u32),
@@ -27,8 +28,64 @@ pub enum HandValue {
     RoyalFlush(u32),
 }
 
+impl HandRank {
+    fn rank_name(value: u32) -> String {
+        let rank = match value {
+            2 => Rank::Two,
+            3 => Rank::Three,
+            4 => Rank::Four,
+            5 => Rank::Five,
+            6 => Rank::Six,
+            7 => Rank::Seven,
+            8 => Rank::Eight,
+            9 => Rank::Nine,
+            10 => Rank::Ten,
+            11 => Rank::Jack,
+            12 => Rank::Queen,
+            13 => Rank::King,
+            14 => Rank::Ace,
+            _ => return value.to_string(),
+        };
+
+        match rank {
+            Rank::Jack => "Jack".to_string(),
+            Rank::Queen => "Queen".to_string(),
+            Rank::King => "King".to_string(),
+            Rank::Ace => "Ace".to_string(),
+            _ => value.to_string(),
+        }
+    }
+}
+
+impl fmt::Display for HandRank {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let printable = match self {
+            HandRank::HighCard(value) => format!("a High Card of {}", HandRank::rank_name(*value)),
+            HandRank::Pair(cards) => format!("a Pair of {}s", HandRank::rank_name(*cards)),
+            HandRank::TwoPair(cards) => format!("Two Pairs of {}", HandRank::rank_name(*cards)),
+            HandRank::ThreeOfAKind(cards) => {
+                format!("Three of a Kind of {}", HandRank::rank_name(*cards))
+            }
+            HandRank::Straight(cards) => format!("a Straight of {}", HandRank::rank_name(*cards)),
+            HandRank::Flush(cards) => format!("a Flush of {}", HandRank::rank_name(*cards)),
+            HandRank::FullHouse(cards) => {
+                format!("a Full House of {}", HandRank::rank_name(*cards))
+            }
+            HandRank::FourOfAKind(cards) => {
+                format!("Four of a Kind of {}", HandRank::rank_name(*cards))
+            }
+            HandRank::StraightFlush(cards) => {
+                format!("a Straight Flush of {}", HandRank::rank_name(*cards))
+            }
+            HandRank::RoyalFlush(cards) => format!("a Royal Flush {}", HandRank::rank_name(*cards)),
+        };
+
+        write!(f, "{}", printable)
+    }
+}
+
 /// Determine the value of the given hand.
-pub fn rank_hand(cards: Vec<&Card>) -> HandValue {
+pub fn rank_hand(cards: Vec<&Card>) -> HandRank {
     if cards.len() != 2 && cards.len() != 5 && cards.len() != 6 && cards.len() != 7 {
         panic!("Expected the cards count to be equal to 2 (pre-flop), 5 (post-flop), 6 (post-turn), or 7 (post-river) to rank the hand.\nThe cards count provided was: {}.", cards.len())
     }
@@ -65,16 +122,17 @@ pub fn rank_hand(cards: Vec<&Card>) -> HandValue {
         return get_two_pair_value(&cards);
     }
 
-    let (is_pair, pair) = check_for_pair(&cards);
+    let (is_pair, pair_value) = check_for_pair(&cards);
 
     if is_pair {
-        return HandValue::Pair(pair.unwrap().into());
+        return HandRank::Pair(pair_value.unwrap().into());
     }
 
-    return get_high_card_value(&cards);
+    let high_card_value = get_high_card_value(&cards);
+    HandRank::HighCard(high_card_value.into())
 }
 
-fn get_high_card_value(cards: &Vec<&Card>) -> HandValue {
+fn get_high_card_value(cards: &Vec<&Card>) -> u8 {
     let mut high_card_value: u8 = 0;
     for card in cards {
         let card_rank_value = card.rank.value();
@@ -84,7 +142,7 @@ fn get_high_card_value(cards: &Vec<&Card>) -> HandValue {
         }
     }
 
-    HandValue::HighCard(high_card_value.into())
+    high_card_value
 }
 
 fn check_for_pair(cards: &Vec<&Card>) -> (bool, Option<u8>) {
@@ -124,11 +182,11 @@ fn is_two_pair(cards: &Vec<&Card>) -> bool {
     false
 }
 
-fn get_two_pair_value(cards: &Vec<&Card>) -> HandValue {
+fn get_two_pair_value(cards: &Vec<&Card>) -> HandRank {
     // todo: implement
     let value = 0;
 
-    HandValue::TwoPair(value)
+    HandRank::TwoPair(value)
 }
 
 fn is_three_of_a_kind(cards: &Vec<&Card>) -> bool {
@@ -141,11 +199,11 @@ fn is_three_of_a_kind(cards: &Vec<&Card>) -> bool {
     false
 }
 
-fn get_three_of_a_kind_value(cards: &Vec<&Card>) -> HandValue {
+fn get_three_of_a_kind_value(cards: &Vec<&Card>) -> HandRank {
     // todo: implement
     let value = 0;
 
-    HandValue::ThreeOfAKind(value)
+    HandRank::ThreeOfAKind(value)
 }
 
 // todo: implement
@@ -180,11 +238,11 @@ fn sort_cards_by_rank(cards: &Vec<&Card>) -> Vec<Card> {
     sorted_cards
 }
 
-fn get_straight_value(cards: &Vec<&Card>) -> HandValue {
+fn get_straight_value(cards: &Vec<&Card>) -> HandRank {
     // todo: implement
     let value = 0;
 
-    HandValue::Straight(value)
+    HandRank::Straight(value)
 }
 
 fn is_flush(cards: &Vec<&Card>) -> bool {
@@ -197,11 +255,11 @@ fn is_flush(cards: &Vec<&Card>) -> bool {
     false
 }
 
-fn get_flush_value(cards: &Vec<&Card>) -> HandValue {
+fn get_flush_value(cards: &Vec<&Card>) -> HandRank {
     // todo: implement
     let value = 0;
 
-    HandValue::Flush(value)
+    HandRank::Flush(value)
 }
 
 fn is_full_house(cards: &Vec<&Card>) -> bool {
@@ -214,11 +272,11 @@ fn is_full_house(cards: &Vec<&Card>) -> bool {
     false
 }
 
-fn get_full_house_value(cards: &Vec<&Card>) -> HandValue {
+fn get_full_house_value(cards: &Vec<&Card>) -> HandRank {
     // todo: implement
     let value = 0;
 
-    HandValue::FullHouse(value)
+    HandRank::FullHouse(value)
 }
 
 fn is_four_of_a_kind(cards: &Vec<&Card>) -> bool {
@@ -231,11 +289,11 @@ fn is_four_of_a_kind(cards: &Vec<&Card>) -> bool {
     false
 }
 
-fn get_four_of_a_kind_value(cards: &Vec<&Card>) -> HandValue {
+fn get_four_of_a_kind_value(cards: &Vec<&Card>) -> HandRank {
     // todo: implement
     let value = 0;
 
-    HandValue::FourOfAKind(value)
+    HandRank::FourOfAKind(value)
 }
 
 fn is_straight_flush(cards: &Vec<&Card>) -> bool {
@@ -246,11 +304,11 @@ fn is_straight_flush(cards: &Vec<&Card>) -> bool {
     false
 }
 
-fn get_straight_flush_value(cards: &Vec<&Card>) -> HandValue {
+fn get_straight_flush_value(cards: &Vec<&Card>) -> HandRank {
     // todo: implement
     let value = 0;
 
-    HandValue::StraightFlush(value)
+    HandRank::StraightFlush(value)
 }
 
 fn is_royal_flush(cards: &Vec<&Card>) -> bool {
@@ -266,9 +324,9 @@ fn is_royal_flush(cards: &Vec<&Card>) -> bool {
     false
 }
 
-fn get_royal_flush_value(cards: &Vec<&Card>) -> HandValue {
+fn get_royal_flush_value(cards: &Vec<&Card>) -> HandRank {
     // todo: implement
     let value = 0;
 
-    HandValue::RoyalFlush(value)
+    HandRank::RoyalFlush(value)
 }
