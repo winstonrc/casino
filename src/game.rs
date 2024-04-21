@@ -10,6 +10,7 @@ use crate::player::Player;
 
 const DEFAULT_BUY_IN_CHIPS_AMOUNT: u32 = 100;
 
+/// The core of the Texas hold 'em game.
 pub struct Game {
     deck: Deck,
     players: HashSet<Player>,
@@ -17,6 +18,7 @@ pub struct Game {
 }
 
 impl Game {
+    /// Create a new game that internally contains a deck and players.
     pub fn new() -> Self {
         let deck = Deck::new();
         let players = HashSet::new();
@@ -29,10 +31,12 @@ impl Game {
         }
     }
 
+    /// Add a player into the game with the default buy-in chips amount.
     pub fn add_player(&mut self, player_name: &str) {
         self.add_player_with_chips(player_name, DEFAULT_BUY_IN_CHIPS_AMOUNT);
     }
 
+    /// Add a player into the game with a defined buy-in chips amount.
     pub fn add_player_with_chips(&mut self, player_name: &str, chips: u32) {
         let identifier = Uuid::new_v4();
 
@@ -50,11 +54,23 @@ impl Game {
     }
 
     // todo: implement
+    /// Remove a player from the game.
     pub fn remove_player(&mut self, player: &Player) {
         self.players.remove(player);
     }
 
-    pub fn is_game_over(&self) -> bool {
+    /// Play the game.
+    pub fn play(&mut self) {
+        while !self.game_over {
+            self.play_round();
+            self.game_over = self.is_game_over();
+
+            // todo: remove after implementing game over trigger
+            self.game_over = true;
+        }
+    }
+
+    fn is_game_over(&self) -> bool {
         if self.players.len() == 0 {
             println!("No players remaining. Game over!");
 
@@ -68,16 +84,6 @@ impl Game {
         }
 
         false
-    }
-
-    pub fn play(&mut self) {
-        while !self.game_over {
-            self.play_round();
-            self.game_over = self.is_game_over();
-
-            // todo: remove after implementing game over trigger
-            self.game_over = true;
-        }
     }
 
     fn play_round(&mut self) {
