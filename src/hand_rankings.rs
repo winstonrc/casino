@@ -59,7 +59,7 @@ impl fmt::Display for HandRank {
 }
 
 /// Determine the highest value of a hand from the given cards.
-pub fn rank_hand(cards: HashSet<Card>) -> HandRank {
+pub fn rank_hand(cards: Vec<Card>) -> HandRank {
     if cards.len() != 2 && cards.len() != 5 && cards.len() != 6 && cards.len() != 7 {
         panic!("Expected the cards count to be equal to 2 (pre-flop), 5 (post-flop), 6 (post-turn), or 7 (post-river) to rank the hand.\nThe cards count provided was: {}.", cards.len())
     }
@@ -105,7 +105,7 @@ pub fn rank_hand(cards: HashSet<Card>) -> HandRank {
     }
 }
 
-/// Returns the card with the highest rank value provided for a HandRank::HighCard.
+/// Determines the HandRank::HighCard by finding the card with the highest rank value.
 ///
 /// Returns: An Option containing the relevant card if any.
 ///
@@ -115,7 +115,7 @@ pub fn rank_hand(cards: HashSet<Card>) -> HandRank {
 ///
 /// Example: A table with 10 of Clubs, 4 of Hearts, 7 of Diamonds, King of Clubs,
 /// and 2 of Spades will return the King of Clubs.
-fn get_high_card_value(cards: &HashSet<Card>) -> Option<Card> {
+fn get_high_card_value(cards: &Vec<Card>) -> Option<Card> {
     let mut high_card: Option<Card> = None;
     let mut high_card_value: u8 = 0;
     for &card in cards {
@@ -135,7 +135,7 @@ fn get_high_card_value(cards: &HashSet<Card>) -> Option<Card> {
 /// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: A pair of Kings.
-fn check_for_pair(cards: &HashSet<Card>) -> Option<[Card; 2]> {
+fn check_for_pair(cards: &Vec<Card>) -> Option<[Card; 2]> {
     if cards.len() < 2 {
         return None;
     }
@@ -171,7 +171,7 @@ fn check_for_pair(cards: &HashSet<Card>) -> Option<[Card; 2]> {
 /// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: A pair of Kings and a pair of 7s.
-fn check_for_two_pair(cards: &HashSet<Card>) -> Option<[Card; 4]> {
+fn check_for_two_pair(cards: &Vec<Card>) -> Option<[Card; 4]> {
     if cards.len() < 4 {
         return None;
     }
@@ -181,23 +181,39 @@ fn check_for_two_pair(cards: &HashSet<Card>) -> Option<[Card; 4]> {
 
     // If there is a highest pair then check for a second highest pair.
     // If not, then exit the function.
-    if let Some(pair_cards) = first_pair_cards {
-        let first_pair_card1 = pair_cards[0];
-        let first_pair_card2 = pair_cards[1];
+    if let Some(first_pair_cards) = first_pair_cards {
+        let first_pair_card1 = first_pair_cards[0];
+        let first_pair_card2 = first_pair_cards[1];
 
         // Remove the highest pair so that calling check_for_pair again will now return the
         // second highest pair.
         let mut reduced_cards = cards.clone();
-        reduced_cards.remove(&first_pair_card1);
-        reduced_cards.remove(&first_pair_card2);
+        reduced_cards.retain(|&card| card != first_pair_card1 && card != first_pair_card2);
 
-        // remove second highest pair
-        let second_pair_cards = check_for_pair(cards);
+        // Retrieve the second highest pair
+        let second_pair_cards = check_for_pair(&reduced_cards);
+
+        // If there is a second highest pair then return the two pairs.
+        // If not, then exit the function.
+        if let Some(second_pair_cards) = second_pair_cards {
+            let second_pair_card1 = second_pair_cards[0];
+            let second_pair_card2 = second_pair_cards[1];
+
+            // Return both pairs, highest-to-lowest
+            let two_pair = [
+                first_pair_card1,
+                first_pair_card2,
+                second_pair_card1,
+                second_pair_card2,
+            ];
+
+            return Some(two_pair);
+        } else {
+            return None;
+        }
     } else {
         return None;
     }
-
-    None
 }
 
 /// Checks if the provided cards contain a HandRank::ThreeOfAKind.
@@ -205,7 +221,7 @@ fn check_for_two_pair(cards: &HashSet<Card>) -> Option<[Card; 4]> {
 /// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: Three Kings.
-fn check_for_three_of_a_kind(cards: &HashSet<Card>) -> Option<[Card; 3]> {
+fn check_for_three_of_a_kind(cards: &Vec<Card>) -> Option<[Card; 3]> {
     if cards.len() < 3 {
         return None;
     }
@@ -226,7 +242,7 @@ fn check_for_three_of_a_kind(cards: &HashSet<Card>) -> Option<[Card; 3]> {
 /// Example: An Ace-low straight of Ace (1), 2, 3, 4, 5.
 ///
 /// Example: An Ace-high straight of 10, J (11), Q (12), K (13), Ace (14).
-fn check_for_straight(cards: &HashSet<Card>) -> Option<[Card; 5]> {
+fn check_for_straight(cards: &Vec<Card>) -> Option<[Card; 5]> {
     if cards.len() < 5 {
         return None;
     }
@@ -252,7 +268,7 @@ fn check_for_straight(cards: &HashSet<Card>) -> Option<[Card; 5]> {
 ///
 /// Note: This method sorts Aces as high and requires other methods to implement
 /// configuring Aces as low if needed.
-fn sort_cards_by_rank(cards: &HashSet<Card>) -> Vec<Card> {
+fn sort_cards_by_rank(cards: &Vec<Card>) -> Vec<Card> {
     let mut sorted_cards: Vec<Card> = Vec::new();
 
     // todo: implement sorting
@@ -268,7 +284,7 @@ fn sort_cards_by_rank(cards: &HashSet<Card>) -> Vec<Card> {
 /// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: A flush of K♣ (13♣), Q♣ (12♣), 9♣, 8♣, 2♣.
-fn check_for_flush(cards: &HashSet<Card>) -> Option<[Card; 5]> {
+fn check_for_flush(cards: &Vec<Card>) -> Option<[Card; 5]> {
     if cards.len() < 5 {
         return None;
     }
@@ -283,7 +299,7 @@ fn check_for_flush(cards: &HashSet<Card>) -> Option<[Card; 5]> {
 /// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: Three Kings and two 7s.
-fn check_for_full_house(cards: &HashSet<Card>) -> Option<[Card; 5]> {
+fn check_for_full_house(cards: &Vec<Card>) -> Option<[Card; 5]> {
     if cards.len() < 5 {
         return None;
     }
@@ -298,7 +314,7 @@ fn check_for_full_house(cards: &HashSet<Card>) -> Option<[Card; 5]> {
 /// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: Four 6s.
-fn check_for_four_of_a_kind(cards: &HashSet<Card>) -> Option<[Card; 4]> {
+fn check_for_four_of_a_kind(cards: &Vec<Card>) -> Option<[Card; 4]> {
     if cards.len() < 4 {
         return None;
     }
@@ -317,7 +333,7 @@ fn check_for_four_of_a_kind(cards: &HashSet<Card>) -> Option<[Card; 4]> {
 /// Example: An Ace-low flush of A♦ (1♦), 2♦, 3♦, 4♦, 5♦.
 ///
 /// Example: An Ace-high flush (aka Royal Flush) of 10♥, J♥ (11♥), Q♥ (12♥), K♥ (13♥) A♥ (14♥).
-fn check_for_straight_flush(cards: &HashSet<Card>) -> Option<[Card; 5]> {
+fn check_for_straight_flush(cards: &Vec<Card>) -> Option<[Card; 5]> {
     if cards.len() < 5 {
         return None;
     }
@@ -491,13 +507,13 @@ mod tests {
         let king_of_clubs = Card::king_of_clubs();
         let two_of_spades = Card::two_of_spades();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             ten_of_clubs,
             four_of_hearts,
             seven_of_diamonds,
             king_of_clubs,
             two_of_spades,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let high_card = HandRank::HighCard(king_of_clubs);
@@ -513,13 +529,13 @@ mod tests {
         let two_of_clubs = Card::two_of_clubs();
         let five_of_spades = Card::five_of_spades();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             king_of_clubs,
             king_of_hearts,
             seven_of_diamonds,
             two_of_clubs,
             five_of_spades,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let pair = HandRank::Pair([king_of_clubs, king_of_hearts]);
@@ -535,13 +551,13 @@ mod tests {
         let seven_of_clubs = Card::seven_of_clubs();
         let five_of_spades = Card::five_of_spades();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             king_of_clubs,
             king_of_hearts,
             seven_of_diamonds,
             seven_of_clubs,
             five_of_spades,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let two_pair = HandRank::TwoPair([
@@ -562,13 +578,13 @@ mod tests {
         let seven_of_clubs = Card::seven_of_clubs();
         let five_of_spades = Card::five_of_spades();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             king_of_clubs,
             king_of_hearts,
             king_of_diamonds,
             seven_of_clubs,
             five_of_spades,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let three_of_a_kind =
@@ -585,13 +601,13 @@ mod tests {
         let six_of_clubs = Card::six_of_clubs();
         let seven_of_spades = Card::seven_of_spades();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             three_of_clubs,
             four_of_hearts,
             five_of_diamonds,
             six_of_clubs,
             seven_of_spades,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let straight = HandRank::Straight([
@@ -613,13 +629,13 @@ mod tests {
         let four_of_spades = Card::four_of_spades();
         let five_of_hearts = Card::five_of_hearts();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             ace_of_spades,
             two_of_clubs,
             three_of_hearts,
             four_of_spades,
             five_of_hearts,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let ace_low_straight = HandRank::Straight([
@@ -643,14 +659,14 @@ mod tests {
         let king_of_hearts = Card::king_of_hearts();
         let ace_of_spades = Card::ace_of_spades();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             nine_of_diamonds,
             ten_of_clubs,
             jack_of_hearts,
             queen_of_spades,
             king_of_hearts,
             ace_of_spades,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let ace_high_straight = HandRank::Straight([
@@ -672,13 +688,13 @@ mod tests {
         let eight_of_clubs = Card::eight_of_clubs();
         let two_of_clubs = Card::two_of_clubs();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             king_of_clubs,
             queen_of_clubs,
             nine_of_clubs,
             eight_of_clubs,
             two_of_clubs,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let flush = HandRank::Flush([
@@ -700,13 +716,13 @@ mod tests {
         let seven_of_clubs = Card::seven_of_clubs();
         let seven_of_spades = Card::seven_of_spades();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             king_of_clubs,
             king_of_hearts,
             king_of_diamonds,
             seven_of_clubs,
             seven_of_spades,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let full_house = HandRank::FullHouse([
@@ -728,13 +744,13 @@ mod tests {
         let six_of_clubs = Card::six_of_clubs();
         let king_of_spades = Card::king_of_spades();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             six_of_spades,
             six_of_diamonds,
             six_of_hearts,
             six_of_clubs,
             king_of_spades,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let four_of_a_kind =
@@ -751,13 +767,13 @@ mod tests {
         let five_of_spades = Card::five_of_spades();
         let six_of_spades = Card::six_of_spades();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             two_of_spades,
             three_of_spades,
             four_of_spades,
             five_of_spades,
             six_of_spades,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let straight_flush = HandRank::Straight([
@@ -779,13 +795,13 @@ mod tests {
         let four_of_diamonds = Card::four_of_diamonds();
         let five_of_diamonds = Card::five_of_diamonds();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             ace_of_diamonds,
             two_of_diamonds,
             three_of_diamonds,
             four_of_diamonds,
             five_of_diamonds,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let ace_low_straight_flush = HandRank::StraightFlush([
@@ -811,14 +827,14 @@ mod tests {
         let king_of_hearts = Card::king_of_hearts();
         let ace_of_hearts = Card::ace_of_hearts();
 
-        let cards: HashSet<Card> = HashSet::from([
+        let cards: Vec<Card> = vec![
             nine_of_hearts,
             ten_of_hearts,
             jack_of_hearts,
             queen_of_hearts,
             king_of_hearts,
             ace_of_hearts,
-        ]);
+        ];
 
         let hand_rank = rank_hand(cards);
         let ace_high_straight_flush = HandRank::StraightFlush([

@@ -100,7 +100,7 @@ impl Game {
             player_hands.insert(player, hand.clone());
         }
 
-        let table_cards: HashSet<Card> = HashSet::new();
+        let table_cards: Vec<Card> = Vec::new();
 
         // todo: implement betting system
         // todo: implement folding
@@ -110,9 +110,9 @@ impl Game {
             let mut best_hand: Option<HandRank> = None;
             for (player, hand) in player_hands.iter() {
                 // todo: refactor hand ranking logic to consider cards on the table
-                let mut cards_to_rank: HashSet<Card> = table_cards.clone();
-                cards_to_rank.insert(hand.cards[0]);
-                cards_to_rank.insert(hand.cards[1]);
+                let mut cards_to_rank: Vec<Card> = table_cards.clone();
+                cards_to_rank.push(hand.cards[0]);
+                cards_to_rank.push(hand.cards[1]);
 
                 let hand_rank = rank_hand(cards_to_rank);
                 // todo: remove after testing
