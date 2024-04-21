@@ -110,17 +110,11 @@ impl Game {
             let mut best_hand: Option<HandRank> = None;
             for (player, hand) in player_hands.iter() {
                 // todo: refactor hand ranking logic to consider cards on the table
-                let mut cards_to_rank: Vec<&Card> = Vec::new();
-                cards_to_rank.push(&hand.cards[0]);
-                cards_to_rank.push(&hand.cards[1]);
+                let mut cards_to_rank: HashSet<Card> = table_cards.clone();
+                cards_to_rank.insert(hand.cards[0]);
+                cards_to_rank.insert(hand.cards[1]);
 
-                if table_cards.len() > 0 {
-                    for card in &table_cards {
-                        cards_to_rank.push(card);
-                    }
-                }
-
-                let hand_rank = rank_hand(&cards_to_rank);
+                let hand_rank = rank_hand(cards_to_rank);
                 // todo: remove after testing
                 println!("{:?}", hand_rank);
 

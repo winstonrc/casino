@@ -1,5 +1,5 @@
-use cards::card::{Card, Rank, Suit};
-use std::collections::HashMap;
+use cards::card::{Card, Rank};
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
@@ -59,51 +59,51 @@ impl fmt::Display for HandRank {
 }
 
 /// Determine the highest value of a hand from the given cards.
-pub fn rank_hand(cards: &Vec<&Card>) -> HandRank {
+pub fn rank_hand(cards: HashSet<Card>) -> HandRank {
     if cards.len() != 2 && cards.len() != 5 && cards.len() != 6 && cards.len() != 7 {
         panic!("Expected the cards count to be equal to 2 (pre-flop), 5 (post-flop), 6 (post-turn), or 7 (post-river) to rank the hand.\nThe cards count provided was: {}.", cards.len())
     }
 
-    let (is_straight_flush, straight_flush_value) = check_for_straight_flush(&cards);
+    let (is_straight_flush, straight_flush_cards) = check_for_straight_flush(&cards);
 
     if is_straight_flush {
-        return HandRank::StraightFlush(straight_flush_value.unwrap());
+        return HandRank::StraightFlush(straight_flush_cards.unwrap());
     }
 
-    let (is_four_of_a_kind, four_of_a_kind_value) = check_for_four_of_a_kind(&cards);
+    let (is_four_of_a_kind, four_of_a_kind_cards) = check_for_four_of_a_kind(&cards);
 
     if is_four_of_a_kind {
-        return HandRank::FourOfAKind(four_of_a_kind_value.unwrap());
+        return HandRank::FourOfAKind(four_of_a_kind_cards.unwrap());
     }
 
-    let (is_full_house, full_house_value) = check_for_full_house(&cards);
+    let (is_full_house, full_house_cards) = check_for_full_house(&cards);
 
     if is_full_house {
-        return HandRank::FullHouse(full_house_value.unwrap());
+        return HandRank::FullHouse(full_house_cards.unwrap());
     }
 
-    let (is_flush, flush_value) = check_for_flush(&cards);
+    let (is_flush, flush_cards) = check_for_flush(&cards);
 
     if is_flush {
-        return HandRank::Flush(flush_value.unwrap());
+        return HandRank::Flush(flush_cards.unwrap());
     }
 
-    let (is_straight, straight_value) = check_for_straight(&cards);
+    let (is_straight, straight_cards) = check_for_straight(&cards);
 
     if is_straight {
-        return HandRank::Straight(straight_value.unwrap());
+        return HandRank::Straight(straight_cards.unwrap());
     }
 
-    let (is_three_of_a_kind, three_of_a_kind_value) = check_for_three_of_a_kind(&cards);
+    let (is_three_of_a_kind, three_of_a_kind_cards) = check_for_three_of_a_kind(&cards);
 
     if is_three_of_a_kind {
-        return HandRank::ThreeOfAKind(three_of_a_kind_value.unwrap());
+        return HandRank::ThreeOfAKind(three_of_a_kind_cards.unwrap());
     }
 
-    let (is_two_pair, two_pair_value) = check_for_two_pair(&cards);
+    let (is_two_pair, two_pair_cards) = check_for_two_pair(&cards);
 
     if is_two_pair {
-        return HandRank::TwoPair(two_pair_value.unwrap());
+        return HandRank::TwoPair(two_pair_cards.unwrap());
     }
 
     let (is_pair, pair_cards) = check_for_pair(&cards);
@@ -118,10 +118,13 @@ pub fn rank_hand(cards: &Vec<&Card>) -> HandRank {
 
 /// Returns the card with the highest rank value provided for a HandRank::HighCard.
 ///
-/// Note: Unlike the other ranking methods, this does not return a tuple with a bool since it is executed last after exhausting all other hand ranking options.
+/// Note: Unlike the other ranking methods, this does not return a tuple with a bool
+/// since it is executed last after exhausting all other hand ranking options and
+/// should always return a card.
 ///
-/// Example: A table with 10 of Clubs, 4 of Hearts, 7 of Diamonds, King of Clubs, and 2 of Spades will return the King of Clubs.
-fn get_high_card_value(cards: &Vec<&Card>) -> Option<Card> {
+/// Example: A table with 10 of Clubs, 4 of Hearts, 7 of Diamonds, King of Clubs,
+/// and 2 of Spades will return the King of Clubs.
+fn get_high_card_value(cards: &HashSet<Card>) -> Option<Card> {
     let mut high_card: Option<Card> = None;
     let mut high_card_value: u8 = 0;
     for &card in cards {
@@ -129,7 +132,7 @@ fn get_high_card_value(cards: &Vec<&Card>) -> Option<Card> {
 
         if card_rank_value > high_card_value {
             high_card_value = card_rank_value;
-            high_card = Some(*card);
+            high_card = Some(card);
         }
     }
 
@@ -138,15 +141,16 @@ fn get_high_card_value(cards: &Vec<&Card>) -> Option<Card> {
 
 /// Checks if the provided cards contain a HandRank::Pair.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 2] representing the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [Card; 2]
+/// representing the relevant cards if any.
 ///
 /// Example: A pair of Kings.
-fn check_for_pair(cards: &Vec<&Card>) -> (bool, Option<[Card; 2]>) {
+fn check_for_pair(cards: &HashSet<Card>) -> (bool, Option<[Card; 2]>) {
     if cards.len() < 2 {
         return (false, None);
     }
 
-    let mut ranks: HashMap<Rank, Vec<&Card>> = HashMap::new();
+    let mut ranks: HashMap<Rank, Vec<Card>> = HashMap::new();
 
     for &card in cards {
         let rank_entry = ranks.entry(card.rank).or_default();
@@ -161,7 +165,7 @@ fn check_for_pair(cards: &Vec<&Card>) -> (bool, Option<[Card; 2]>) {
 
         if cards.len() == 2 && rank_value > high_pair_rank_value {
             high_pair_rank_value = rank_value;
-            high_pair_cards = Some([*cards[0], *cards[1]]);
+            high_pair_cards = Some([cards[0], cards[1]]);
         }
     }
 
@@ -174,26 +178,28 @@ fn check_for_pair(cards: &Vec<&Card>) -> (bool, Option<[Card; 2]>) {
 
 /// Checks if the provided cards contain a HandRank::TwoPair.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 4] representing the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [Card; 4]
+/// representing the relevant cards if any.
 ///
 /// Example: A pair of Kings and a pair of 7s.
-fn check_for_two_pair(cards: &Vec<&Card>) -> (bool, Option<[Card; 4]>) {
+fn check_for_two_pair(cards: &HashSet<Card>) -> (bool, Option<[Card; 4]>) {
     if cards.len() < 4 {
         return (false, None);
     }
 
     // todo: implement
     // remove the highest pair
-    let (is_first_pair, first_pair_values) = check_for_pair(cards);
+    let (is_first_pair, first_pair_cards) = check_for_pair(cards);
     // todo: do the cards retrieved need to be removed from the set of cards?
+
     // remove second highest pair
-    let (is_second_pair, second_pair_values) = check_for_pair(cards);
+    let (is_second_pair, second_pair_cards) = check_for_pair(cards);
 
     if is_first_pair && is_second_pair {
         if let (
             Some([first_pair_card1, first_pair_card2]),
             Some([second_pair_card1, second_pair_card2]),
-        ) = (first_pair_values, second_pair_values)
+        ) = (first_pair_cards, second_pair_cards)
         {
             return (
                 true,
@@ -212,10 +218,11 @@ fn check_for_two_pair(cards: &Vec<&Card>) -> (bool, Option<[Card; 4]>) {
 
 /// Checks if the provided cards contain a HandRank::ThreeOfAKind.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 3] representing the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [Card; 3]
+/// representing the relevant cards if any.
 ///
 /// Example: Three Kings.
-fn check_for_three_of_a_kind(cards: &Vec<&Card>) -> (bool, Option<[Card; 3]>) {
+fn check_for_three_of_a_kind(cards: &HashSet<Card>) -> (bool, Option<[Card; 3]>) {
     if cards.len() < 3 {
         return (false, None);
     }
@@ -229,14 +236,15 @@ fn check_for_three_of_a_kind(cards: &Vec<&Card>) -> (bool, Option<[Card; 3]>) {
 ///
 /// This also checks for both Ace low and Ace high when determining if a straight is present.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 5] representing the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [Card; 5]
+/// representing the relevant cards if any.
 ///
 /// Example: A straight of 3, 4, 5, 6, 7.
 ///
 /// Example: An Ace-low straight of Ace (1), 2, 3, 4, 5.
 ///
 /// Example: An Ace-high straight of 10, J (11), Q (12), K (13), Ace (14).
-fn check_for_straight(cards: &Vec<&Card>) -> (bool, Option<[Card; 5]>) {
+fn check_for_straight(cards: &HashSet<Card>) -> (bool, Option<[Card; 5]>) {
     if cards.len() < 5 {
         return (false, None);
     }
@@ -260,8 +268,9 @@ fn check_for_straight(cards: &Vec<&Card>) -> (bool, Option<[Card; 5]>) {
 ///
 /// Returns: A new Vec<Card> that represents the provided Vec<Card> in a sorted order.
 ///
-/// Note: This method sorts Aces as high and requires other methods to implement configuring Aces as low if needed.
-fn sort_cards_by_rank(cards: &Vec<&Card>) -> Vec<Card> {
+/// Note: This method sorts Aces as high and requires other methods to implement
+/// configuring Aces as low if needed.
+fn sort_cards_by_rank(cards: &HashSet<Card>) -> Vec<Card> {
     let mut sorted_cards: Vec<Card> = Vec::new();
 
     // todo: implement sorting
@@ -274,10 +283,11 @@ fn sort_cards_by_rank(cards: &Vec<&Card>) -> Vec<Card> {
 
 /// Checks if the provided cards contain a HandRank::Flush.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 5] representing the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [Card; 5]
+/// representing the relevant cards if any.
 ///
 /// Example: A flush of K♣ (13♣), Q♣ (12♣), 9♣, 8♣, 2♣.
-fn check_for_flush(cards: &Vec<&Card>) -> (bool, Option<[Card; 5]>) {
+fn check_for_flush(cards: &HashSet<Card>) -> (bool, Option<[Card; 5]>) {
     if cards.len() < 5 {
         return (false, None);
     }
@@ -289,10 +299,11 @@ fn check_for_flush(cards: &Vec<&Card>) -> (bool, Option<[Card; 5]>) {
 
 /// Checks if the provided cards contain a HandRank::FullHouse.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 5] representing the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [Card; 5]
+/// representing the relevant cards if any.
 ///
 /// Example: Three Kings and two 7s.
-fn check_for_full_house(cards: &Vec<&Card>) -> (bool, Option<[Card; 5]>) {
+fn check_for_full_house(cards: &HashSet<Card>) -> (bool, Option<[Card; 5]>) {
     if cards.len() < 5 {
         return (false, None);
     }
@@ -304,10 +315,11 @@ fn check_for_full_house(cards: &Vec<&Card>) -> (bool, Option<[Card; 5]>) {
 
 /// Checks if the provided cards contain a HandRank::FourOfAKind.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 4] representing the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [Card; 4]
+/// representing the relevant cards if any.
 ///
 /// Example: Four 6s.
-fn check_for_four_of_a_kind(cards: &Vec<&Card>) -> (bool, Option<[Card; 4]>) {
+fn check_for_four_of_a_kind(cards: &HashSet<Card>) -> (bool, Option<[Card; 4]>) {
     if cards.len() < 4 {
         return (false, None);
     }
@@ -319,23 +331,24 @@ fn check_for_four_of_a_kind(cards: &Vec<&Card>) -> (bool, Option<[Card; 4]>) {
 
 /// Checks if the provided cards contain a HandRank::StraightFlush.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 5] representing the relevant cards if any.
+/// Returns: A tuple containing a bool and an Option containing [Card; 5]
+/// representing the relevant cards if any.
 ///
 /// Example: A flush of 2♠, 3♠, 4♠, 5♠, 6♠.
 ///
 /// Example: An Ace-low flush of A♦ (1♦), 2♦, 3♦, 4♦, 5♦.
 ///
 /// Example: An Ace-high flush (aka Royal Flush) of 10♥, J♥ (11♥), Q♥ (12♥), K♥ (13♥) A♥ (14♥).
-fn check_for_straight_flush(cards: &Vec<&Card>) -> (bool, Option<[Card; 5]>) {
+fn check_for_straight_flush(cards: &HashSet<Card>) -> (bool, Option<[Card; 5]>) {
     if cards.len() < 5 {
         return (false, None);
     }
 
-    let (is_straight, straight_value) = check_for_straight(cards);
-    let (is_flush, _flush_value) = check_for_flush(cards);
+    let (is_straight, straight_cards) = check_for_straight(cards);
+    let (is_flush, flush_cards) = check_for_flush(cards);
 
-    if is_straight && is_flush {
-        return (true, straight_value);
+    if is_straight && is_flush && straight_cards == flush_cards {
+        return (true, straight_cards);
     }
 
     (false, None)
@@ -346,7 +359,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn high_cards_values_are_correct() {
+    fn high_cards_are_unique() {
         assert_eq!(
             HandRank::HighCard(Card::two_of_clubs()),
             HandRank::HighCard(Card::two_of_clubs())
@@ -356,43 +369,57 @@ mod tests {
             HandRank::HighCard(Card::two_of_clubs()),
             HandRank::HighCard(Card::two_of_spades())
         );
+    }
 
+    #[test]
+    fn high_card_rankings_are_ordered_correctly() {
         assert!(
             HandRank::HighCard(Card::two_of_clubs()) < HandRank::HighCard(Card::three_of_clubs())
         );
+
         assert!(
             HandRank::HighCard(Card::three_of_clubs()) < HandRank::HighCard(Card::four_of_spades())
         );
+
         assert!(
             HandRank::HighCard(Card::four_of_spades()) < HandRank::HighCard(Card::five_of_spades())
         );
+
         assert!(
             HandRank::HighCard(Card::five_of_spades()) < HandRank::HighCard(Card::six_of_spades())
         );
+
         assert!(
             HandRank::HighCard(Card::six_of_spades()) < HandRank::HighCard(Card::seven_of_spades())
         );
+
         assert!(
             HandRank::HighCard(Card::seven_of_spades())
                 < HandRank::HighCard(Card::eight_of_clubs())
         );
+
         assert!(
             HandRank::HighCard(Card::eight_of_clubs()) < HandRank::HighCard(Card::nine_of_clubs())
         );
+
         assert!(
             HandRank::HighCard(Card::nine_of_clubs()) < HandRank::HighCard(Card::ten_of_spades())
         );
+
         assert!(
             HandRank::HighCard(Card::ten_of_spades()) < HandRank::HighCard(Card::jack_of_spades())
         );
+
         assert!(
             HandRank::HighCard(Card::jack_of_spades())
                 < HandRank::HighCard(Card::queen_of_spades())
         );
+
         assert!(
             HandRank::HighCard(Card::queen_of_spades())
                 < HandRank::HighCard(Card::king_of_spades())
         );
+
         assert!(
             HandRank::HighCard(Card::king_of_spades()) < HandRank::HighCard(Card::ace_of_spades())
         );
@@ -401,8 +428,8 @@ mod tests {
     #[test]
     fn hand_rankings_are_ordered_correctly() {
         let high_card = HandRank::HighCard(Card::king_of_clubs());
+
         let pair = HandRank::Pair([Card::king_of_clubs(), Card::king_of_hearts()]);
-        assert!(high_card < pair);
 
         let two_pair = HandRank::TwoPair([
             Card::king_of_clubs(),
@@ -410,14 +437,12 @@ mod tests {
             Card::seven_of_diamonds(),
             Card::seven_of_clubs(),
         ]);
-        assert!(pair < two_pair);
 
         let three_of_a_kind = HandRank::ThreeOfAKind([
             Card::king_of_clubs(),
             Card::king_of_hearts(),
             Card::king_of_diamonds(),
         ]);
-        assert!(two_pair < three_of_a_kind);
 
         let straight = HandRank::Straight([
             Card::three_of_clubs(),
@@ -426,7 +451,6 @@ mod tests {
             Card::six_of_clubs(),
             Card::seven_of_spades(),
         ]);
-        assert!(three_of_a_kind < straight);
 
         let flush = HandRank::Flush([
             Card::king_of_clubs(),
@@ -435,7 +459,6 @@ mod tests {
             Card::eight_of_clubs(),
             Card::two_of_clubs(),
         ]);
-        assert!(straight < flush);
 
         let full_house = HandRank::FullHouse([
             Card::king_of_clubs(),
@@ -444,15 +467,12 @@ mod tests {
             Card::seven_of_clubs(),
             Card::seven_of_spades(),
         ]);
-        assert!(flush < full_house);
-
         let four_of_a_kind = HandRank::FourOfAKind([
             Card::six_of_spades(),
             Card::six_of_diamonds(),
             Card::six_of_hearts(),
             Card::six_of_clubs(),
         ]);
-        assert!(full_house < four_of_a_kind);
 
         let straight_flush = HandRank::StraightFlush([
             Card::two_of_spades(),
@@ -461,7 +481,6 @@ mod tests {
             Card::five_of_spades(),
             Card::six_of_spades(),
         ]);
-        assert!(four_of_a_kind < straight_flush);
 
         let royal_flush = HandRank::StraightFlush([
             Card::ten_of_hearts(),
@@ -470,6 +489,15 @@ mod tests {
             Card::king_of_hearts(),
             Card::ace_of_hearts(),
         ]);
+
+        assert!(high_card < pair);
+        assert!(pair < two_pair);
+        assert!(two_pair < three_of_a_kind);
+        assert!(three_of_a_kind < straight);
+        assert!(straight < flush);
+        assert!(flush < full_house);
+        assert!(full_house < four_of_a_kind);
+        assert!(four_of_a_kind < straight_flush);
         assert!(straight_flush < royal_flush);
     }
 
@@ -481,16 +509,18 @@ mod tests {
         let king_of_clubs = Card::king_of_clubs();
         let two_of_spades = Card::two_of_spades();
 
-        let cards: Vec<&Card> = vec![
-            &ten_of_clubs,
-            &four_of_hearts,
-            &seven_of_diamonds,
-            &king_of_clubs,
-            &two_of_spades,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            ten_of_clubs,
+            four_of_hearts,
+            seven_of_diamonds,
+            king_of_clubs,
+            two_of_spades,
+        ]);
 
-        assert_eq!(hand_rank, HandRank::HighCard(king_of_clubs));
+        let hand_rank = rank_hand(cards);
+        let high_card = HandRank::HighCard(king_of_clubs);
+
+        assert_eq!(hand_rank, high_card);
     }
 
     #[test]
@@ -501,16 +531,18 @@ mod tests {
         let two_of_clubs = Card::two_of_clubs();
         let five_of_spades = Card::five_of_spades();
 
-        let cards: Vec<&Card> = vec![
-            &king_of_clubs,
-            &king_of_hearts,
-            &seven_of_diamonds,
-            &two_of_clubs,
-            &five_of_spades,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            king_of_clubs,
+            king_of_hearts,
+            seven_of_diamonds,
+            two_of_clubs,
+            five_of_spades,
+        ]);
 
-        assert_eq!(hand_rank, HandRank::Pair([king_of_clubs, king_of_hearts]));
+        let hand_rank = rank_hand(cards);
+        let pair = HandRank::Pair([king_of_clubs, king_of_hearts]);
+
+        assert_eq!(hand_rank, pair);
     }
 
     #[test]
@@ -521,24 +553,23 @@ mod tests {
         let seven_of_clubs = Card::seven_of_clubs();
         let five_of_spades = Card::five_of_spades();
 
-        let cards: Vec<&Card> = vec![
-            &king_of_clubs,
-            &king_of_hearts,
-            &seven_of_diamonds,
-            &seven_of_clubs,
-            &five_of_spades,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            king_of_clubs,
+            king_of_hearts,
+            seven_of_diamonds,
+            seven_of_clubs,
+            five_of_spades,
+        ]);
 
-        assert_eq!(
-            hand_rank,
-            HandRank::TwoPair([
-                king_of_clubs,
-                king_of_hearts,
-                seven_of_diamonds,
-                seven_of_clubs
-            ])
-        );
+        let hand_rank = rank_hand(cards);
+        let two_pair = HandRank::TwoPair([
+            king_of_clubs,
+            king_of_hearts,
+            seven_of_diamonds,
+            seven_of_clubs,
+        ]);
+
+        assert_eq!(hand_rank, two_pair);
     }
 
     #[test]
@@ -549,19 +580,19 @@ mod tests {
         let seven_of_clubs = Card::seven_of_clubs();
         let five_of_spades = Card::five_of_spades();
 
-        let cards: Vec<&Card> = vec![
-            &king_of_clubs,
-            &king_of_hearts,
-            &king_of_diamonds,
-            &seven_of_clubs,
-            &five_of_spades,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            king_of_clubs,
+            king_of_hearts,
+            king_of_diamonds,
+            seven_of_clubs,
+            five_of_spades,
+        ]);
 
-        assert_eq!(
-            hand_rank,
-            HandRank::ThreeOfAKind([king_of_clubs, king_of_hearts, king_of_diamonds])
-        );
+        let hand_rank = rank_hand(cards);
+        let three_of_a_kind =
+            HandRank::ThreeOfAKind([king_of_clubs, king_of_hearts, king_of_diamonds]);
+
+        assert_eq!(hand_rank, three_of_a_kind);
     }
 
     #[test]
@@ -572,25 +603,24 @@ mod tests {
         let six_of_clubs = Card::six_of_clubs();
         let seven_of_spades = Card::seven_of_spades();
 
-        let cards: Vec<&Card> = vec![
-            &three_of_clubs,
-            &four_of_hearts,
-            &five_of_diamonds,
-            &six_of_clubs,
-            &seven_of_spades,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            three_of_clubs,
+            four_of_hearts,
+            five_of_diamonds,
+            six_of_clubs,
+            seven_of_spades,
+        ]);
 
-        assert_eq!(
-            hand_rank,
-            HandRank::Straight([
-                three_of_clubs,
-                four_of_hearts,
-                five_of_diamonds,
-                six_of_clubs,
-                seven_of_spades
-            ])
-        );
+        let hand_rank = rank_hand(cards);
+        let straight = HandRank::Straight([
+            three_of_clubs,
+            four_of_hearts,
+            five_of_diamonds,
+            six_of_clubs,
+            seven_of_spades,
+        ]);
+
+        assert_eq!(hand_rank, straight);
     }
 
     #[test]
@@ -601,25 +631,24 @@ mod tests {
         let four_of_spades = Card::four_of_spades();
         let five_of_hearts = Card::five_of_hearts();
 
-        let cards: Vec<&Card> = vec![
-            &ace_of_spades,
-            &two_of_clubs,
-            &three_of_hearts,
-            &four_of_spades,
-            &five_of_hearts,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            ace_of_spades,
+            two_of_clubs,
+            three_of_hearts,
+            four_of_spades,
+            five_of_hearts,
+        ]);
 
-        assert_eq!(
-            hand_rank,
-            HandRank::Straight([
-                ace_of_spades,
-                two_of_clubs,
-                three_of_hearts,
-                four_of_spades,
-                five_of_hearts
-            ])
-        );
+        let hand_rank = rank_hand(cards);
+        let ace_low_straight = HandRank::Straight([
+            ace_of_spades,
+            two_of_clubs,
+            three_of_hearts,
+            four_of_spades,
+            five_of_hearts,
+        ]);
+
+        assert_eq!(hand_rank, ace_low_straight);
     }
 
     #[test]
@@ -632,26 +661,25 @@ mod tests {
         let king_of_hearts = Card::king_of_hearts();
         let ace_of_spades = Card::ace_of_spades();
 
-        let cards: Vec<&Card> = vec![
-            &nine_of_diamonds,
-            &ten_of_clubs,
-            &jack_of_hearts,
-            &queen_of_spades,
-            &king_of_hearts,
-            &ace_of_spades,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            nine_of_diamonds,
+            ten_of_clubs,
+            jack_of_hearts,
+            queen_of_spades,
+            king_of_hearts,
+            ace_of_spades,
+        ]);
 
-        assert_eq!(
-            hand_rank,
-            HandRank::Straight([
-                ten_of_clubs,
-                jack_of_hearts,
-                queen_of_spades,
-                king_of_hearts,
-                ace_of_spades
-            ])
-        );
+        let hand_rank = rank_hand(cards);
+        let ace_high_straight = HandRank::Straight([
+            ten_of_clubs,
+            jack_of_hearts,
+            queen_of_spades,
+            king_of_hearts,
+            ace_of_spades,
+        ]);
+
+        assert_eq!(hand_rank, ace_high_straight);
     }
 
     #[test]
@@ -662,25 +690,24 @@ mod tests {
         let eight_of_clubs = Card::eight_of_clubs();
         let two_of_clubs = Card::two_of_clubs();
 
-        let cards: Vec<&Card> = vec![
-            &king_of_clubs,
-            &queen_of_clubs,
-            &nine_of_clubs,
-            &eight_of_clubs,
-            &two_of_clubs,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            king_of_clubs,
+            queen_of_clubs,
+            nine_of_clubs,
+            eight_of_clubs,
+            two_of_clubs,
+        ]);
 
-        assert_eq!(
-            hand_rank,
-            HandRank::Flush([
-                king_of_clubs,
-                queen_of_clubs,
-                nine_of_clubs,
-                eight_of_clubs,
-                two_of_clubs
-            ])
-        );
+        let hand_rank = rank_hand(cards);
+        let flush = HandRank::Flush([
+            king_of_clubs,
+            queen_of_clubs,
+            nine_of_clubs,
+            eight_of_clubs,
+            two_of_clubs,
+        ]);
+
+        assert_eq!(hand_rank, flush);
     }
 
     #[test]
@@ -691,25 +718,24 @@ mod tests {
         let seven_of_clubs = Card::seven_of_clubs();
         let seven_of_spades = Card::seven_of_spades();
 
-        let cards: Vec<&Card> = vec![
-            &king_of_clubs,
-            &king_of_hearts,
-            &king_of_diamonds,
-            &seven_of_clubs,
-            &seven_of_spades,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            king_of_clubs,
+            king_of_hearts,
+            king_of_diamonds,
+            seven_of_clubs,
+            seven_of_spades,
+        ]);
 
-        assert_eq!(
-            hand_rank,
-            HandRank::FullHouse([
-                king_of_clubs,
-                king_of_hearts,
-                king_of_diamonds,
-                seven_of_clubs,
-                seven_of_spades
-            ])
-        );
+        let hand_rank = rank_hand(cards);
+        let full_house = HandRank::FullHouse([
+            king_of_clubs,
+            king_of_hearts,
+            king_of_diamonds,
+            seven_of_clubs,
+            seven_of_spades,
+        ]);
+
+        assert_eq!(hand_rank, full_house);
     }
 
     #[test]
@@ -720,19 +746,19 @@ mod tests {
         let six_of_clubs = Card::six_of_clubs();
         let king_of_spades = Card::king_of_spades();
 
-        let cards: Vec<&Card> = vec![
-            &six_of_spades,
-            &six_of_diamonds,
-            &six_of_hearts,
-            &six_of_clubs,
-            &king_of_spades,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            six_of_spades,
+            six_of_diamonds,
+            six_of_hearts,
+            six_of_clubs,
+            king_of_spades,
+        ]);
 
-        assert_eq!(
-            hand_rank,
-            HandRank::FourOfAKind([six_of_spades, six_of_diamonds, six_of_hearts, six_of_clubs])
-        );
+        let hand_rank = rank_hand(cards);
+        let four_of_a_kind =
+            HandRank::FourOfAKind([six_of_spades, six_of_diamonds, six_of_hearts, six_of_clubs]);
+
+        assert_eq!(hand_rank, four_of_a_kind);
     }
 
     #[test]
@@ -743,25 +769,24 @@ mod tests {
         let five_of_spades = Card::five_of_spades();
         let six_of_spades = Card::six_of_spades();
 
-        let cards: Vec<&Card> = vec![
-            &two_of_spades,
-            &three_of_spades,
-            &four_of_spades,
-            &five_of_spades,
-            &six_of_spades,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            two_of_spades,
+            three_of_spades,
+            four_of_spades,
+            five_of_spades,
+            six_of_spades,
+        ]);
 
-        assert_eq!(
-            hand_rank,
-            HandRank::Straight([
-                two_of_spades,
-                three_of_spades,
-                four_of_spades,
-                five_of_spades,
-                six_of_spades
-            ])
-        );
+        let hand_rank = rank_hand(cards);
+        let straight_flush = HandRank::Straight([
+            two_of_spades,
+            three_of_spades,
+            four_of_spades,
+            five_of_spades,
+            six_of_spades,
+        ]);
+
+        assert_eq!(hand_rank, straight_flush);
     }
 
     #[test]
@@ -772,25 +797,24 @@ mod tests {
         let four_of_diamonds = Card::four_of_diamonds();
         let five_of_diamonds = Card::five_of_diamonds();
 
-        let cards: Vec<&Card> = vec![
-            &ace_of_diamonds,
-            &two_of_diamonds,
-            &three_of_diamonds,
-            &four_of_diamonds,
-            &five_of_diamonds,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            ace_of_diamonds,
+            two_of_diamonds,
+            three_of_diamonds,
+            four_of_diamonds,
+            five_of_diamonds,
+        ]);
 
-        assert_eq!(
-            hand_rank,
-            HandRank::StraightFlush([
-                ace_of_diamonds,
-                two_of_diamonds,
-                three_of_diamonds,
-                four_of_diamonds,
-                five_of_diamonds
-            ])
-        );
+        let hand_rank = rank_hand(cards);
+        let ace_low_straight_flush = HandRank::StraightFlush([
+            ace_of_diamonds,
+            two_of_diamonds,
+            three_of_diamonds,
+            four_of_diamonds,
+            five_of_diamonds,
+        ]);
+
+        assert_eq!(hand_rank, ace_low_straight_flush);
     }
 
     #[test]
@@ -805,25 +829,24 @@ mod tests {
         let king_of_hearts = Card::king_of_hearts();
         let ace_of_hearts = Card::ace_of_hearts();
 
-        let cards: Vec<&Card> = vec![
-            &nine_of_hearts,
-            &ten_of_hearts,
-            &jack_of_hearts,
-            &queen_of_hearts,
-            &king_of_hearts,
-            &ace_of_hearts,
-        ];
-        let hand_rank = rank_hand(&cards);
+        let cards: HashSet<Card> = HashSet::from([
+            nine_of_hearts,
+            ten_of_hearts,
+            jack_of_hearts,
+            queen_of_hearts,
+            king_of_hearts,
+            ace_of_hearts,
+        ]);
 
-        assert_eq!(
-            hand_rank,
-            HandRank::StraightFlush([
-                ten_of_hearts,
-                jack_of_hearts,
-                queen_of_hearts,
-                king_of_hearts,
-                ace_of_hearts
-            ])
-        );
+        let hand_rank = rank_hand(cards);
+        let ace_high_straight_flush = HandRank::StraightFlush([
+            ten_of_hearts,
+            jack_of_hearts,
+            queen_of_hearts,
+            king_of_hearts,
+            ace_of_hearts,
+        ]);
+
+        assert_eq!(hand_rank, ace_high_straight_flush);
     }
 }
