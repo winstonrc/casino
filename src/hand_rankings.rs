@@ -64,59 +64,50 @@ pub fn rank_hand(cards: HashSet<Card>) -> HandRank {
         panic!("Expected the cards count to be equal to 2 (pre-flop), 5 (post-flop), 6 (post-turn), or 7 (post-river) to rank the hand.\nThe cards count provided was: {}.", cards.len())
     }
 
-    let (is_straight_flush, straight_flush_cards) = check_for_straight_flush(&cards);
-
-    if is_straight_flush {
-        return HandRank::StraightFlush(straight_flush_cards.unwrap());
+    if let Some(straight_flush_cards) = check_for_straight_flush(&cards) {
+        return HandRank::StraightFlush(straight_flush_cards);
     }
 
-    let (is_four_of_a_kind, four_of_a_kind_cards) = check_for_four_of_a_kind(&cards);
-
-    if is_four_of_a_kind {
-        return HandRank::FourOfAKind(four_of_a_kind_cards.unwrap());
+    if let Some(four_of_a_kind_cards) = check_for_four_of_a_kind(&cards) {
+        return HandRank::FourOfAKind(four_of_a_kind_cards);
     }
 
-    let (is_full_house, full_house_cards) = check_for_full_house(&cards);
-
-    if is_full_house {
-        return HandRank::FullHouse(full_house_cards.unwrap());
+    if let Some(full_house_cards) = check_for_full_house(&cards) {
+        return HandRank::FullHouse(full_house_cards);
     }
 
-    let (is_flush, flush_cards) = check_for_flush(&cards);
-
-    if is_flush {
-        return HandRank::Flush(flush_cards.unwrap());
+    if let Some(flush_cards) = check_for_flush(&cards) {
+        return HandRank::Flush(flush_cards);
     }
 
-    let (is_straight, straight_cards) = check_for_straight(&cards);
-
-    if is_straight {
-        return HandRank::Straight(straight_cards.unwrap());
+    if let Some(straight_cards) = check_for_straight(&cards) {
+        return HandRank::Straight(straight_cards);
     }
 
-    let (is_three_of_a_kind, three_of_a_kind_cards) = check_for_three_of_a_kind(&cards);
-
-    if is_three_of_a_kind {
-        return HandRank::ThreeOfAKind(three_of_a_kind_cards.unwrap());
+    if let Some(three_of_a_kind_cards) = check_for_three_of_a_kind(&cards) {
+        return HandRank::ThreeOfAKind(three_of_a_kind_cards);
     }
 
-    let (is_two_pair, two_pair_cards) = check_for_two_pair(&cards);
-
-    if is_two_pair {
-        return HandRank::TwoPair(two_pair_cards.unwrap());
+    if let Some(two_pair_cards) = check_for_two_pair(&cards) {
+        return HandRank::TwoPair(two_pair_cards);
     }
 
-    let (is_pair, pair_cards) = check_for_pair(&cards);
-
-    if is_pair {
-        return HandRank::Pair(pair_cards.unwrap());
+    if let Some(pair_cards) = check_for_pair(&cards) {
+        return HandRank::Pair(pair_cards);
     }
 
-    let high_card = get_high_card_value(&cards);
-    HandRank::HighCard(high_card.unwrap())
+    if let Some(high_card) = get_high_card_value(&cards) {
+        return HandRank::HighCard(high_card);
+    } else {
+        panic!(
+            "An unexpected error occured while ranking the hand. There should at least be a high card returned at minimum."
+        );
+    }
 }
 
 /// Returns the card with the highest rank value provided for a HandRank::HighCard.
+///
+/// Returns: An Option containing the relevant card if any.
 ///
 /// Note: Unlike the other ranking methods, this does not return a tuple with a bool
 /// since it is executed last after exhausting all other hand ranking options and
@@ -141,13 +132,12 @@ fn get_high_card_value(cards: &HashSet<Card>) -> Option<Card> {
 
 /// Checks if the provided cards contain a HandRank::Pair.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 2]
-/// representing the relevant cards if any.
+/// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: A pair of Kings.
-fn check_for_pair(cards: &HashSet<Card>) -> (bool, Option<[Card; 2]>) {
+fn check_for_pair(cards: &HashSet<Card>) -> Option<[Card; 2]> {
     if cards.len() < 2 {
-        return (false, None);
+        return None;
     }
 
     let mut ranks: HashMap<Rank, Vec<Card>> = HashMap::new();
@@ -170,83 +160,75 @@ fn check_for_pair(cards: &HashSet<Card>) -> (bool, Option<[Card; 2]>) {
     }
 
     if high_pair_rank_value > 0 {
-        return (true, high_pair_cards);
+        return high_pair_cards;
     }
 
-    (false, None)
+    None
 }
 
 /// Checks if the provided cards contain a HandRank::TwoPair.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 4]
-/// representing the relevant cards if any.
+/// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: A pair of Kings and a pair of 7s.
-fn check_for_two_pair(cards: &HashSet<Card>) -> (bool, Option<[Card; 4]>) {
+fn check_for_two_pair(cards: &HashSet<Card>) -> Option<[Card; 4]> {
     if cards.len() < 4 {
-        return (false, None);
+        return None;
     }
 
-    // todo: implement
-    // remove the highest pair
-    let (is_first_pair, first_pair_cards) = check_for_pair(cards);
-    // todo: do the cards retrieved need to be removed from the set of cards?
+    // Retrieve the highest pair
+    let first_pair_cards = check_for_pair(cards);
 
-    // remove second highest pair
-    let (is_second_pair, second_pair_cards) = check_for_pair(cards);
+    // If there is a highest pair then check for a second highest pair.
+    // If not, then exit the function.
+    if let Some(pair_cards) = first_pair_cards {
+        let first_pair_card1 = pair_cards[0];
+        let first_pair_card2 = pair_cards[1];
 
-    if is_first_pair && is_second_pair {
-        if let (
-            Some([first_pair_card1, first_pair_card2]),
-            Some([second_pair_card1, second_pair_card2]),
-        ) = (first_pair_cards, second_pair_cards)
-        {
-            return (
-                true,
-                Some([
-                    first_pair_card1,
-                    first_pair_card2,
-                    second_pair_card1,
-                    second_pair_card2,
-                ]),
-            );
-        }
+        // Remove the highest pair so that calling check_for_pair again will now return the
+        // second highest pair.
+        let mut reduced_cards = cards.clone();
+        reduced_cards.remove(&first_pair_card1);
+        reduced_cards.remove(&first_pair_card2);
+
+        // remove second highest pair
+        let second_pair_cards = check_for_pair(cards);
+    } else {
+        return None;
     }
 
-    (false, None)
+    None
 }
 
 /// Checks if the provided cards contain a HandRank::ThreeOfAKind.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 3]
-/// representing the relevant cards if any.
+/// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: Three Kings.
-fn check_for_three_of_a_kind(cards: &HashSet<Card>) -> (bool, Option<[Card; 3]>) {
+fn check_for_three_of_a_kind(cards: &HashSet<Card>) -> Option<[Card; 3]> {
     if cards.len() < 3 {
-        return (false, None);
+        return None;
     }
 
     // todo: implement
 
-    (false, None)
+    None
 }
 
 /// Checks if the provided cards contain a HandRank::Straight.
 ///
 /// This also checks for both Ace low and Ace high when determining if a straight is present.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 5]
-/// representing the relevant cards if any.
+/// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: A straight of 3, 4, 5, 6, 7.
 ///
 /// Example: An Ace-low straight of Ace (1), 2, 3, 4, 5.
 ///
 /// Example: An Ace-high straight of 10, J (11), Q (12), K (13), Ace (14).
-fn check_for_straight(cards: &HashSet<Card>) -> (bool, Option<[Card; 5]>) {
+fn check_for_straight(cards: &HashSet<Card>) -> Option<[Card; 5]> {
     if cards.len() < 5 {
-        return (false, None);
+        return None;
     }
 
     let sorted_cards = sort_cards_by_rank(cards);
@@ -260,7 +242,7 @@ fn check_for_straight(cards: &HashSet<Card>) -> (bool, Option<[Card; 5]>) {
         // todo: implement
     }
 
-    (false, None)
+    None
 }
 
 // todo: implement
@@ -283,75 +265,75 @@ fn sort_cards_by_rank(cards: &HashSet<Card>) -> Vec<Card> {
 
 /// Checks if the provided cards contain a HandRank::Flush.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 5]
-/// representing the relevant cards if any.
+/// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: A flush of K♣ (13♣), Q♣ (12♣), 9♣, 8♣, 2♣.
-fn check_for_flush(cards: &HashSet<Card>) -> (bool, Option<[Card; 5]>) {
+fn check_for_flush(cards: &HashSet<Card>) -> Option<[Card; 5]> {
     if cards.len() < 5 {
-        return (false, None);
+        return None;
     }
 
     // todo: implement
 
-    (false, None)
+    None
 }
 
 /// Checks if the provided cards contain a HandRank::FullHouse.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 5]
-/// representing the relevant cards if any.
+/// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: Three Kings and two 7s.
-fn check_for_full_house(cards: &HashSet<Card>) -> (bool, Option<[Card; 5]>) {
+fn check_for_full_house(cards: &HashSet<Card>) -> Option<[Card; 5]> {
     if cards.len() < 5 {
-        return (false, None);
+        return None;
     }
 
     // todo: implement
 
-    (false, None)
+    None
 }
 
 /// Checks if the provided cards contain a HandRank::FourOfAKind.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 4]
-/// representing the relevant cards if any.
+/// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: Four 6s.
-fn check_for_four_of_a_kind(cards: &HashSet<Card>) -> (bool, Option<[Card; 4]>) {
+fn check_for_four_of_a_kind(cards: &HashSet<Card>) -> Option<[Card; 4]> {
     if cards.len() < 4 {
-        return (false, None);
+        return None;
     }
 
     // todo: implement
 
-    (false, None)
+    None
 }
 
 /// Checks if the provided cards contain a HandRank::StraightFlush.
 ///
-/// Returns: A tuple containing a bool and an Option containing [Card; 5]
-/// representing the relevant cards if any.
+/// Returns: An Option containing the relevant cards if any.
 ///
 /// Example: A flush of 2♠, 3♠, 4♠, 5♠, 6♠.
 ///
 /// Example: An Ace-low flush of A♦ (1♦), 2♦, 3♦, 4♦, 5♦.
 ///
 /// Example: An Ace-high flush (aka Royal Flush) of 10♥, J♥ (11♥), Q♥ (12♥), K♥ (13♥) A♥ (14♥).
-fn check_for_straight_flush(cards: &HashSet<Card>) -> (bool, Option<[Card; 5]>) {
+fn check_for_straight_flush(cards: &HashSet<Card>) -> Option<[Card; 5]> {
     if cards.len() < 5 {
-        return (false, None);
+        return None;
     }
 
-    let (is_straight, straight_cards) = check_for_straight(cards);
-    let (is_flush, flush_cards) = check_for_flush(cards);
+    let straight_cards = check_for_straight(cards);
+    let flush_cards = check_for_flush(cards);
 
-    if is_straight && is_flush && straight_cards == flush_cards {
-        return (true, straight_cards);
+    // Check if both a straight and a flush are present
+    if let (Some(straight_cards), Some(flush_cards)) = (straight_cards, flush_cards) {
+        // Check if the same set of cards make up both the straight and the flush
+        if straight_cards == flush_cards {
+            return Some(straight_cards);
+        }
     }
 
-    (false, None)
+    None
 }
 
 #[cfg(test)]
