@@ -114,7 +114,7 @@ impl Game {
                     }
                 }
 
-                let hand_rank = rank_hand(cards_to_rank);
+                let hand_rank = rank_hand(&cards_to_rank);
                 // todo: remove after testing
                 println!("{:?}", hand_rank);
 
