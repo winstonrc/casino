@@ -3,7 +3,7 @@ use std::fmt;
 
 use cards::card::{Card, Rank, Suit};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, PartialOrd)]
 pub enum HandRank {
     /// Simple value of the card.
     /// Lowest: 2 – Highest: Ace.
@@ -25,6 +25,53 @@ pub enum HandRank {
     FourOfAKind([Card; 4]),
     /// Straight of the same suit.
     StraightFlush([Card; 5]),
+}
+
+impl PartialEq for HandRank {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (HandRank::HighCard(card1), HandRank::HighCard(card2)) => card1.rank == card2.rank,
+            (HandRank::Pair(cards1), HandRank::Pair(cards2)) => cards1
+                .iter()
+                .map(|card| card.rank)
+                .eq(cards2.iter().map(|card| card.rank)),
+            (HandRank::TwoPair(cards1), HandRank::TwoPair(cards2)) => cards1
+                .iter()
+                .map(|card| card.rank)
+                .eq(cards2.iter().map(|card| card.rank)),
+            (HandRank::ThreeOfAKind(cards1), HandRank::ThreeOfAKind(cards2)) => cards1
+                .iter()
+                .map(|card| card.rank)
+                .eq(cards2.iter().map(|card| card.rank)),
+            (HandRank::Straight(cards1), HandRank::Straight(cards2)) => {
+                // Compare the ranks of the highest cards
+                cards1[4].rank == cards2[4].rank
+            }
+            (HandRank::Flush(cards1), HandRank::Flush(cards2)) => {
+                // Compare the suits of the highest cards
+                cards1[4].suit == cards2[4].suit
+            }
+            (HandRank::FullHouse(cards1), HandRank::FullHouse(cards2)) => {
+                let (triple1, pair1) = (cards1[0].rank, cards1[3].rank);
+                let (triple2, pair2) = (cards2[0].rank, cards2[3].rank);
+                // Compare the ranks of the triple and the pair separately
+                (triple1 == triple2 && pair1 == pair2) || (triple1 == pair2 && pair1 == triple2)
+            }
+            (HandRank::FourOfAKind(cards1), HandRank::FourOfAKind(cards2)) => cards1
+                .iter()
+                .map(|card| card.rank)
+                .eq(cards2.iter().map(|card| card.rank)),
+            (HandRank::StraightFlush(cards1), HandRank::StraightFlush(cards2)) => {
+                // Compare the ranks of the highest cards
+                if cards1[4].rank != cards2[4].rank {
+                    return false;
+                }
+                // Compare the suits of the highest cards
+                cards1[4].suit == cards2[4].suit
+            }
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for HandRank {
@@ -497,136 +544,109 @@ fn check_for_straight_flush(cards: &Vec<Card>) -> Option<[Card; 5]> {
 mod tests {
     use super::*;
 
+    use cards::card;
+
     #[test]
-    fn high_cards_are_unique() {
+    fn high_card_ranks_are_valued_correctly() {
+        // Tests that the suit is ignored when comparing High Cards of equal rank.
         assert_eq!(
-            HandRank::HighCard(Card::two_of_clubs()),
-            HandRank::HighCard(Card::two_of_clubs())
+            HandRank::HighCard(card!(Two, Club)),
+            HandRank::HighCard(card!(Two, Diamond))
         );
 
         assert_ne!(
-            HandRank::HighCard(Card::two_of_clubs()),
-            HandRank::HighCard(Card::two_of_spades())
+            HandRank::HighCard(card!(Two, Club)),
+            HandRank::HighCard(card!(Three, Club))
         );
     }
 
     #[test]
     fn high_card_rankings_are_ordered_correctly() {
-        assert!(
-            HandRank::HighCard(Card::two_of_clubs()) < HandRank::HighCard(Card::three_of_clubs())
-        );
+        assert!(HandRank::HighCard(card!(Two, Club)) < HandRank::HighCard(card!(Three, Club)));
 
-        assert!(
-            HandRank::HighCard(Card::three_of_clubs()) < HandRank::HighCard(Card::four_of_spades())
-        );
+        assert!(HandRank::HighCard(card!(Three, Club)) < HandRank::HighCard(card!(Four, Spade)));
 
-        assert!(
-            HandRank::HighCard(Card::four_of_spades()) < HandRank::HighCard(Card::five_of_spades())
-        );
+        assert!(HandRank::HighCard(card!(Four, Spade)) < HandRank::HighCard(card!(Five, Spade)));
 
-        assert!(
-            HandRank::HighCard(Card::five_of_spades()) < HandRank::HighCard(Card::six_of_spades())
-        );
+        assert!(HandRank::HighCard(card!(Five, Spade)) < HandRank::HighCard(card!(Six, Spade)));
 
-        assert!(
-            HandRank::HighCard(Card::six_of_spades()) < HandRank::HighCard(Card::seven_of_spades())
-        );
+        assert!(HandRank::HighCard(card!(Six, Spade)) < HandRank::HighCard(card!(Seven, Spade)));
 
-        assert!(
-            HandRank::HighCard(Card::seven_of_spades())
-                < HandRank::HighCard(Card::eight_of_clubs())
-        );
+        assert!(HandRank::HighCard(card!(Seven, Spade)) < HandRank::HighCard(card!(Eight, Club)));
 
-        assert!(
-            HandRank::HighCard(Card::eight_of_clubs()) < HandRank::HighCard(Card::nine_of_clubs())
-        );
+        assert!(HandRank::HighCard(card!(Eight, Club)) < HandRank::HighCard(card!(Nine, Club)));
 
-        assert!(
-            HandRank::HighCard(Card::nine_of_clubs()) < HandRank::HighCard(Card::ten_of_spades())
-        );
+        assert!(HandRank::HighCard(card!(Nine, Club)) < HandRank::HighCard(card!(Ten, Spade)));
 
-        assert!(
-            HandRank::HighCard(Card::ten_of_spades()) < HandRank::HighCard(Card::jack_of_spades())
-        );
+        assert!(HandRank::HighCard(card!(Ten, Spade)) < HandRank::HighCard(card!(Jack, Spade)));
 
-        assert!(
-            HandRank::HighCard(Card::jack_of_spades())
-                < HandRank::HighCard(Card::queen_of_spades())
-        );
+        assert!(HandRank::HighCard(card!(Jack, Spade)) < HandRank::HighCard(card!(Queen, Spade)));
 
-        assert!(
-            HandRank::HighCard(Card::queen_of_spades())
-                < HandRank::HighCard(Card::king_of_spades())
-        );
+        assert!(HandRank::HighCard(card!(Queen, Spade)) < HandRank::HighCard(card!(King, Spade)));
 
-        assert!(
-            HandRank::HighCard(Card::king_of_spades()) < HandRank::HighCard(Card::ace_of_spades())
-        );
+        assert!(HandRank::HighCard(card!(King, Spade)) < HandRank::HighCard(card!(Ace, Spade)));
     }
 
     #[test]
     fn hand_rankings_are_ordered_correctly() {
-        let high_card = HandRank::HighCard(Card::king_of_clubs());
+        let high_card = HandRank::HighCard(card!(King, Club));
 
-        let pair = HandRank::Pair([Card::king_of_clubs(), Card::king_of_hearts()]);
+        let pair = HandRank::Pair([card!(King, Club), card!(King, Heart)]);
 
         let two_pair = HandRank::TwoPair([
-            Card::king_of_clubs(),
-            Card::king_of_hearts(),
-            Card::seven_of_diamonds(),
-            Card::seven_of_clubs(),
+            card!(King, Club),
+            card!(King, Heart),
+            card!(Seven, Diamond),
+            card!(Seven, Club),
         ]);
 
-        let three_of_a_kind = HandRank::ThreeOfAKind([
-            Card::king_of_clubs(),
-            Card::king_of_hearts(),
-            Card::king_of_diamonds(),
-        ]);
+        let three_of_a_kind =
+            HandRank::ThreeOfAKind([card!(King, Club), card!(King, Heart), card!(King, Diamond)]);
 
         let straight = HandRank::Straight([
-            Card::three_of_clubs(),
-            Card::four_of_hearts(),
-            Card::five_of_diamonds(),
-            Card::six_of_clubs(),
-            Card::seven_of_spades(),
+            card!(Three, Club),
+            card!(Four, Heart),
+            card!(Five, Diamond),
+            card!(Six, Club),
+            card!(Seven, Spade),
         ]);
 
         let flush = HandRank::Flush([
-            Card::king_of_clubs(),
-            Card::queen_of_clubs(),
-            Card::nine_of_clubs(),
-            Card::eight_of_clubs(),
-            Card::two_of_clubs(),
+            card!(King, Club),
+            card!(Queen, Club),
+            card!(Nine, Club),
+            card!(Eight, Club),
+            card!(Two, Club),
         ]);
 
         let full_house = HandRank::FullHouse([
-            Card::king_of_clubs(),
-            Card::king_of_hearts(),
-            Card::king_of_diamonds(),
-            Card::seven_of_clubs(),
-            Card::seven_of_spades(),
+            card!(King, Club),
+            card!(King, Heart),
+            card!(King, Diamond),
+            card!(Seven, Club),
+            card!(Seven, Spade),
         ]);
         let four_of_a_kind = HandRank::FourOfAKind([
-            Card::six_of_spades(),
-            Card::six_of_diamonds(),
-            Card::six_of_hearts(),
-            Card::six_of_clubs(),
+            card!(Six, Spade),
+            card!(Six, Diamond),
+            card!(Six, Heart),
+            card!(Six, Club),
         ]);
 
         let straight_flush = HandRank::StraightFlush([
-            Card::two_of_spades(),
-            Card::three_of_spades(),
-            Card::four_of_spades(),
-            Card::five_of_spades(),
-            Card::six_of_spades(),
+            card!(Two, Spade),
+            card!(Three, Spade),
+            card!(Four, Spade),
+            card!(Five, Spade),
+            card!(Six, Spade),
         ]);
 
         let royal_flush = HandRank::StraightFlush([
-            Card::ten_of_hearts(),
-            Card::jack_of_hearts(),
-            Card::queen_of_hearts(),
-            Card::king_of_hearts(),
-            Card::ace_of_hearts(),
+            card!(Ten, Heart),
+            card!(Jack, Heart),
+            card!(Queen, Heart),
+            card!(King, Heart),
+            card!(Ace, Heart),
         ]);
 
         assert!(high_card < pair);
@@ -645,11 +665,11 @@ mod tests {
     /// Tests if a High Card is correctly identified.
     #[test]
     fn get_high_card_value_works() {
-        let two_of_spades = Card::two_of_spades();
-        let four_of_hearts = Card::four_of_hearts();
-        let seven_of_diamonds = Card::seven_of_diamonds();
-        let ten_of_clubs = Card::ten_of_clubs();
-        let king_of_clubs = Card::king_of_clubs();
+        let two_of_spades = card!(Two, Spade);
+        let four_of_hearts = card!(Four, Heart);
+        let seven_of_diamonds = card!(Seven, Diamond);
+        let ten_of_clubs = card!(Ten, Club);
+        let king_of_clubs = card!(King, Club);
 
         let high_card = HandRank::HighCard(king_of_clubs);
 
@@ -675,11 +695,11 @@ mod tests {
     /// Tests if a hand containing a High Card is ranked correctly.
     #[test]
     fn rank_hand_high_card_works() {
-        let two_of_spades = Card::two_of_spades();
-        let four_of_hearts = Card::four_of_hearts();
-        let seven_of_diamonds = Card::seven_of_diamonds();
-        let ten_of_clubs = Card::ten_of_clubs();
-        let king_of_clubs = Card::king_of_clubs();
+        let two_of_spades = card!(Two, Spade);
+        let four_of_hearts = card!(Four, Heart);
+        let seven_of_diamonds = card!(Seven, Diamond);
+        let ten_of_clubs = card!(Ten, Club);
+        let king_of_clubs = card!(King, Club);
 
         let high_card = HandRank::HighCard(king_of_clubs);
 
@@ -700,12 +720,12 @@ mod tests {
     /// Tests if a Pair is correctly identified.
     #[test]
     fn check_for_pair_works() {
-        let two_of_clubs = Card::two_of_clubs();
-        let five_of_spades = Card::five_of_spades();
-        let seven_of_diamonds = Card::seven_of_diamonds();
-        let king_of_clubs = Card::king_of_clubs();
-        let king_of_hearts = Card::king_of_hearts();
-        let ace_of_spades = Card::ace_of_spades();
+        let two_of_clubs = card!(Two, Club);
+        let five_of_spades = card!(Five, Spade);
+        let seven_of_diamonds = card!(Seven, Diamond);
+        let king_of_clubs = card!(King, Club);
+        let king_of_hearts = card!(King, Heart);
+        let ace_of_spades = card!(Ace, Spade);
 
         let pair = HandRank::Pair([king_of_clubs, king_of_hearts]);
 
@@ -750,12 +770,12 @@ mod tests {
     /// Tests if a hand containing a Pair is ranked correctly.
     #[test]
     fn rank_hand_pair_works() {
-        let two_of_clubs = Card::two_of_clubs();
-        let five_of_spades = Card::five_of_spades();
-        let seven_of_diamonds = Card::seven_of_diamonds();
-        let king_of_clubs = Card::king_of_clubs();
-        let king_of_hearts = Card::king_of_hearts();
-        let ace_of_spades = Card::ace_of_spades();
+        let two_of_clubs = card!(Two, Club);
+        let five_of_spades = card!(Five, Spade);
+        let seven_of_diamonds = card!(Seven, Diamond);
+        let king_of_clubs = card!(King, Club);
+        let king_of_hearts = card!(King, Heart);
+        let ace_of_spades = card!(Ace, Spade);
 
         let pair = HandRank::Pair([king_of_clubs, king_of_hearts]);
 
@@ -789,12 +809,12 @@ mod tests {
     /// Tests if a Pair is correctly identified.
     #[test]
     fn check_for_two_pair_works() {
-        let five_of_clubs = Card::five_of_clubs();
-        let five_of_spades = Card::five_of_spades();
-        let seven_of_clubs = Card::seven_of_clubs();
-        let seven_of_diamonds = Card::seven_of_diamonds();
-        let king_of_clubs = Card::king_of_clubs();
-        let king_of_hearts = Card::king_of_hearts();
+        let five_of_clubs = card!(Five, Club);
+        let five_of_spades = card!(Five, Spade);
+        let seven_of_clubs = card!(Seven, Club);
+        let seven_of_diamonds = card!(Seven, Diamond);
+        let king_of_clubs = card!(King, Club);
+        let king_of_hearts = card!(King, Heart);
 
         let two_pair = HandRank::TwoPair([
             king_of_clubs,
@@ -843,12 +863,12 @@ mod tests {
     /// Tests if a hand containing a Pair is ranked correctly.
     #[test]
     fn rank_hand_two_pair_works() {
-        let five_of_clubs = Card::five_of_clubs();
-        let five_of_spades = Card::five_of_spades();
-        let seven_of_clubs = Card::seven_of_clubs();
-        let seven_of_diamonds = Card::seven_of_diamonds();
-        let king_of_clubs = Card::king_of_clubs();
-        let king_of_hearts = Card::king_of_hearts();
+        let five_of_clubs = card!(Five, Club);
+        let five_of_spades = card!(Five, Spade);
+        let seven_of_clubs = card!(Seven, Club);
+        let seven_of_diamonds = card!(Seven, Diamond);
+        let king_of_clubs = card!(King, Club);
+        let king_of_hearts = card!(King, Heart);
 
         let two_pair = HandRank::TwoPair([
             king_of_clubs,
@@ -888,13 +908,13 @@ mod tests {
     /// Tests if a Pair is correctly identified.
     #[test]
     fn check_for_three_of_a_kind_works() {
-        let five_of_spades = Card::five_of_spades();
-        let seven_of_clubs = Card::seven_of_clubs();
-        let seven_of_diamonds = Card::seven_of_diamonds();
-        let seven_of_spades = Card::seven_of_spades();
-        let king_of_clubs = Card::king_of_clubs();
-        let king_of_diamonds = Card::king_of_diamonds();
-        let king_of_hearts = Card::king_of_hearts();
+        let five_of_spades = card!(Five, Spade);
+        let seven_of_clubs = card!(Seven, Club);
+        let seven_of_diamonds = card!(Seven, Diamond);
+        let seven_of_spades = card!(Seven, Spade);
+        let king_of_clubs = card!(King, Club);
+        let king_of_diamonds = card!(King, Diamond);
+        let king_of_hearts = card!(King, Heart);
 
         let three_of_a_kind =
             HandRank::ThreeOfAKind([king_of_clubs, king_of_diamonds, king_of_hearts]);
@@ -941,13 +961,13 @@ mod tests {
     /// Tests if a hand containing a Pair is ranked correctly.
     #[test]
     fn rank_hand_three_of_a_kind_works() {
-        let five_of_spades = Card::five_of_spades();
-        let seven_of_clubs = Card::seven_of_clubs();
-        let seven_of_diamonds = Card::seven_of_diamonds();
-        let seven_of_spades = Card::seven_of_spades();
-        let king_of_clubs = Card::king_of_clubs();
-        let king_of_diamonds = Card::king_of_diamonds();
-        let king_of_hearts = Card::king_of_hearts();
+        let five_of_spades = card!(Five, Spade);
+        let seven_of_clubs = card!(Seven, Club);
+        let seven_of_diamonds = card!(Seven, Diamond);
+        let seven_of_spades = card!(Seven, Spade);
+        let king_of_clubs = card!(King, Club);
+        let king_of_diamonds = card!(King, Diamond);
+        let king_of_hearts = card!(King, Heart);
 
         let three_of_a_kind =
             HandRank::ThreeOfAKind([king_of_clubs, king_of_diamonds, king_of_hearts]);
@@ -984,12 +1004,12 @@ mod tests {
     /// Tests if a Straight is correctly identified.
     #[test]
     fn check_for_straight_works() {
-        let two_of_diamonds = Card::two_of_diamonds();
-        let three_of_clubs = Card::three_of_clubs();
-        let four_of_hearts = Card::four_of_hearts();
-        let five_of_diamonds = Card::five_of_diamonds();
-        let six_of_clubs = Card::six_of_clubs();
-        let seven_of_spades = Card::seven_of_spades();
+        let two_of_diamonds = card!(Two, Diamond);
+        let three_of_clubs = card!(Three, Club);
+        let four_of_hearts = card!(Four, Heart);
+        let five_of_diamonds = card!(Five, Diamond);
+        let six_of_clubs = card!(Six, Club);
+        let seven_of_spades = card!(Seven, Spade);
 
         let straight = HandRank::Straight([
             three_of_clubs,
@@ -1040,12 +1060,12 @@ mod tests {
     /// Tests if a hand containing a Straight is ranked correctly.
     #[test]
     fn rank_hand_straight_works() {
-        let two_of_diamonds = Card::two_of_diamonds();
-        let three_of_clubs = Card::three_of_clubs();
-        let four_of_hearts = Card::four_of_hearts();
-        let five_of_diamonds = Card::five_of_diamonds();
-        let six_of_clubs = Card::six_of_clubs();
-        let seven_of_spades = Card::seven_of_spades();
+        let two_of_diamonds = card!(Two, Diamond);
+        let three_of_clubs = card!(Three, Club);
+        let four_of_hearts = card!(Four, Heart);
+        let five_of_diamonds = card!(Five, Diamond);
+        let six_of_clubs = card!(Six, Club);
+        let seven_of_spades = card!(Seven, Spade);
 
         let straight = HandRank::Straight([
             three_of_clubs,
@@ -1086,14 +1106,14 @@ mod tests {
     /// Tests if an Ace-low Straight is correctly identified.
     #[test]
     fn check_for_straight_ace_low_straight_works() {
-        let two_of_clubs = Card::two_of_clubs();
-        let three_of_hearts = Card::three_of_hearts();
-        let four_of_spades = Card::four_of_spades();
-        let five_of_hearts = Card::five_of_hearts();
-        let six_of_diamonds = Card::six_of_diamonds();
-        let seven_of_diamonds = Card::seven_of_diamonds();
-        let eight_of_clubs = Card::eight_of_clubs();
-        let ace_of_spades = Card::ace_of_spades();
+        let two_of_clubs = card!(Two, Club);
+        let three_of_hearts = card!(Three, Heart);
+        let four_of_spades = card!(Four, Spade);
+        let five_of_hearts = card!(Five, Heart);
+        let six_of_diamonds = card!(Six, Diamond);
+        let seven_of_diamonds = card!(Seven, Diamond);
+        let eight_of_clubs = card!(Eight, Club);
+        let ace_of_spades = card!(Ace, Spade);
 
         let ace_low_straight = HandRank::Straight([
             ace_of_spades,
@@ -1181,14 +1201,14 @@ mod tests {
     /// Tests if a hand containing an Ace-low Straight is ranked correctly.
     #[test]
     fn rank_hand_ace_low_straight_works() {
-        let two_of_clubs = Card::two_of_clubs();
-        let three_of_hearts = Card::three_of_hearts();
-        let four_of_spades = Card::four_of_spades();
-        let five_of_hearts = Card::five_of_hearts();
-        let six_of_diamonds = Card::six_of_diamonds();
-        let seven_of_diamonds = Card::seven_of_diamonds();
-        let eight_of_clubs = Card::eight_of_clubs();
-        let ace_of_spades = Card::ace_of_spades();
+        let two_of_clubs = card!(Two, Club);
+        let three_of_hearts = card!(Three, Heart);
+        let four_of_spades = card!(Four, Spade);
+        let five_of_hearts = card!(Five, Heart);
+        let six_of_diamonds = card!(Six, Diamond);
+        let seven_of_diamonds = card!(Seven, Diamond);
+        let eight_of_clubs = card!(Eight, Club);
+        let ace_of_spades = card!(Ace, Spade);
 
         let ace_low_straight = HandRank::Straight([
             ace_of_spades,
@@ -1256,12 +1276,12 @@ mod tests {
     /// Tests if an Ace-high Straight is correctly identified.
     #[test]
     fn check_for_straight_ace_high_straight_works() {
-        let nine_of_diamonds = Card::nine_of_diamonds();
-        let ten_of_clubs = Card::ten_of_clubs();
-        let jack_of_hearts = Card::jack_of_hearts();
-        let queen_of_spades = Card::queen_of_spades();
-        let king_of_hearts = Card::king_of_hearts();
-        let ace_of_spades = Card::ace_of_spades();
+        let nine_of_diamonds = card!(Nine, Diamond);
+        let ten_of_clubs = card!(Ten, Club);
+        let jack_of_hearts = card!(Jack, Heart);
+        let queen_of_spades = card!(Queen, Spade);
+        let king_of_hearts = card!(King, Heart);
+        let ace_of_spades = card!(Ace, Spade);
 
         let ace_high_straight = HandRank::Straight([
             ten_of_clubs,
@@ -1312,12 +1332,12 @@ mod tests {
     /// Tests if a hand containing an Ace-high Straight is ranked correctly.
     #[test]
     fn rank_hand_ace_high_straight_works() {
-        let nine_of_diamonds = Card::nine_of_diamonds();
-        let ten_of_clubs = Card::ten_of_clubs();
-        let jack_of_hearts = Card::jack_of_hearts();
-        let queen_of_spades = Card::queen_of_spades();
-        let king_of_hearts = Card::king_of_hearts();
-        let ace_of_spades = Card::ace_of_spades();
+        let nine_of_diamonds = card!(Nine, Diamond);
+        let ten_of_clubs = card!(Ten, Club);
+        let jack_of_hearts = card!(Jack, Heart);
+        let queen_of_spades = card!(Queen, Spade);
+        let king_of_hearts = card!(King, Heart);
+        let ace_of_spades = card!(Ace, Spade);
 
         let ace_high_straight = HandRank::Straight([
             ten_of_clubs,
@@ -1358,13 +1378,13 @@ mod tests {
     /// Tests if a Flush is correctly identified.
     #[test]
     fn check_for_flush_works() {
-        let two_of_clubs = Card::two_of_clubs();
-        let two_of_diamonds = Card::two_of_diamonds();
-        let three_of_clubs = Card::three_of_clubs();
-        let eight_of_clubs = Card::eight_of_clubs();
-        let nine_of_clubs = Card::nine_of_clubs();
-        let queen_of_clubs = Card::queen_of_clubs();
-        let king_of_clubs = Card::king_of_clubs();
+        let two_of_clubs = card!(Two, Club);
+        let two_of_diamonds = card!(Two, Diamond);
+        let three_of_clubs = card!(Three, Club);
+        let eight_of_clubs = card!(Eight, Club);
+        let nine_of_clubs = card!(Nine, Club);
+        let queen_of_clubs = card!(Queen, Club);
+        let king_of_clubs = card!(King, Club);
 
         let flush = HandRank::Flush([
             two_of_clubs,
@@ -1424,13 +1444,13 @@ mod tests {
     /// Tests if a hand containing a Flush is ranked correctly.
     #[test]
     fn rank_hand_flush_works() {
-        let two_of_clubs = Card::two_of_clubs();
-        let two_of_diamonds = Card::two_of_diamonds();
-        let three_of_clubs = Card::three_of_clubs();
-        let eight_of_clubs = Card::eight_of_clubs();
-        let nine_of_clubs = Card::nine_of_clubs();
-        let queen_of_clubs = Card::queen_of_clubs();
-        let king_of_clubs = Card::king_of_clubs();
+        let two_of_clubs = card!(Two, Club);
+        let two_of_diamonds = card!(Two, Diamond);
+        let three_of_clubs = card!(Three, Club);
+        let eight_of_clubs = card!(Eight, Club);
+        let nine_of_clubs = card!(Nine, Club);
+        let queen_of_clubs = card!(Queen, Club);
+        let king_of_clubs = card!(King, Club);
 
         let flush = HandRank::Flush([
             two_of_clubs,
@@ -1480,13 +1500,13 @@ mod tests {
     /// Tests if a Full House is correctly identified.
     #[test]
     fn check_for_full_house_works() {
-        let three_of_clubs = Card::three_of_clubs();
-        let three_of_spades = Card::three_of_spades();
-        let seven_of_clubs = Card::seven_of_clubs();
-        let seven_of_spades = Card::seven_of_spades();
-        let king_of_clubs = Card::king_of_clubs();
-        let king_of_diamonds = Card::king_of_diamonds();
-        let king_of_hearts = Card::king_of_hearts();
+        let three_of_clubs = card!(Three, Club);
+        let three_of_spades = card!(Three, Spade);
+        let seven_of_clubs = card!(Seven, Club);
+        let seven_of_spades = card!(Seven, Spade);
+        let king_of_clubs = card!(King, Club);
+        let king_of_diamonds = card!(King, Diamond);
+        let king_of_hearts = card!(King, Heart);
 
         let full_house = HandRank::FullHouse([
             king_of_clubs,
@@ -1538,13 +1558,13 @@ mod tests {
     /// Tests if a hand containing a Full House is ranked correctly.
     #[test]
     fn rank_hand_full_house_works() {
-        let three_of_clubs = Card::three_of_clubs();
-        let three_of_spades = Card::three_of_spades();
-        let seven_of_clubs = Card::seven_of_clubs();
-        let seven_of_spades = Card::seven_of_spades();
-        let king_of_clubs = Card::king_of_clubs();
-        let king_of_diamonds = Card::king_of_diamonds();
-        let king_of_hearts = Card::king_of_hearts();
+        let three_of_clubs = card!(Three, Club);
+        let three_of_spades = card!(Three, Spade);
+        let seven_of_clubs = card!(Seven, Club);
+        let seven_of_spades = card!(Seven, Spade);
+        let king_of_clubs = card!(King, Club);
+        let king_of_diamonds = card!(King, Diamond);
+        let king_of_hearts = card!(King, Heart);
 
         let full_house = HandRank::FullHouse([
             king_of_clubs,
@@ -1586,13 +1606,13 @@ mod tests {
     /// Tests if a Four of a Kind is correctly identified.
     #[test]
     fn check_for_four_of_a_kind_works() {
-        let six_of_clubs = Card::six_of_clubs();
-        let six_of_diamonds = Card::six_of_diamonds();
-        let six_of_hearts = Card::six_of_hearts();
-        let six_of_spades = Card::six_of_spades();
-        let king_of_clubs = Card::king_of_clubs();
-        let king_of_hearts = Card::king_of_hearts();
-        let king_of_spades = Card::king_of_spades();
+        let six_of_clubs = card!(Six, Club);
+        let six_of_diamonds = card!(Six, Diamond);
+        let six_of_hearts = card!(Six, Heart);
+        let six_of_spades = card!(Six, Spade);
+        let king_of_clubs = card!(King, Club);
+        let king_of_hearts = card!(King, Heart);
+        let king_of_spades = card!(King, Spade);
 
         let four_of_a_kind =
             HandRank::FourOfAKind([six_of_clubs, six_of_diamonds, six_of_hearts, six_of_spades]);
@@ -1642,13 +1662,13 @@ mod tests {
     /// Tests if a hand containing a Four of a Kind is ranked correctly.
     #[test]
     fn rank_hand_four_of_a_kind_works() {
-        let six_of_clubs = Card::six_of_clubs();
-        let six_of_diamonds = Card::six_of_diamonds();
-        let six_of_hearts = Card::six_of_hearts();
-        let six_of_spades = Card::six_of_spades();
-        let king_of_clubs = Card::king_of_clubs();
-        let king_of_hearts = Card::king_of_hearts();
-        let king_of_spades = Card::king_of_spades();
+        let six_of_clubs = card!(Six, Club);
+        let six_of_diamonds = card!(Six, Diamond);
+        let six_of_hearts = card!(Six, Heart);
+        let six_of_spades = card!(Six, Spade);
+        let king_of_clubs = card!(King, Club);
+        let king_of_hearts = card!(King, Heart);
+        let king_of_spades = card!(King, Spade);
 
         let four_of_a_kind =
             HandRank::FourOfAKind([six_of_clubs, six_of_diamonds, six_of_hearts, six_of_spades]);
@@ -1685,12 +1705,12 @@ mod tests {
     /// Tests if a Straight Flush is correctly identified.
     #[test]
     fn check_for_straight_flush_works() {
-        let two_of_spades = Card::two_of_spades();
-        let three_of_spades = Card::three_of_spades();
-        let four_of_spades = Card::four_of_spades();
-        let five_of_spades = Card::five_of_spades();
-        let six_of_spades = Card::six_of_spades();
-        let seven_of_spades = Card::seven_of_spades();
+        let two_of_spades = card!(Two, Spade);
+        let three_of_spades = card!(Three, Spade);
+        let four_of_spades = card!(Four, Spade);
+        let five_of_spades = card!(Five, Spade);
+        let six_of_spades = card!(Six, Spade);
+        let seven_of_spades = card!(Seven, Spade);
 
         let straight_flush = HandRank::StraightFlush([
             two_of_spades,
@@ -1748,12 +1768,12 @@ mod tests {
     /// Tests if a hand containing a Straight Flush is ranked correctly.
     #[test]
     fn rank_hand_straight_flush_works() {
-        let two_of_spades = Card::two_of_spades();
-        let three_of_spades = Card::three_of_spades();
-        let four_of_spades = Card::four_of_spades();
-        let five_of_spades = Card::five_of_spades();
-        let six_of_spades = Card::six_of_spades();
-        let seven_of_spades = Card::seven_of_spades();
+        let two_of_spades = card!(Two, Spade);
+        let three_of_spades = card!(Three, Spade);
+        let four_of_spades = card!(Four, Spade);
+        let five_of_spades = card!(Five, Spade);
+        let six_of_spades = card!(Six, Spade);
+        let seven_of_spades = card!(Seven, Spade);
 
         let straight_flush = HandRank::StraightFlush([
             two_of_spades,
@@ -1800,14 +1820,14 @@ mod tests {
     ///
     /// Tests if an Ace-low Straight Flush is correctly identified.
     #[test]
-    fn check_for_straight_flush_ace_low_straight_flush_works() {
-        let ace_of_diamonds = Card::ace_of_diamonds();
-        let two_of_diamonds = Card::two_of_diamonds();
-        let three_of_diamonds = Card::three_of_diamonds();
-        let four_of_diamonds = Card::four_of_diamonds();
-        let five_of_diamonds = Card::five_of_diamonds();
-        let seven_of_diamonds = Card::seven_of_diamonds();
-        let eight_of_diamonds = Card::eight_of_diamonds();
+    fn check_for_straight_flush_ace_low_works() {
+        let ace_of_diamonds = card!(Ace, Diamond);
+        let two_of_diamonds = card!(Two, Diamond);
+        let three_of_diamonds = card!(Three, Diamond);
+        let four_of_diamonds = card!(Four, Diamond);
+        let five_of_diamonds = card!(Five, Diamond);
+        let seven_of_diamonds = card!(Seven, Diamond);
+        let eight_of_diamonds = card!(Eight, Diamond);
 
         let ace_low_straight_flush = HandRank::StraightFlush([
             ace_of_diamonds,
@@ -1876,14 +1896,14 @@ mod tests {
     ///
     /// Tests if a hand containing an Ace-low Straight Flush is ranked correctly.
     #[test]
-    fn rank_hand_ace_low_straight_flush_works() {
-        let ace_of_diamonds = Card::ace_of_diamonds();
-        let two_of_diamonds = Card::two_of_diamonds();
-        let three_of_diamonds = Card::three_of_diamonds();
-        let four_of_diamonds = Card::four_of_diamonds();
-        let five_of_diamonds = Card::five_of_diamonds();
-        let seven_of_diamonds = Card::seven_of_diamonds();
-        let eight_of_diamonds = Card::eight_of_diamonds();
+    fn rank_hand_straight_flush_ace_low_works() {
+        let ace_of_diamonds = card!(Ace, Diamond);
+        let two_of_diamonds = card!(Two, Diamond);
+        let three_of_diamonds = card!(Three, Diamond);
+        let four_of_diamonds = card!(Four, Diamond);
+        let five_of_diamonds = card!(Five, Diamond);
+        let seven_of_diamonds = card!(Seven, Diamond);
+        let eight_of_diamonds = card!(Eight, Diamond);
 
         let ace_low_straight_flush = HandRank::StraightFlush([
             ace_of_diamonds,
@@ -1937,13 +1957,13 @@ mod tests {
     ///
     /// Tests if an Ace-high Straight Flush is correctly identified.
     #[test]
-    fn check_for_straight_flush_ace_high_straight_flush_works() {
-        let nine_of_hearts = Card::nine_of_hearts();
-        let ten_of_hearts = Card::ten_of_hearts();
-        let jack_of_hearts = Card::jack_of_hearts();
-        let queen_of_hearts = Card::queen_of_hearts();
-        let king_of_hearts = Card::king_of_hearts();
-        let ace_of_hearts = Card::ace_of_hearts();
+    fn check_for_straight_flush_ace_high_aka_royal_flush_works() {
+        let nine_of_hearts = card!(Nine, Heart);
+        let ten_of_hearts = card!(Ten, Heart);
+        let jack_of_hearts = card!(Jack, Heart);
+        let queen_of_hearts = card!(Queen, Heart);
+        let king_of_hearts = card!(King, Heart);
+        let ace_of_hearts = card!(Ace, Heart);
 
         let ace_high_straight_flush = HandRank::StraightFlush([
             ten_of_hearts,
@@ -1993,13 +2013,13 @@ mod tests {
     ///
     /// Tests if a hand containing an Ace-high Straight Flush (aka Royal Flush) is ranked correctly.
     #[test]
-    fn rank_hand_ace_high_straight_flush_aka_royal_flush_works() {
-        let nine_of_hearts = Card::nine_of_hearts();
-        let ten_of_hearts = Card::ten_of_hearts();
-        let jack_of_hearts = Card::jack_of_hearts();
-        let queen_of_hearts = Card::queen_of_hearts();
-        let king_of_hearts = Card::king_of_hearts();
-        let ace_of_hearts = Card::ace_of_hearts();
+    fn rank_hand_straight_flush_ace_high_aka_royal_flush_works() {
+        let nine_of_hearts = card!(Nine, Heart);
+        let ten_of_hearts = card!(Ten, Heart);
+        let jack_of_hearts = card!(Jack, Heart);
+        let queen_of_hearts = card!(Queen, Heart);
+        let king_of_hearts = card!(King, Heart);
+        let ace_of_hearts = card!(Ace, Heart);
 
         let ace_high_straight_flush = HandRank::StraightFlush([
             ten_of_hearts,

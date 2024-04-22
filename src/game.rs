@@ -20,7 +20,7 @@ pub struct Game {
 impl Game {
     /// Create a new game that internally contains a deck and players.
     pub fn new() -> Self {
-        let deck = Deck::new_ignore_suits();
+        let deck = Deck::new();
         let players = HashSet::new();
         let game_over = false;
 
