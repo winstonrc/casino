@@ -1,7 +1,8 @@
-use crate::card::{Card, Rank, Suit};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use strum::IntoEnumIterator;
+
+use crate::card::{Card, Rank, Suit};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Deck {
@@ -76,14 +77,16 @@ impl Deck {
 mod tests {
     use super::*;
 
+    use crate::card::{Card, Rank, Suit};
+
     #[test]
-    fn correct_number_of_cards() {
+    fn new_deck_has_correct_number_of_cards() {
         let deck = Deck::new();
         assert_eq!(deck.len(), 52);
     }
 
     #[test]
-    fn all_cards_are_included() {
+    fn new_deck_contains_all_cards() {
         let deck = Deck::new();
 
         for suit in Suit::iter() {
@@ -95,7 +98,7 @@ mod tests {
     }
 
     #[test]
-    fn cards_shuffle_correctly() {
+    fn shuffling_cards_works() {
         let unshuffled_deck = Deck::new();
         let mut shuffled_deck = unshuffled_deck.clone();
         shuffled_deck.shuffle();
@@ -104,7 +107,7 @@ mod tests {
     }
 
     #[test]
-    fn dealing_card_removes_it_from_the_deck() {
+    fn dealing_cards_works() {
         let mut deck = Deck::new();
         deck.deal().unwrap();
         assert_eq!(deck.cards.len(), 51);

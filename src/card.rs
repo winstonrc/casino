@@ -3,10 +3,36 @@ use std::fmt;
 
 use strum::EnumIter;
 
+/// Creates a new card.
+///
+/// Requires the Rank and Suit to be provided as an ident.
+#[macro_export]
+macro_rules! card {
+    ($rank:ident, $suit:ident) => {
+        Card {
+            rank: Rank::$rank,
+            suit: Suit::$suit,
+        }
+    };
+}
+
+/// Creates a new card.
+///
+/// Requires the Rank and Suit to be provided as an expr.
+#[macro_export]
+macro_rules! card_from_expr {
+    ($rank:expr, $suit:expr) => {
+        Card {
+            rank: $rank,
+            suit: $suit,
+        }
+    };
+}
+
 /// Numerical values for the ranks.
 ///
 /// Ranks contain Two through Ace (high by default).
-#[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Rank {
     Two = 2,
     Three = 3,
@@ -52,7 +78,7 @@ impl From<Rank> for char {
 /// A suit can be a Club, Diamond, Heart, or Spade, which are ranked from lowest to highest value.
 ///
 /// Suit values are based on the values for the game Bridge.
-#[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Suit {
     Club = 0,
     Diamond = 1,
@@ -144,368 +170,14 @@ impl Card {
             (Rank::Ace, Suit::Spade) => '🂡',
         }
     }
+}
 
-    pub const fn two_of_clubs() -> Self {
-        Self {
-            rank: Rank::Two,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn three_of_clubs() -> Self {
-        Self {
-            rank: Rank::Three,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn four_of_clubs() -> Self {
-        Self {
-            rank: Rank::Four,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn five_of_clubs() -> Self {
-        Self {
-            rank: Rank::Five,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn six_of_clubs() -> Self {
-        Self {
-            rank: Rank::Six,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn seven_of_clubs() -> Self {
-        Self {
-            rank: Rank::Seven,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn eight_of_clubs() -> Self {
-        Self {
-            rank: Rank::Eight,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn nine_of_clubs() -> Self {
-        Self {
-            rank: Rank::Nine,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn ten_of_clubs() -> Self {
-        Self {
-            rank: Rank::Ten,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn jack_of_clubs() -> Self {
-        Self {
-            rank: Rank::Jack,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn queen_of_clubs() -> Self {
-        Self {
-            rank: Rank::Queen,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn king_of_clubs() -> Self {
-        Self {
-            rank: Rank::King,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn ace_of_clubs() -> Self {
-        Self {
-            rank: Rank::Ace,
-            suit: Suit::Club,
-        }
-    }
-
-    pub const fn two_of_diamonds() -> Self {
-        Self {
-            rank: Rank::Two,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn three_of_diamonds() -> Self {
-        Self {
-            rank: Rank::Three,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn four_of_diamonds() -> Self {
-        Self {
-            rank: Rank::Four,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn five_of_diamonds() -> Self {
-        Self {
-            rank: Rank::Five,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn six_of_diamonds() -> Self {
-        Self {
-            rank: Rank::Six,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn seven_of_diamonds() -> Self {
-        Self {
-            rank: Rank::Seven,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn eight_of_diamonds() -> Self {
-        Self {
-            rank: Rank::Eight,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn nine_of_diamonds() -> Self {
-        Self {
-            rank: Rank::Nine,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn ten_of_diamonds() -> Self {
-        Self {
-            rank: Rank::Ten,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn jack_of_diamonds() -> Self {
-        Self {
-            rank: Rank::Jack,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn queen_of_diamonds() -> Self {
-        Self {
-            rank: Rank::Queen,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn king_of_diamonds() -> Self {
-        Self {
-            rank: Rank::King,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn ace_of_diamonds() -> Self {
-        Self {
-            rank: Rank::Ace,
-            suit: Suit::Diamond,
-        }
-    }
-
-    pub const fn two_of_hearts() -> Self {
-        Self {
-            rank: Rank::Two,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn three_of_hearts() -> Self {
-        Self {
-            rank: Rank::Three,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn four_of_hearts() -> Self {
-        Self {
-            rank: Rank::Four,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn five_of_hearts() -> Self {
-        Self {
-            rank: Rank::Five,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn six_of_hearts() -> Self {
-        Self {
-            rank: Rank::Six,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn seven_of_hearts() -> Self {
-        Self {
-            rank: Rank::Seven,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn eight_of_hearts() -> Self {
-        Self {
-            rank: Rank::Eight,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn nine_of_hearts() -> Self {
-        Self {
-            rank: Rank::Nine,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn ten_of_hearts() -> Self {
-        Self {
-            rank: Rank::Ten,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn jack_of_hearts() -> Self {
-        Self {
-            rank: Rank::Jack,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn queen_of_hearts() -> Self {
-        Self {
-            rank: Rank::Queen,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn king_of_hearts() -> Self {
-        Self {
-            rank: Rank::King,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn ace_of_hearts() -> Self {
-        Self {
-            rank: Rank::Ace,
-            suit: Suit::Heart,
-        }
-    }
-
-    pub const fn two_of_spades() -> Self {
-        Self {
-            rank: Rank::Two,
-            suit: Suit::Spade,
-        }
-    }
-
-    pub const fn three_of_spades() -> Self {
-        Self {
-            rank: Rank::Three,
-            suit: Suit::Spade,
-        }
-    }
-
-    pub const fn four_of_spades() -> Self {
-        Self {
-            rank: Rank::Four,
-            suit: Suit::Spade,
-        }
-    }
-
-    pub const fn five_of_spades() -> Self {
-        Self {
-            rank: Rank::Five,
-            suit: Suit::Spade,
-        }
-    }
-
-    pub const fn six_of_spades() -> Self {
-        Self {
-            rank: Rank::Six,
-            suit: Suit::Spade,
-        }
-    }
-
-    pub const fn seven_of_spades() -> Self {
-        Self {
-            rank: Rank::Seven,
-            suit: Suit::Spade,
-        }
-    }
-
-    pub const fn eight_of_spades() -> Self {
-        Self {
-            rank: Rank::Eight,
-            suit: Suit::Spade,
-        }
-    }
-
-    pub const fn nine_of_spades() -> Self {
-        Self {
-            rank: Rank::Nine,
-            suit: Suit::Spade,
-        }
-    }
-
-    pub const fn ten_of_spades() -> Self {
-        Self {
-            rank: Rank::Ten,
-            suit: Suit::Spade,
-        }
-    }
-
-    pub const fn jack_of_spades() -> Self {
-        Self {
-            rank: Rank::Jack,
-            suit: Suit::Spade,
-        }
-    }
-
-    pub const fn queen_of_spades() -> Self {
-        Self {
-            rank: Rank::Queen,
-            suit: Suit::Spade,
-        }
-    }
-
-    pub const fn king_of_spades() -> Self {
-        Self {
-            rank: Rank::King,
-            suit: Suit::Spade,
-        }
-    }
-
-    pub const fn ace_of_spades() -> Self {
-        Self {
-            rank: Rank::Ace,
-            suit: Suit::Spade,
+impl Ord for Card {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let rank_ordering = self.rank.cmp(&other.rank);
+        match rank_ordering {
+            Ordering::Equal => self.suit.cmp(&other.suit),
+            _ => rank_ordering,
         }
     }
 }
@@ -529,6 +201,7 @@ impl fmt::Display for Card {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use strum::IntoEnumIterator;
 
     #[test]
@@ -585,39 +258,19 @@ mod tests {
 
     #[test]
     fn cards_have_correct_string_values() {
-        let two = Rank::Two;
-        let club = Suit::Club;
-        let two_of_clubs_card = Card {
-            suit: club,
-            rank: two,
-        };
+        let two_of_clubs_card = card!(Two, Club);
         assert_eq!(two_of_clubs_card.to_string(), "2♣");
         assert_eq!(two_of_clubs_card.to_symbol(), '🃒');
 
-        let seven = Rank::Seven;
-        let diamond = Suit::Diamond;
-        let seven_of_diamonds_card = Card {
-            suit: diamond,
-            rank: seven,
-        };
+        let seven_of_diamonds_card = card!(Seven, Diamond);
         assert_eq!(seven_of_diamonds_card.to_string(), "7♦");
         assert_eq!(seven_of_diamonds_card.to_symbol(), '🃇');
 
-        let king = Rank::King;
-        let heart = Suit::Heart;
-        let king_of_hearts_card = Card {
-            suit: heart,
-            rank: king,
-        };
+        let king_of_hearts_card = card!(King, Heart);
         assert_eq!(king_of_hearts_card.to_string(), "K♥");
         assert_eq!(king_of_hearts_card.to_symbol(), '🂾');
 
-        let ace = Rank::Ace;
-        let spade = Suit::Spade;
-        let ace_of_spades_card = Card {
-            suit: spade,
-            rank: ace,
-        };
+        let ace_of_spades_card = card!(Ace, Spade);
         assert_eq!(ace_of_spades_card.to_string(), "A♠");
         assert_eq!(ace_of_spades_card.to_symbol(), '🂡');
     }
