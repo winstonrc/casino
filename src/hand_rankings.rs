@@ -272,10 +272,10 @@ fn check_for_straight(cards: &Vec<Card>) -> Option<[Card; 5]> {
     // Check for a straight containing an Ace if an Ace is present
     if contains_ace {
         // Check for Ace-low straight
-        if cards[cards.len() - 5].rank == Rank::Two
-            && cards[cards.len() - 4].rank == Rank::Three
-            && cards[cards.len() - 3].rank == Rank::Four
-            && cards[cards.len() - 2].rank == Rank::Five
+        if cards[0].rank == Rank::Two
+            && cards[1].rank == Rank::Three
+            && cards[2].rank == Rank::Four
+            && cards[3].rank == Rank::Five
             && cards[cards.len() - 1].rank == Rank::Ace
         {
             return Some([
@@ -809,7 +809,7 @@ mod tests {
         let hand_rank = rank_hand(cards);
         assert_eq!(hand_rank, straight);
 
-        // Picks out the higher Straight of 3, 4, 5, 6, 7 over the lower Straight of 2, 3, 4, 5, 6
+        // Pick out the higher Straight of 3, 4, 5, 6, 7 over the lower Straight of 2, 3, 4, 5, 6
         let cards2: Vec<Card> = vec![
             two_of_diamonds,
             three_of_clubs,
@@ -829,6 +829,7 @@ mod tests {
         let three_of_hearts = Card::three_of_hearts();
         let four_of_spades = Card::four_of_spades();
         let five_of_hearts = Card::five_of_hearts();
+        let six_of_diamonds = Card::six_of_diamonds();
         let seven_of_diamonds = Card::seven_of_diamonds();
         let ace_of_spades = Card::ace_of_spades();
 
@@ -864,6 +865,28 @@ mod tests {
 
         let hand_rank2 = rank_hand(cards2);
         assert_eq!(hand_rank2, ace_low_straight);
+
+        // Pick out the higher Straight of 2, 3, 4, 5, 6 over the lower Ace-low Straight
+        let non_ace_low_straight = HandRank::Straight([
+            two_of_clubs,
+            three_of_hearts,
+            four_of_spades,
+            five_of_hearts,
+            six_of_diamonds,
+        ]);
+
+        let cards3: Vec<Card> = vec![
+            two_of_clubs,
+            three_of_hearts,
+            four_of_spades,
+            five_of_hearts,
+            six_of_diamonds,
+            seven_of_diamonds,
+            ace_of_spades,
+        ];
+
+        let hand_rank3 = rank_hand(cards3);
+        assert_eq!(hand_rank3, non_ace_low_straight);
     }
 
     #[test]
