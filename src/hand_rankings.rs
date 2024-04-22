@@ -1,6 +1,7 @@
-use cards::card::{Card, Rank, Suit};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
+
+use cards::card::{Card, Rank, Suit};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 pub enum HandRank {
@@ -208,12 +209,10 @@ fn check_for_two_pair(cards: &Vec<Card>) -> Option<[Card; 4]> {
             ];
 
             return Some(two_pair);
-        } else {
-            return None;
         }
-    } else {
-        return None;
     }
+
+    None
 }
 
 /// Checks if the provided cards contain a HandRank::ThreeOfAKind.
@@ -244,7 +243,7 @@ fn check_for_three_of_a_kind(cards: &Vec<Card>) -> Option<[Card; 3]> {
 
 /// Checks if the provided cards contain a HandRank::Straight.
 ///
-/// This also checks for both Ace low and Ace high when determining if a straight is present.
+/// This checks for both Ace-low and Ace-high when an Ace is present.
 ///
 /// Returns: An Option containing the relevant cards if any.
 ///
@@ -258,36 +257,47 @@ fn check_for_straight(cards: &Vec<Card>) -> Option<[Card; 5]> {
         return None;
     }
 
-    let sorted_cards = sort_cards_by_rank(cards);
+    let mut sorted_cards = cards.clone();
+    sorted_cards.sort();
 
-    // Check if the cards have an Ace
-    let contains_ace = sorted_cards.iter().any(|&card| card.rank == Rank::Ace);
+    let mut straight_cards: Vec<Card> = Vec::new();
 
-    if contains_ace {
-        // todo: implement Ace-high / Ace-low logic
-    } else {
-        // todo: implement
+    for i in 1..sorted_cards.len() {
+        if sorted_cards[i].rank.value() == sorted_cards[i - 1].rank.value() + 1 {
+            straight_cards.push(sorted_cards[i]);
+        } else {
+            // Check if the current card is not part of a sequence and happens to equal previous card.
+            if sorted_cards[i].rank.value() != sorted_cards[i - 1].rank.value() {
+                straight_cards.clear();
+                straight_cards.push(sorted_cards[i]);
+            }
+        }
+
+        if straight_cards.len() == 5 {
+            // Since the Ace is Ace-high by default, we only need special consideration for Ace-low.
+            if straight_cards[4].rank == Rank::Ace && straight_cards[0].rank == Rank::Two {
+                // Ace-low straight
+                return Some([
+                    straight_cards[4],
+                    straight_cards[0],
+                    straight_cards[1],
+                    straight_cards[2],
+                    straight_cards[3],
+                ]);
+            }
+
+            // Normal or Ace-high straight
+            return Some([
+                straight_cards[0],
+                straight_cards[1],
+                straight_cards[2],
+                straight_cards[3],
+                straight_cards[4],
+            ]);
+        }
     }
 
     None
-}
-
-// todo: implement
-/// This sorts the cards by their rank to assist in determining straights.
-///
-/// Returns: A new Vec<Card> that represents the provided Vec<Card> in a sorted order.
-///
-/// Note: This method sorts Aces as high and requires other methods to implement
-/// configuring Aces as low if needed.
-fn sort_cards_by_rank(cards: &Vec<Card>) -> Vec<Card> {
-    let mut sorted_cards: Vec<Card> = Vec::new();
-
-    // todo: implement sorting
-    for &card in cards.iter() {
-        sorted_cards.push(card.clone());
-    }
-
-    sorted_cards
 }
 
 /// Checks if the provided cards contain a HandRank::Flush.
@@ -326,7 +336,45 @@ fn check_for_full_house(cards: &Vec<Card>) -> Option<[Card; 5]> {
         return None;
     }
 
-    // todo: implement
+    // Retrieve the highest pair
+    let three_of_a_kind = check_for_three_of_a_kind(cards);
+
+    // If there is a highest pair then check for a second highest pair.
+    // If not, then exit the function.
+    if let Some(three_of_a_kind_cards) = three_of_a_kind {
+        let three_of_a_kind_card1 = three_of_a_kind_cards[0];
+        let three_of_a_kind_card2 = three_of_a_kind_cards[1];
+        let three_of_a_kind_card3 = three_of_a_kind_cards[2];
+
+        // Remove the three of a kind so that calling check_for_pair will now return the pair.
+        let mut reduced_cards = cards.clone();
+        reduced_cards.retain(|&card| {
+            card != three_of_a_kind_card1
+                && card != three_of_a_kind_card2
+                && card != three_of_a_kind_card3
+        });
+
+        // Retrieve the second highest pair
+        let pair_cards = check_for_pair(&reduced_cards);
+
+        // If there is a second highest pair then return the two pairs.
+        // If not, then exit the function.
+        if let Some(pair_cards) = pair_cards {
+            let pair_card1 = pair_cards[0];
+            let pair_card2 = pair_cards[1];
+
+            // Return both pairs, highest-to-lowest
+            let full_house = [
+                three_of_a_kind_card1,
+                three_of_a_kind_card2,
+                three_of_a_kind_card3,
+                pair_card1,
+                pair_card2,
+            ];
+
+            return Some(full_house);
+        }
+    }
 
     None
 }
@@ -373,6 +421,11 @@ fn check_for_straight_flush(cards: &Vec<Card>) -> Option<[Card; 5]> {
 
     let straight_cards = check_for_straight(cards);
     let flush_cards = check_for_flush(cards);
+
+    // Flush cards need to be sorted to be compared with the straight cards, which have been sorted.
+    if flush_cards.is_some() {
+        flush_cards.unwrap().sort();
+    }
 
     // Check if both a straight and a flush are present
     if let (Some(straight_cards), Some(flush_cards)) = (straight_cards, flush_cards) {
@@ -719,6 +772,7 @@ mod tests {
         let queen_of_clubs = Card::queen_of_clubs();
         let nine_of_clubs = Card::nine_of_clubs();
         let eight_of_clubs = Card::eight_of_clubs();
+        let two_of_diamonds = Card::two_of_diamonds();
         let two_of_clubs = Card::two_of_clubs();
 
         let cards: Vec<Card> = vec![
@@ -726,6 +780,7 @@ mod tests {
             queen_of_clubs,
             nine_of_clubs,
             eight_of_clubs,
+            two_of_diamonds,
             two_of_clubs,
         ];
 
@@ -809,7 +864,7 @@ mod tests {
         ];
 
         let hand_rank = rank_hand(cards);
-        let straight_flush = HandRank::Straight([
+        let straight_flush = HandRank::StraightFlush([
             two_of_spades,
             three_of_spades,
             four_of_spades,
