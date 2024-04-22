@@ -640,8 +640,41 @@ mod tests {
         assert!(straight_flush < royal_flush);
     }
 
+    /// Tests get_high_card_value().
+    ///
+    /// Tests if a High Card is correctly identified.
     #[test]
-    fn high_card_is_ranked_correctly() {
+    fn get_high_card_value_works() {
+        let two_of_spades = Card::two_of_spades();
+        let four_of_hearts = Card::four_of_hearts();
+        let seven_of_diamonds = Card::seven_of_diamonds();
+        let ten_of_clubs = Card::ten_of_clubs();
+        let king_of_clubs = Card::king_of_clubs();
+
+        let high_card = HandRank::HighCard(king_of_clubs);
+
+        let mut cards: Vec<Card> = vec![
+            ten_of_clubs,
+            four_of_hearts,
+            seven_of_diamonds,
+            king_of_clubs,
+            two_of_spades,
+        ];
+        cards.sort();
+
+        if let Some(cards) = get_high_card_value(&cards) {
+            let identified_high_card = HandRank::HighCard(cards);
+            assert_eq!(identified_high_card, high_card);
+        } else {
+            panic!("Expected a High Card, but none was found.");
+        }
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a hand containing a High Card is ranked correctly.
+    #[test]
+    fn rank_hand_high_card_works() {
         let two_of_spades = Card::two_of_spades();
         let four_of_hearts = Card::four_of_hearts();
         let seven_of_diamonds = Card::seven_of_diamonds();
@@ -662,8 +695,61 @@ mod tests {
         assert_eq!(hand_rank, high_card);
     }
 
+    /// Tests check_for_pair().
+    ///
+    /// Tests if a Pair is correctly identified.
     #[test]
-    fn pair_is_ranked_correctly() {
+    fn check_for_pair_works() {
+        let two_of_clubs = Card::two_of_clubs();
+        let five_of_spades = Card::five_of_spades();
+        let seven_of_diamonds = Card::seven_of_diamonds();
+        let king_of_clubs = Card::king_of_clubs();
+        let king_of_hearts = Card::king_of_hearts();
+        let ace_of_spades = Card::ace_of_spades();
+
+        let pair = HandRank::Pair([king_of_clubs, king_of_hearts]);
+
+        // Base case
+        let mut cards: Vec<Card> = vec![
+            king_of_clubs,
+            king_of_hearts,
+            seven_of_diamonds,
+            two_of_clubs,
+            five_of_spades,
+        ];
+        cards.sort();
+
+        if let Some(cards) = check_for_pair(&cards) {
+            let identified_pair = HandRank::Pair(cards);
+            assert_eq!(identified_pair, pair);
+        } else {
+            panic!("Expected a Pair, but none was found.");
+        };
+
+        // Tests that the Pair is identified over the High Card.
+        let mut cards2: Vec<Card> = vec![
+            king_of_clubs,
+            king_of_hearts,
+            seven_of_diamonds,
+            two_of_clubs,
+            five_of_spades,
+            ace_of_spades,
+        ];
+        cards2.sort();
+
+        if let Some(cards) = check_for_pair(&cards2) {
+            let identified_pair = HandRank::Pair(cards);
+            assert_eq!(identified_pair, pair);
+        } else {
+            panic!("Expected a Pair, but none was found.");
+        };
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a hand containing a Pair is ranked correctly.
+    #[test]
+    fn rank_hand_pair_works() {
         let two_of_clubs = Card::two_of_clubs();
         let five_of_spades = Card::five_of_spades();
         let seven_of_diamonds = Card::seven_of_diamonds();
@@ -685,7 +771,7 @@ mod tests {
         let hand_rank = rank_hand(cards);
         assert_eq!(hand_rank, pair);
 
-        // Pick out the Pair over the High Card
+        // Tests that the Pair is identified over the High Card.
         let cards2: Vec<Card> = vec![
             king_of_clubs,
             king_of_hearts,
@@ -698,8 +784,65 @@ mod tests {
         assert_eq!(hand_rank2, pair);
     }
 
+    /// Tests check_for_two_pair().
+    ///
+    /// Tests if a Pair is correctly identified.
     #[test]
-    fn two_pair_is_ranked_correctly() {
+    fn check_for_two_pair_works() {
+        let five_of_clubs = Card::five_of_clubs();
+        let five_of_spades = Card::five_of_spades();
+        let seven_of_clubs = Card::seven_of_clubs();
+        let seven_of_diamonds = Card::seven_of_diamonds();
+        let king_of_clubs = Card::king_of_clubs();
+        let king_of_hearts = Card::king_of_hearts();
+
+        let two_pair = HandRank::TwoPair([
+            king_of_clubs,
+            king_of_hearts,
+            seven_of_clubs,
+            seven_of_diamonds,
+        ]);
+
+        let mut cards: Vec<Card> = vec![
+            king_of_clubs,
+            king_of_hearts,
+            seven_of_diamonds,
+            seven_of_clubs,
+            five_of_spades,
+        ];
+        cards.sort();
+
+        if let Some(cards) = check_for_two_pair(&cards) {
+            let identified_two_pair = HandRank::TwoPair(cards);
+            assert_eq!(identified_two_pair, two_pair);
+        } else {
+            panic!("Expected a Two Pair, but none was found.");
+        };
+
+        // Tests that the higher Two Pair of Ks & 7s is identified over the lower Two Pair of 5s.
+        let mut cards2: Vec<Card> = vec![
+            king_of_clubs,
+            king_of_hearts,
+            seven_of_diamonds,
+            seven_of_clubs,
+            five_of_spades,
+            five_of_clubs,
+        ];
+        cards2.sort();
+
+        if let Some(cards) = check_for_two_pair(&cards2) {
+            let identified_two_pair = HandRank::TwoPair(cards);
+            assert_eq!(identified_two_pair, two_pair);
+        } else {
+            panic!("Expected a Two Pair, but none was found.");
+        };
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a hand containing a Pair is ranked correctly.
+    #[test]
+    fn rank_hand_two_pair_works() {
         let five_of_clubs = Card::five_of_clubs();
         let five_of_spades = Card::five_of_spades();
         let seven_of_clubs = Card::seven_of_clubs();
@@ -726,7 +869,7 @@ mod tests {
         let hand_rank = rank_hand(cards);
         assert_eq!(hand_rank, two_pair);
 
-        // Pick out the higher Two Pair of Ks & 7s over the lower Two Pair of 5s
+        // Tests that the higher Two Pair of Ks & 7s is identified over the lower Two Pair of 5s.
         let cards2: Vec<Card> = vec![
             king_of_clubs,
             king_of_hearts,
@@ -740,8 +883,64 @@ mod tests {
         assert_eq!(hand_rank2, two_pair);
     }
 
+    /// Tests check_for_three_of_a_kind().
+    ///
+    /// Tests if a Pair is correctly identified.
     #[test]
-    fn three_of_a_kind_is_ranked_correctly() {
+    fn check_for_three_of_a_kind_works() {
+        let five_of_spades = Card::five_of_spades();
+        let seven_of_clubs = Card::seven_of_clubs();
+        let seven_of_diamonds = Card::seven_of_diamonds();
+        let seven_of_spades = Card::seven_of_spades();
+        let king_of_clubs = Card::king_of_clubs();
+        let king_of_diamonds = Card::king_of_diamonds();
+        let king_of_hearts = Card::king_of_hearts();
+
+        let three_of_a_kind =
+            HandRank::ThreeOfAKind([king_of_clubs, king_of_diamonds, king_of_hearts]);
+
+        // Base case
+        let mut cards: Vec<Card> = vec![
+            king_of_clubs,
+            king_of_hearts,
+            king_of_diamonds,
+            seven_of_clubs,
+            five_of_spades,
+        ];
+        cards.sort();
+
+        if let Some(cards) = check_for_three_of_a_kind(&cards) {
+            let identified_three_of_a_kind = HandRank::ThreeOfAKind(cards);
+            assert_eq!(identified_three_of_a_kind, three_of_a_kind);
+        } else {
+            panic!("Expected a Three of a Kind, but none was found.");
+        };
+
+        // Tests that the higher Three of a Kind of Ks is identified over the lower Three of a Kind of 7s.
+        let mut cards2: Vec<Card> = vec![
+            king_of_clubs,
+            king_of_hearts,
+            king_of_diamonds,
+            seven_of_clubs,
+            five_of_spades,
+            seven_of_diamonds,
+            seven_of_spades,
+        ];
+        cards2.sort();
+
+        if let Some(cards) = check_for_three_of_a_kind(&cards2) {
+            let identified_three_of_a_kind = HandRank::ThreeOfAKind(cards);
+            assert_eq!(identified_three_of_a_kind, three_of_a_kind);
+        } else {
+            panic!("Expected a Three of a Kind, but none was found.");
+        };
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a hand containing a Pair is ranked correctly.
+    #[test]
+    fn rank_hand_three_of_a_kind_works() {
         let five_of_spades = Card::five_of_spades();
         let seven_of_clubs = Card::seven_of_clubs();
         let seven_of_diamonds = Card::seven_of_diamonds();
@@ -765,7 +964,7 @@ mod tests {
         let hand_rank = rank_hand(cards);
         assert_eq!(hand_rank, three_of_a_kind);
 
-        // Pick out the higher Three of a Kind of Ks over the lower Three of a Kind of 7s
+        // Tests that the higher Three of a Kind of Ks is identified over the lower Three of a Kind of 7s.
         let cards2: Vec<Card> = vec![
             king_of_clubs,
             king_of_hearts,
@@ -780,8 +979,67 @@ mod tests {
         assert_eq!(hand_rank2, three_of_a_kind);
     }
 
+    /// Tests check_for_straight().
+    ///
+    /// Tests if a Straight is correctly identified.
     #[test]
-    fn straight_is_ranked_correctly() {
+    fn check_for_straight_works() {
+        let two_of_diamonds = Card::two_of_diamonds();
+        let three_of_clubs = Card::three_of_clubs();
+        let four_of_hearts = Card::four_of_hearts();
+        let five_of_diamonds = Card::five_of_diamonds();
+        let six_of_clubs = Card::six_of_clubs();
+        let seven_of_spades = Card::seven_of_spades();
+
+        let straight = HandRank::Straight([
+            three_of_clubs,
+            four_of_hearts,
+            five_of_diamonds,
+            six_of_clubs,
+            seven_of_spades,
+        ]);
+
+        // Base case
+        let mut cards: Vec<Card> = vec![
+            three_of_clubs,
+            four_of_hearts,
+            five_of_diamonds,
+            six_of_clubs,
+            seven_of_spades,
+        ];
+        cards.sort();
+
+        if let Some(cards) = check_for_straight(&cards) {
+            let identified_straight = HandRank::Straight(cards);
+            assert_eq!(identified_straight, straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+
+        // Tests that the higher Straight of 3, 4, 5, 6, 7 is identified over the lower Straight of 2, 3, 4, 5, 6.
+        let mut cards2: Vec<Card> = vec![
+            two_of_diamonds,
+            three_of_clubs,
+            four_of_hearts,
+            five_of_diamonds,
+            six_of_clubs,
+            seven_of_spades,
+        ];
+        cards2.sort();
+
+        if let Some(cards) = check_for_straight(&cards2) {
+            let identified_straight = HandRank::Straight(cards);
+            assert_eq!(identified_straight, straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a hand containing a Straight is ranked correctly.
+    #[test]
+    fn rank_hand_straight_works() {
         let two_of_diamonds = Card::two_of_diamonds();
         let three_of_clubs = Card::three_of_clubs();
         let four_of_hearts = Card::four_of_hearts();
@@ -809,7 +1067,7 @@ mod tests {
         let hand_rank = rank_hand(cards);
         assert_eq!(hand_rank, straight);
 
-        // Pick out the higher Straight of 3, 4, 5, 6, 7 over the lower Straight of 2, 3, 4, 5, 6
+        // Tests that the higher Straight of 3, 4, 5, 6, 7 is identified over the lower Straight of 2, 3, 4, 5, 6.
         let cards2: Vec<Card> = vec![
             two_of_diamonds,
             three_of_clubs,
@@ -823,14 +1081,113 @@ mod tests {
         assert_eq!(hand_rank2, straight);
     }
 
+    /// Tests check_for_straight().
+    ///
+    /// Tests if an Ace-low Straight is correctly identified.
     #[test]
-    fn ace_low_straight_is_ranked_correctly() {
+    fn check_for_straight_ace_low_straight_works() {
         let two_of_clubs = Card::two_of_clubs();
         let three_of_hearts = Card::three_of_hearts();
         let four_of_spades = Card::four_of_spades();
         let five_of_hearts = Card::five_of_hearts();
         let six_of_diamonds = Card::six_of_diamonds();
         let seven_of_diamonds = Card::seven_of_diamonds();
+        let eight_of_clubs = Card::eight_of_clubs();
+        let ace_of_spades = Card::ace_of_spades();
+
+        let ace_low_straight = HandRank::Straight([
+            ace_of_spades,
+            two_of_clubs,
+            three_of_hearts,
+            four_of_spades,
+            five_of_hearts,
+        ]);
+
+        // Base case
+        let mut cards: Vec<Card> = vec![
+            two_of_clubs,
+            three_of_hearts,
+            four_of_spades,
+            five_of_hearts,
+            ace_of_spades,
+        ];
+        cards.sort();
+
+        if let Some(cards) = check_for_straight(&cards) {
+            let identified_straight = HandRank::Straight(cards);
+            assert_eq!(identified_straight, ace_low_straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+
+        // Tests that the 7♦ is ignored, and the Ace-low Straight is identified.
+        let mut cards2: Vec<Card> = vec![
+            two_of_clubs,
+            three_of_hearts,
+            four_of_spades,
+            five_of_hearts,
+            seven_of_diamonds,
+            ace_of_spades,
+        ];
+        cards2.sort();
+
+        if let Some(cards) = check_for_straight(&cards2) {
+            let identified_straight = HandRank::Straight(cards);
+            assert_eq!(identified_straight, ace_low_straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+
+        // Tests that the 7♦ & 8♣ are ignored, and the Ace-low Straight is identified.
+        let mut cards3: Vec<Card> = vec![
+            two_of_clubs,
+            three_of_hearts,
+            four_of_spades,
+            five_of_hearts,
+            seven_of_diamonds,
+            eight_of_clubs,
+            ace_of_spades,
+        ];
+        cards3.sort();
+
+        if let Some(cards) = check_for_straight(&cards3) {
+            let identified_straight = HandRank::Straight(cards);
+            assert_eq!(identified_straight, ace_low_straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+
+        // Tests that an Ace-low Straight is ignored, and a higher Straight is identified.
+        let mut cards4: Vec<Card> = vec![
+            two_of_clubs,
+            three_of_hearts,
+            four_of_spades,
+            five_of_hearts,
+            six_of_diamonds,
+            ace_of_spades,
+        ];
+        cards4.sort();
+
+        if let Some(cards) = check_for_straight(&cards4) {
+            let identified_straight = HandRank::Straight(cards);
+            assert_eq!(identified_straight, ace_low_straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a hand containing an Ace-low Straight is ranked correctly.
+    #[test]
+    fn rank_hand_ace_low_straight_works() {
+        let two_of_clubs = Card::two_of_clubs();
+        let three_of_hearts = Card::three_of_hearts();
+        let four_of_spades = Card::four_of_spades();
+        let five_of_hearts = Card::five_of_hearts();
+        let six_of_diamonds = Card::six_of_diamonds();
+        let seven_of_diamonds = Card::seven_of_diamonds();
+        let eight_of_clubs = Card::eight_of_clubs();
         let ace_of_spades = Card::ace_of_spades();
 
         let ace_low_straight = HandRank::Straight([
@@ -853,7 +1210,7 @@ mod tests {
         let hand_rank = rank_hand(cards);
         assert_eq!(hand_rank, ace_low_straight);
 
-        // Ignore the 7♦ & pick out the Ace-low Straight
+        // Tests that the 7♦ is ignored, and the Ace-low Straight is identified.
         let cards2: Vec<Card> = vec![
             two_of_clubs,
             three_of_hearts,
@@ -866,31 +1223,95 @@ mod tests {
         let hand_rank2 = rank_hand(cards2);
         assert_eq!(hand_rank2, ace_low_straight);
 
-        // Pick out the higher Straight of 2, 3, 4, 5, 6 over the lower Ace-low Straight
-        let non_ace_low_straight = HandRank::Straight([
-            two_of_clubs,
-            three_of_hearts,
-            four_of_spades,
-            five_of_hearts,
-            six_of_diamonds,
-        ]);
-
+        // Tests that the 7♦ & 8♣ are ignored, and the Ace-low Straight is identified.
         let cards3: Vec<Card> = vec![
             two_of_clubs,
             three_of_hearts,
             four_of_spades,
             five_of_hearts,
-            six_of_diamonds,
             seven_of_diamonds,
+            eight_of_clubs,
             ace_of_spades,
         ];
 
         let hand_rank3 = rank_hand(cards3);
-        assert_eq!(hand_rank3, non_ace_low_straight);
+        assert_eq!(hand_rank3, ace_low_straight);
+
+        // Tests that an Ace-low Straight is ignored, and a higher Straight is identified.
+        let cards4: Vec<Card> = vec![
+            two_of_clubs,
+            three_of_hearts,
+            four_of_spades,
+            five_of_hearts,
+            six_of_diamonds,
+            ace_of_spades,
+        ];
+
+        let hand_rank4 = rank_hand(cards4);
+        assert_eq!(hand_rank4, ace_low_straight);
     }
 
+    /// Tests check_for_straight().
+    ///
+    /// Tests if an Ace-high Straight is correctly identified.
     #[test]
-    fn ace_high_straight_is_ranked_correctly() {
+    fn check_for_straight_ace_high_straight_works() {
+        let nine_of_diamonds = Card::nine_of_diamonds();
+        let ten_of_clubs = Card::ten_of_clubs();
+        let jack_of_hearts = Card::jack_of_hearts();
+        let queen_of_spades = Card::queen_of_spades();
+        let king_of_hearts = Card::king_of_hearts();
+        let ace_of_spades = Card::ace_of_spades();
+
+        let ace_high_straight = HandRank::Straight([
+            ten_of_clubs,
+            jack_of_hearts,
+            queen_of_spades,
+            king_of_hearts,
+            ace_of_spades,
+        ]);
+
+        // Base case
+        let mut cards: Vec<Card> = vec![
+            ten_of_clubs,
+            jack_of_hearts,
+            queen_of_spades,
+            king_of_hearts,
+            ace_of_spades,
+        ];
+        cards.sort();
+
+        if let Some(cards) = check_for_straight(&cards) {
+            let identified_straight = HandRank::Straight(cards);
+            assert_eq!(identified_straight, ace_high_straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+
+        // Tests that the higher Straight of 10, J, Q, K, Ace is identified over the lower Straight of 9, 10, J, Q, K.
+        let mut cards2: Vec<Card> = vec![
+            nine_of_diamonds,
+            ten_of_clubs,
+            jack_of_hearts,
+            queen_of_spades,
+            king_of_hearts,
+            ace_of_spades,
+        ];
+        cards2.sort();
+
+        if let Some(cards) = check_for_straight(&cards2) {
+            let identified_straight = HandRank::Straight(cards);
+            assert_eq!(identified_straight, ace_high_straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a hand containing an Ace-high Straight is ranked correctly.
+    #[test]
+    fn rank_hand_ace_high_straight_works() {
         let nine_of_diamonds = Card::nine_of_diamonds();
         let ten_of_clubs = Card::ten_of_clubs();
         let jack_of_hearts = Card::jack_of_hearts();
@@ -918,7 +1339,7 @@ mod tests {
         let hand_rank = rank_hand(cards);
         assert_eq!(hand_rank, ace_high_straight);
 
-        // Pick out the higher Straight of 10, J, Q, K, Ace over the lower Straight of 9, 10, J, Q, K
+        // Tests that the higher Straight of 10, J, Q, K, Ace is identified over the lower Straight of 9, 10, J, Q, K.
         let cards2: Vec<Card> = vec![
             nine_of_diamonds,
             ten_of_clubs,
@@ -932,8 +1353,77 @@ mod tests {
         assert_eq!(hand_rank2, ace_high_straight);
     }
 
+    /// Tests check_for_flush().
+    ///
+    /// Tests if a Flush is correctly identified.
     #[test]
-    fn flush_is_ranked_correctly() {
+    fn check_for_flush_works() {
+        let two_of_clubs = Card::two_of_clubs();
+        let two_of_diamonds = Card::two_of_diamonds();
+        let three_of_clubs = Card::three_of_clubs();
+        let eight_of_clubs = Card::eight_of_clubs();
+        let nine_of_clubs = Card::nine_of_clubs();
+        let queen_of_clubs = Card::queen_of_clubs();
+        let king_of_clubs = Card::king_of_clubs();
+
+        let flush = HandRank::Flush([
+            two_of_clubs,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ]);
+
+        // Base case
+        let mut cards: Vec<Card> = vec![
+            king_of_clubs,
+            queen_of_clubs,
+            nine_of_clubs,
+            eight_of_clubs,
+            two_of_clubs,
+        ];
+        cards.sort();
+
+        if let Some(cards) = check_for_flush(&cards) {
+            let identified_flush = HandRank::Flush(cards);
+            assert_eq!(identified_flush, flush);
+        } else {
+            panic!("Expected a Flush, but none was found.");
+        }
+
+        let flush2 = HandRank::Flush([
+            three_of_clubs,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ]);
+
+        // Tests that the higher Flush of 3♣, 8♣, 9♣, Q♣, K♣ is identified over the lower Flush of 2♣, 3♣, 8♣, 9♣, Q♣.
+        let mut cards2: Vec<Card> = vec![
+            king_of_clubs,
+            queen_of_clubs,
+            nine_of_clubs,
+            eight_of_clubs,
+            two_of_clubs,
+            two_of_diamonds,
+            three_of_clubs,
+        ];
+        cards2.sort();
+
+        if let Some(cards) = check_for_flush(&cards2) {
+            let identified_flush = HandRank::Flush(cards);
+            assert_eq!(identified_flush, flush2);
+        } else {
+            panic!("Expected a Flush, but none was found.");
+        }
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a hand containing a Flush is ranked correctly.
+    #[test]
+    fn rank_hand_flush_works() {
         let two_of_clubs = Card::two_of_clubs();
         let two_of_diamonds = Card::two_of_diamonds();
         let three_of_clubs = Card::three_of_clubs();
@@ -970,7 +1460,7 @@ mod tests {
             king_of_clubs,
         ]);
 
-        // Pick out the higher Flush of 3♣, 8♣, 9♣, Q♣, K♣ over the lower Flush of 2♣, 3♣, 8♣, 9♣, Q♣
+        // Tests that the higher Flush of 3♣, 8♣, 9♣, Q♣, K♣ is identified over the lower Flush of 2♣, 3♣, 8♣, 9♣, Q♣.
         let cards2: Vec<Card> = vec![
             king_of_clubs,
             queen_of_clubs,
@@ -985,8 +1475,69 @@ mod tests {
         assert_eq!(hand_rank2, flush2);
     }
 
+    /// Tests check_for_full_house().
+    ///
+    /// Tests if a Full House is correctly identified.
     #[test]
-    fn full_house_is_ranked_correctly() {
+    fn check_for_full_house_works() {
+        let three_of_clubs = Card::three_of_clubs();
+        let three_of_spades = Card::three_of_spades();
+        let seven_of_clubs = Card::seven_of_clubs();
+        let seven_of_spades = Card::seven_of_spades();
+        let king_of_clubs = Card::king_of_clubs();
+        let king_of_diamonds = Card::king_of_diamonds();
+        let king_of_hearts = Card::king_of_hearts();
+
+        let full_house = HandRank::FullHouse([
+            king_of_clubs,
+            king_of_diamonds,
+            king_of_hearts,
+            seven_of_clubs,
+            seven_of_spades,
+        ]);
+
+        // Base case
+        let mut cards: Vec<Card> = vec![
+            king_of_clubs,
+            king_of_hearts,
+            king_of_diamonds,
+            seven_of_clubs,
+            seven_of_spades,
+        ];
+        cards.sort();
+
+        if let Some(cards) = check_for_full_house(&cards) {
+            let identified_full_house = HandRank::FullHouse(cards);
+            assert_eq!(identified_full_house, full_house);
+        } else {
+            panic!("Expected a Full House, but none was found.");
+        }
+
+        // Tests that the higher Full House consisting of Ks & 7s is identified over the lower Full House containing 3s.
+        let mut cards2: Vec<Card> = vec![
+            three_of_clubs,
+            three_of_spades,
+            king_of_clubs,
+            king_of_hearts,
+            king_of_diamonds,
+            seven_of_clubs,
+            seven_of_spades,
+        ];
+        cards2.sort();
+
+        if let Some(cards) = check_for_full_house(&cards2) {
+            let identified_full_house = HandRank::FullHouse(cards);
+            assert_eq!(identified_full_house, full_house);
+        } else {
+            panic!("Expected a Full House, but none was found.");
+        }
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a hand containing a Full House is ranked correctly.
+    #[test]
+    fn rank_hand_full_house_works() {
         let three_of_clubs = Card::three_of_clubs();
         let three_of_spades = Card::three_of_spades();
         let seven_of_clubs = Card::seven_of_clubs();
@@ -1015,7 +1566,7 @@ mod tests {
         let hand_rank = rank_hand(cards);
         assert_eq!(hand_rank, full_house);
 
-        // Pick out the higher Full House consisting of Ks & 7s over the 3s
+        // Tests that the higher Full House consisting of Ks & 7s is identified over the lower Full House containing 3s.
         let cards2: Vec<Card> = vec![
             three_of_clubs,
             three_of_spades,
@@ -1030,8 +1581,67 @@ mod tests {
         assert_eq!(hand_rank2, full_house);
     }
 
+    /// Tests check_for_four_of_a_kind().
+    ///
+    /// Tests if a Four of a Kind is correctly identified.
     #[test]
-    fn four_of_a_kind_is_ranked_correctly() {
+    fn check_for_four_of_a_kind_works() {
+        let six_of_clubs = Card::six_of_clubs();
+        let six_of_diamonds = Card::six_of_diamonds();
+        let six_of_hearts = Card::six_of_hearts();
+        let six_of_spades = Card::six_of_spades();
+        let king_of_clubs = Card::king_of_clubs();
+        let king_of_hearts = Card::king_of_hearts();
+        let king_of_spades = Card::king_of_spades();
+
+        let four_of_a_kind =
+            HandRank::FourOfAKind([six_of_clubs, six_of_diamonds, six_of_hearts, six_of_spades]);
+
+        // Base case
+        let mut cards: Vec<Card> = vec![
+            six_of_spades,
+            six_of_diamonds,
+            six_of_hearts,
+            six_of_clubs,
+            king_of_spades,
+        ];
+        cards.sort();
+
+        if let Some(cards) = check_for_four_of_a_kind(&cards) {
+            let identified_four_of_a_kind = HandRank::FourOfAKind(cards);
+            assert_eq!(identified_four_of_a_kind, four_of_a_kind);
+        } else {
+            panic!("Expected a Four of a Kind, but none was found.");
+        }
+
+        let hand_rank = rank_hand(cards);
+        assert_eq!(hand_rank, four_of_a_kind);
+
+        // Tests that the Four of a Kind is identified over the Three of a Kind.
+        let mut cards2: Vec<Card> = vec![
+            six_of_spades,
+            six_of_diamonds,
+            six_of_hearts,
+            six_of_clubs,
+            king_of_spades,
+            king_of_clubs,
+            king_of_hearts,
+        ];
+        cards2.sort();
+
+        if let Some(cards) = check_for_four_of_a_kind(&cards2) {
+            let identified_four_of_a_kind = HandRank::FourOfAKind(cards);
+            assert_eq!(identified_four_of_a_kind, four_of_a_kind);
+        } else {
+            panic!("Expected a Four of a Kind, but none was found.");
+        }
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a hand containing a Four of a Kind is ranked correctly.
+    #[test]
+    fn rank_hand_four_of_a_kind_works() {
         let six_of_clubs = Card::six_of_clubs();
         let six_of_diamonds = Card::six_of_diamonds();
         let six_of_hearts = Card::six_of_hearts();
@@ -1055,7 +1665,7 @@ mod tests {
         let hand_rank = rank_hand(cards);
         assert_eq!(hand_rank, four_of_a_kind);
 
-        // Pick out the Four of a Kind over the Three of a Kind
+        // Tests that the Four of a Kind is identified over the Three of a Kind.
         let cards2: Vec<Card> = vec![
             six_of_spades,
             six_of_diamonds,
@@ -1070,23 +1680,18 @@ mod tests {
         assert_eq!(hand_rank2, four_of_a_kind);
     }
 
+    /// Tests check_for_straight_flush().
+    ///
+    /// Tests if a Straight Flush is correctly identified.
     #[test]
-    fn straight_flush_is_ranked_correctly() {
+    fn check_for_straight_flush_works() {
         let two_of_spades = Card::two_of_spades();
         let three_of_spades = Card::three_of_spades();
         let four_of_spades = Card::four_of_spades();
         let five_of_spades = Card::five_of_spades();
         let six_of_spades = Card::six_of_spades();
+        let seven_of_spades = Card::seven_of_spades();
 
-        let cards: Vec<Card> = vec![
-            two_of_spades,
-            three_of_spades,
-            four_of_spades,
-            five_of_spades,
-            six_of_spades,
-        ];
-
-        let hand_rank = rank_hand(cards);
         let straight_flush = HandRank::StraightFlush([
             two_of_spades,
             three_of_spades,
@@ -1095,28 +1700,115 @@ mod tests {
             six_of_spades,
         ]);
 
-        assert_eq!(hand_rank, straight_flush);
+        let mut cards: Vec<Card> = vec![
+            two_of_spades,
+            three_of_spades,
+            four_of_spades,
+            five_of_spades,
+            six_of_spades,
+        ];
+        cards.sort();
+
+        if let Some(cards) = check_for_straight_flush(&cards) {
+            let identified_straight_flush = HandRank::StraightFlush(cards);
+            assert_eq!(identified_straight_flush, straight_flush);
+        } else {
+            panic!("Expected a Straight Flush, but none was found.");
+        }
+
+        // Tests that the higher Straight of 3, 4, 5, 6, 7 is identified over the lower Straight of 2, 3, 4, 5, 6.
+        let straight_flush2 = HandRank::StraightFlush([
+            three_of_spades,
+            four_of_spades,
+            five_of_spades,
+            six_of_spades,
+            seven_of_spades,
+        ]);
+
+        let mut cards2: Vec<Card> = vec![
+            two_of_spades,
+            three_of_spades,
+            four_of_spades,
+            five_of_spades,
+            six_of_spades,
+            seven_of_spades,
+        ];
+        cards2.sort();
+
+        if let Some(cards) = check_for_straight_flush(&cards2) {
+            let identified_straight_flush = HandRank::StraightFlush(cards);
+            assert_eq!(identified_straight_flush, straight_flush2);
+        } else {
+            panic!("Expected a Straight Flush, but none was found.");
+        }
     }
 
+    /// Tests rank_hand().
+    ///
+    /// Tests if a hand containing a Straight Flush is ranked correctly.
     #[test]
-    fn ace_low_straight_flush_is_ranked_correctly() {
+    fn rank_hand_straight_flush_works() {
+        let two_of_spades = Card::two_of_spades();
+        let three_of_spades = Card::three_of_spades();
+        let four_of_spades = Card::four_of_spades();
+        let five_of_spades = Card::five_of_spades();
+        let six_of_spades = Card::six_of_spades();
+        let seven_of_spades = Card::seven_of_spades();
+
+        let straight_flush = HandRank::StraightFlush([
+            two_of_spades,
+            three_of_spades,
+            four_of_spades,
+            five_of_spades,
+            six_of_spades,
+        ]);
+
+        let cards: Vec<Card> = vec![
+            two_of_spades,
+            three_of_spades,
+            four_of_spades,
+            five_of_spades,
+            six_of_spades,
+        ];
+
+        let hand_rank = rank_hand(cards);
+        assert_eq!(hand_rank, straight_flush);
+
+        // Tests that the higher Straight of 3, 4, 5, 6, 7 is identified over the lower Straight of 2, 3, 4, 5, 6.
+        let straight_flush2 = HandRank::StraightFlush([
+            three_of_spades,
+            four_of_spades,
+            five_of_spades,
+            six_of_spades,
+            seven_of_spades,
+        ]);
+
+        let cards2: Vec<Card> = vec![
+            two_of_spades,
+            three_of_spades,
+            four_of_spades,
+            five_of_spades,
+            six_of_spades,
+            seven_of_spades,
+        ];
+
+        let hand_rank2 = rank_hand(cards2);
+        assert_eq!(hand_rank2, straight_flush2);
+    }
+
+    /// Tests check_for_straight_flush().
+    ///
+    /// Tests if an Ace-low Straight Flush is correctly identified.
+    #[test]
+    fn check_for_straight_flush_ace_low_straight_flush_works() {
         let ace_of_diamonds = Card::ace_of_diamonds();
         let two_of_diamonds = Card::two_of_diamonds();
         let three_of_diamonds = Card::three_of_diamonds();
         let four_of_diamonds = Card::four_of_diamonds();
         let five_of_diamonds = Card::five_of_diamonds();
         let seven_of_diamonds = Card::seven_of_diamonds();
+        let eight_of_diamonds = Card::eight_of_diamonds();
 
-        let cards: Vec<Card> = vec![
-            ace_of_diamonds,
-            two_of_diamonds,
-            three_of_diamonds,
-            four_of_diamonds,
-            five_of_diamonds,
-            seven_of_diamonds,
-        ];
-
-        let hand_rank = rank_hand(cards);
         let ace_low_straight_flush = HandRank::StraightFlush([
             ace_of_diamonds,
             two_of_diamonds,
@@ -1125,14 +1817,127 @@ mod tests {
             five_of_diamonds,
         ]);
 
-        assert_eq!(hand_rank, ace_low_straight_flush);
+        // Base case
+        let mut cards: Vec<Card> = vec![
+            two_of_diamonds,
+            three_of_diamonds,
+            four_of_diamonds,
+            five_of_diamonds,
+            ace_of_diamonds,
+        ];
+        cards.sort();
+
+        if let Some(cards) = check_for_straight_flush(&cards) {
+            let identified_straight_flush = HandRank::StraightFlush(cards);
+            assert_eq!(identified_straight_flush, ace_low_straight_flush);
+        } else {
+            panic!("Expected a Straight Flush, but none was found.");
+        }
+
+        // Tests that the 7♦ is ignored, and the Ace-low Straight is identified.
+        let mut cards2: Vec<Card> = vec![
+            two_of_diamonds,
+            three_of_diamonds,
+            four_of_diamonds,
+            five_of_diamonds,
+            seven_of_diamonds,
+            ace_of_diamonds,
+        ];
+        cards2.sort();
+
+        if let Some(cards) = check_for_straight_flush(&cards2) {
+            let identified_straight_flush = HandRank::StraightFlush(cards);
+            assert_eq!(identified_straight_flush, ace_low_straight_flush);
+        } else {
+            panic!("Expected a Straight Flush, but none was found.");
+        }
+
+        // Tests that the 7♦ & 8♦ are ignored, and the Ace-low Straight is identified.
+        let mut cards3: Vec<Card> = vec![
+            two_of_diamonds,
+            three_of_diamonds,
+            four_of_diamonds,
+            five_of_diamonds,
+            seven_of_diamonds,
+            eight_of_diamonds,
+            ace_of_diamonds,
+        ];
+        cards3.sort();
+
+        if let Some(cards) = check_for_straight_flush(&cards3) {
+            let identified_straight_flush = HandRank::StraightFlush(cards);
+            assert_eq!(identified_straight_flush, ace_low_straight_flush);
+        } else {
+            panic!("Expected a Straight Flush, but none was found.");
+        }
     }
 
-    #[test]
-    /// AKA Royal Flush
+    /// Tests rank_hand().
     ///
-    /// Also tests to ignore the lower straight of 9 - K
-    fn ace_high_straight_flush_aka_royal_flush_is_ranked_correctly() {
+    /// Tests if a hand containing an Ace-low Straight Flush is ranked correctly.
+    #[test]
+    fn rank_hand_ace_low_straight_flush_works() {
+        let ace_of_diamonds = Card::ace_of_diamonds();
+        let two_of_diamonds = Card::two_of_diamonds();
+        let three_of_diamonds = Card::three_of_diamonds();
+        let four_of_diamonds = Card::four_of_diamonds();
+        let five_of_diamonds = Card::five_of_diamonds();
+        let seven_of_diamonds = Card::seven_of_diamonds();
+        let eight_of_diamonds = Card::eight_of_diamonds();
+
+        let ace_low_straight_flush = HandRank::StraightFlush([
+            ace_of_diamonds,
+            two_of_diamonds,
+            three_of_diamonds,
+            four_of_diamonds,
+            five_of_diamonds,
+        ]);
+
+        // Base case
+        let cards: Vec<Card> = vec![
+            two_of_diamonds,
+            three_of_diamonds,
+            four_of_diamonds,
+            five_of_diamonds,
+            ace_of_diamonds,
+        ];
+
+        let hand_rank = rank_hand(cards);
+        assert_eq!(hand_rank, ace_low_straight_flush);
+
+        // Tests that the 7♦ is ignored, and the Ace-low Straight is identified.
+        let cards2: Vec<Card> = vec![
+            two_of_diamonds,
+            three_of_diamonds,
+            four_of_diamonds,
+            five_of_diamonds,
+            seven_of_diamonds,
+            ace_of_diamonds,
+        ];
+
+        let hand_rank2 = rank_hand(cards2);
+        assert_eq!(hand_rank2, ace_low_straight_flush);
+
+        // Tests that the 7♦ & 8♦ are ignored, and the Ace-low Straight is identified.
+        let cards3: Vec<Card> = vec![
+            two_of_diamonds,
+            three_of_diamonds,
+            four_of_diamonds,
+            five_of_diamonds,
+            seven_of_diamonds,
+            eight_of_diamonds,
+            ace_of_diamonds,
+        ];
+
+        let hand_rank3 = rank_hand(cards3);
+        assert_eq!(hand_rank3, ace_low_straight_flush);
+    }
+
+    /// Tests check_for_straight_flush().
+    ///
+    /// Tests if an Ace-high Straight Flush is correctly identified.
+    #[test]
+    fn check_for_straight_flush_ace_high_straight_flush_works() {
         let nine_of_hearts = Card::nine_of_hearts();
         let ten_of_hearts = Card::ten_of_hearts();
         let jack_of_hearts = Card::jack_of_hearts();
@@ -1140,16 +1945,6 @@ mod tests {
         let king_of_hearts = Card::king_of_hearts();
         let ace_of_hearts = Card::ace_of_hearts();
 
-        let cards: Vec<Card> = vec![
-            nine_of_hearts,
-            ten_of_hearts,
-            jack_of_hearts,
-            queen_of_hearts,
-            king_of_hearts,
-            ace_of_hearts,
-        ];
-
-        let hand_rank = rank_hand(cards);
         let ace_high_straight_flush = HandRank::StraightFlush([
             ten_of_hearts,
             jack_of_hearts,
@@ -1158,6 +1953,85 @@ mod tests {
             ace_of_hearts,
         ]);
 
+        // Base case
+        let mut cards: Vec<Card> = vec![
+            ten_of_hearts,
+            jack_of_hearts,
+            queen_of_hearts,
+            king_of_hearts,
+            ace_of_hearts,
+        ];
+        cards.sort();
+
+        if let Some(cards) = check_for_straight_flush(&cards) {
+            let identified_straight_flush = HandRank::StraightFlush(cards);
+            assert_eq!(identified_straight_flush, ace_high_straight_flush);
+        } else {
+            panic!("Expected a Straight Flush, but none was found.");
+        }
+
+        // Tests that the higher Straight Flush of 10-A is identified over the lower Straight Flush of 9 - K.
+        let mut cards2: Vec<Card> = vec![
+            nine_of_hearts,
+            ten_of_hearts,
+            jack_of_hearts,
+            queen_of_hearts,
+            king_of_hearts,
+            ace_of_hearts,
+        ];
+        cards2.sort();
+
+        if let Some(cards) = check_for_straight_flush(&cards2) {
+            let identified_straight_flush = HandRank::StraightFlush(cards);
+            assert_eq!(identified_straight_flush, ace_high_straight_flush);
+        } else {
+            panic!("Expected a Straight Flush, but none was found.");
+        }
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a hand containing an Ace-high Straight Flush (aka Royal Flush) is ranked correctly.
+    #[test]
+    fn rank_hand_ace_high_straight_flush_aka_royal_flush_works() {
+        let nine_of_hearts = Card::nine_of_hearts();
+        let ten_of_hearts = Card::ten_of_hearts();
+        let jack_of_hearts = Card::jack_of_hearts();
+        let queen_of_hearts = Card::queen_of_hearts();
+        let king_of_hearts = Card::king_of_hearts();
+        let ace_of_hearts = Card::ace_of_hearts();
+
+        let ace_high_straight_flush = HandRank::StraightFlush([
+            ten_of_hearts,
+            jack_of_hearts,
+            queen_of_hearts,
+            king_of_hearts,
+            ace_of_hearts,
+        ]);
+
+        // Base case
+        let cards: Vec<Card> = vec![
+            ten_of_hearts,
+            jack_of_hearts,
+            queen_of_hearts,
+            king_of_hearts,
+            ace_of_hearts,
+        ];
+
+        let hand_rank = rank_hand(cards);
         assert_eq!(hand_rank, ace_high_straight_flush);
+
+        // Tests that the higher Straight Flush of 10-A is identified over the lower Straight Flush of 9 - K.
+        let cards2: Vec<Card> = vec![
+            nine_of_hearts,
+            ten_of_hearts,
+            jack_of_hearts,
+            queen_of_hearts,
+            king_of_hearts,
+            ace_of_hearts,
+        ];
+
+        let hand_rank2 = rank_hand(cards2);
+        assert_eq!(hand_rank2, ace_high_straight_flush);
     }
 }
