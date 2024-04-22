@@ -65,42 +65,42 @@ pub fn rank_hand(cards: Vec<Card>) -> HandRank {
         panic!("Expected the cards count to be equal to 2 (pre-flop), 5 (post-flop), 6 (post-turn), or 7 (post-river) to rank the hand.\nThe cards count provided was: {}.", cards.len())
     }
 
-    let mut sorted_cards = cards.clone();
-    sorted_cards.sort();
+    let mut cards = cards.clone();
+    cards.sort();
 
-    if let Some(straight_flush_cards) = check_for_straight_flush(&sorted_cards) {
+    if let Some(straight_flush_cards) = check_for_straight_flush(&cards) {
         return HandRank::StraightFlush(straight_flush_cards);
     }
 
-    if let Some(four_of_a_kind_cards) = check_for_four_of_a_kind(&sorted_cards) {
+    if let Some(four_of_a_kind_cards) = check_for_four_of_a_kind(&cards) {
         return HandRank::FourOfAKind(four_of_a_kind_cards);
     }
 
-    if let Some(full_house_cards) = check_for_full_house(&sorted_cards) {
+    if let Some(full_house_cards) = check_for_full_house(&cards) {
         return HandRank::FullHouse(full_house_cards);
     }
 
-    if let Some(flush_cards) = check_for_flush(&sorted_cards) {
+    if let Some(flush_cards) = check_for_flush(&cards) {
         return HandRank::Flush(flush_cards);
     }
 
-    if let Some(straight_cards) = check_for_straight(&sorted_cards) {
+    if let Some(straight_cards) = check_for_straight(&cards) {
         return HandRank::Straight(straight_cards);
     }
 
-    if let Some(three_of_a_kind_cards) = check_for_three_of_a_kind(&sorted_cards) {
+    if let Some(three_of_a_kind_cards) = check_for_three_of_a_kind(&cards) {
         return HandRank::ThreeOfAKind(three_of_a_kind_cards);
     }
 
-    if let Some(two_pair_cards) = check_for_two_pair(&sorted_cards) {
+    if let Some(two_pair_cards) = check_for_two_pair(&cards) {
         return HandRank::TwoPair(two_pair_cards);
     }
 
-    if let Some(pair_cards) = check_for_pair(&sorted_cards) {
+    if let Some(pair_cards) = check_for_pair(&cards) {
         return HandRank::Pair(pair_cards);
     }
 
-    if let Some(high_card) = get_high_card_value(&sorted_cards) {
+    if let Some(high_card) = get_high_card_value(&cards) {
         return HandRank::HighCard(high_card);
     } else {
         panic!(
@@ -235,10 +235,17 @@ fn check_for_three_of_a_kind(cards: &Vec<Card>) -> Option<[Card; 3]> {
         rank_entry.push(card);
     }
 
-    for (_rank, cards) in ranks.iter() {
-        if cards.len() == 3 {
-            return Some([cards[0], cards[1], cards[2]]);
+    let mut high_rank = 0;
+    let mut three_of_a_kind_cards: Option<[Card; 3]> = None;
+    for (rank, cards) in ranks.iter() {
+        if cards.len() == 3 && rank.value() > high_rank {
+            high_rank = rank.value();
+            three_of_a_kind_cards = Some([cards[0], cards[1], cards[2]]);
         }
+    }
+
+    if let Some(three_of_a_kind_cards) = three_of_a_kind_cards {
+        return Some(three_of_a_kind_cards);
     }
 
     None
@@ -260,47 +267,68 @@ fn check_for_straight(cards: &Vec<Card>) -> Option<[Card; 5]> {
         return None;
     }
 
-    let mut sorted_cards = cards.clone();
-    sorted_cards.sort();
+    let contains_ace = cards.iter().any(|&card| card.rank == Rank::Ace);
 
-    let mut best_straight_cards: Vec<Card> = Vec::new();
-    let mut current_straight_cards: Vec<Card> = Vec::new();
+    // Check for a straight containing an Ace if an Ace is present
+    if contains_ace {
+        // Check for Ace-low straight
+        if cards[cards.len() - 5].rank == Rank::Two
+            && cards[cards.len() - 4].rank == Rank::Three
+            && cards[cards.len() - 3].rank == Rank::Four
+            && cards[cards.len() - 2].rank == Rank::Five
+            && cards[cards.len() - 1].rank == Rank::Ace
+        {
+            return Some([
+                cards[cards.len() - 1],
+                cards[cards.len() - 5],
+                cards[cards.len() - 4],
+                cards[cards.len() - 3],
+                cards[cards.len() - 2],
+            ]);
+        }
 
-    for i in 1..sorted_cards.len() {
-        if sorted_cards[i].rank.value() == sorted_cards[i - 1].rank.value() + 1 {
-            current_straight_cards.push(sorted_cards[i]);
+        // Check for Ace-high straight
+        if cards[cards.len() - 5].rank == Rank::Ten
+            && cards[cards.len() - 4].rank == Rank::Jack
+            && cards[cards.len() - 3].rank == Rank::Queen
+            && cards[cards.len() - 2].rank == Rank::King
+            && cards[cards.len() - 1].rank == Rank::Ace
+        {
+            return Some([
+                cards[cards.len() - 5],
+                cards[cards.len() - 4],
+                cards[cards.len() - 3],
+                cards[cards.len() - 2],
+                cards[cards.len() - 1],
+            ]);
+        }
+
+        return None;
+    }
+
+    // Check for non-Ace straight
+    let mut straight_cards: Vec<Card> = Vec::new();
+    straight_cards.push(cards[0]);
+
+    for i in 1..cards.len() {
+        if cards[i].rank.value() == cards[i - 1].rank.value() + 1 {
+            straight_cards.push(cards[i]);
         } else {
             // Check if the current card is not part of a sequence and happens to equal previous card.
-            if sorted_cards[i].rank.value() != sorted_cards[i - 1].rank.value() {
-                if current_straight_cards.len() >= 5 {
-                    best_straight_cards = current_straight_cards.clone();
-                }
-                current_straight_cards.clear();
-                current_straight_cards.push(sorted_cards[i]);
+            if cards[i].rank.value() != cards[i - 1].rank.value() {
+                straight_cards.clear();
+                straight_cards.push(cards[i]);
             }
         }
     }
 
-    if best_straight_cards.len() >= 5 {
-        // Since the Ace is Ace-high by default, we only need special consideration for Ace-low.
-        if best_straight_cards[4].rank == Rank::Ace && best_straight_cards[0].rank == Rank::Two {
-            // Ace-low straight
-            return Some([
-                sorted_cards[sorted_cards.len() - 1],
-                sorted_cards[sorted_cards.len() - 5],
-                sorted_cards[sorted_cards.len() - 4],
-                sorted_cards[sorted_cards.len() - 3],
-                sorted_cards[sorted_cards.len() - 2],
-            ]);
-        }
-
-        // Normal or Ace-high straight
+    if straight_cards.len() >= 5 {
         return Some([
-            sorted_cards[sorted_cards.len() - 5],
-            sorted_cards[sorted_cards.len() - 4],
-            sorted_cards[sorted_cards.len() - 3],
-            sorted_cards[sorted_cards.len() - 2],
-            sorted_cards[sorted_cards.len() - 1],
+            cards[cards.len() - 5],
+            cards[cards.len() - 4],
+            cards[cards.len() - 3],
+            cards[cards.len() - 2],
+            cards[cards.len() - 1],
         ]);
     }
 
