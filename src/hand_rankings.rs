@@ -544,47 +544,93 @@ fn check_for_straight_flush(cards: &Vec<Card>) -> Option<[Card; 5]> {
 mod tests {
     use super::*;
 
-    use cards::card;
+    use strum::IntoEnumIterator;
 
+    use cards::card::{Card, Rank, Suit};
+    use cards::{card, card_from_expr};
+
+    /// Tests that High Cards of the same Rank are equal, regardless of Suit.
     #[test]
-    fn high_card_ranks_are_valued_correctly() {
-        // Tests that the suit is ignored when comparing High Cards of equal rank.
-        assert_eq!(
-            HandRank::HighCard(card!(Two, Club)),
-            HandRank::HighCard(card!(Two, Diamond))
-        );
+    fn high_card_ranks_are_compared_correctly() {
+        for rank in Rank::iter() {
+            let mut previous_suit: Option<Suit> = None;
+            for suit in Suit::iter() {
+                if let Some(previous_suit) = previous_suit {
+                    // Compare the current suit with the previous suit with the same rank
+                    assert_eq!(
+                        HandRank::HighCard(card_from_expr!(rank, previous_suit)),
+                        HandRank::HighCard(card_from_expr!(rank, suit))
+                    );
+                }
 
-        assert_ne!(
-            HandRank::HighCard(card!(Two, Club)),
-            HandRank::HighCard(card!(Three, Club))
-        );
+                previous_suit = Some(suit);
+            }
+        }
     }
 
+    /// Tests that High Cards of higher Ranks are greater than High Cards of lower Ranks, regardless of Suit.
     #[test]
-    fn high_card_rankings_are_ordered_correctly() {
-        assert!(HandRank::HighCard(card!(Two, Club)) < HandRank::HighCard(card!(Three, Club)));
+    fn high_card_ranks_are_ordered_correctly() {
+        for suit in Suit::iter() {
+            let mut previous_rank: Option<Rank> = None;
+            for rank in Rank::iter() {
+                if let Some(previous_rank) = previous_rank {
+                    // Compare the current rank with the previous rank in the same suit
+                    assert!(
+                        HandRank::HighCard(card_from_expr!(previous_rank, suit))
+                            < HandRank::HighCard(card_from_expr!(rank, suit))
+                    );
+                }
 
-        assert!(HandRank::HighCard(card!(Three, Club)) < HandRank::HighCard(card!(Four, Spade)));
+                previous_rank = Some(rank);
+            }
+        }
+    }
 
-        assert!(HandRank::HighCard(card!(Four, Spade)) < HandRank::HighCard(card!(Five, Spade)));
+    /// Tests that Pairs of the same Rank are equal, regardless of Suit.
+    #[test]
+    fn pair_ranks_are_compared_correctly() {
+        for rank in Rank::iter() {
+            let mut previous_suit: Option<Suit> = None;
+            for suit in Suit::iter() {
+                if let Some(previous_suit) = previous_suit {
+                    // Compare the current suit with the previous suit with the same rank
+                    assert_eq!(
+                        HandRank::Pair([
+                            card_from_expr!(rank, previous_suit),
+                            card_from_expr!(rank, previous_suit)
+                        ]),
+                        HandRank::Pair([card_from_expr!(rank, suit), card_from_expr!(rank, suit)])
+                    );
+                }
 
-        assert!(HandRank::HighCard(card!(Five, Spade)) < HandRank::HighCard(card!(Six, Spade)));
+                previous_suit = Some(suit);
+            }
+        }
+    }
 
-        assert!(HandRank::HighCard(card!(Six, Spade)) < HandRank::HighCard(card!(Seven, Spade)));
+    /// Tests that Pairs of higher Ranks are greater than Pairs of lower Ranks, regardless of Suit.
+    #[test]
+    fn pair_ranks_are_ordered_correctly() {
+        for suit in Suit::iter() {
+            let mut previous_rank: Option<Rank> = None;
+            for rank in Rank::iter() {
+                if let Some(previous_rank) = previous_rank {
+                    // Compare the current rank with the previous rank in the same suit
+                    assert!(
+                        HandRank::Pair([
+                            card_from_expr!(previous_rank, suit),
+                            card_from_expr!(previous_rank, suit)
+                        ]) < HandRank::Pair([
+                            card_from_expr!(rank, suit),
+                            card_from_expr!(rank, suit)
+                        ])
+                    );
+                }
 
-        assert!(HandRank::HighCard(card!(Seven, Spade)) < HandRank::HighCard(card!(Eight, Club)));
-
-        assert!(HandRank::HighCard(card!(Eight, Club)) < HandRank::HighCard(card!(Nine, Club)));
-
-        assert!(HandRank::HighCard(card!(Nine, Club)) < HandRank::HighCard(card!(Ten, Spade)));
-
-        assert!(HandRank::HighCard(card!(Ten, Spade)) < HandRank::HighCard(card!(Jack, Spade)));
-
-        assert!(HandRank::HighCard(card!(Jack, Spade)) < HandRank::HighCard(card!(Queen, Spade)));
-
-        assert!(HandRank::HighCard(card!(Queen, Spade)) < HandRank::HighCard(card!(King, Spade)));
-
-        assert!(HandRank::HighCard(card!(King, Spade)) < HandRank::HighCard(card!(Ace, Spade)));
+                previous_rank = Some(rank);
+            }
+        }
     }
 
     #[test]
