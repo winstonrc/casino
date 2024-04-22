@@ -1,4 +1,4 @@
-use cards::card::{Card, Rank};
+use cards::card::{Card, Rank, Suit};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -300,7 +300,18 @@ fn check_for_flush(cards: &Vec<Card>) -> Option<[Card; 5]> {
         return None;
     }
 
-    // todo: implement
+    let mut suits: HashMap<Suit, Vec<Card>> = HashMap::new();
+
+    for &card in cards {
+        let suit_entry = suits.entry(card.suit).or_default();
+        suit_entry.push(card);
+    }
+
+    for (_suit, cards) in suits.iter() {
+        if cards.len() == 5 {
+            return Some([cards[0], cards[1], cards[2], cards[3], cards[4]]);
+        }
+    }
 
     None
 }
