@@ -118,8 +118,9 @@ impl Game {
                 // todo: remove after testing
                 println!("{:?}", hand_rank);
 
-                // todo: add logic to check for high card when players have equal results with the same 4 cards.
-                // e.g. both are using a Tow Pair or Four of a Kind on the table but one has a higher card in their hand.
+                // todo: Add logic to check for a kicker (high card) when players are tied with
+                // matching Pairs, Two Pairs, Three of a Kinds, or Four of a Kinds on the table but one has a higher card in their hand.
+                // Be sure to make sure that a hand is not unintentionally outranking an equal hand based on its suit in the rank_hand() comparison!
                 if best_hand.is_none() {
                     best_hand = Some(hand_rank);
                     leading_players.insert(player.clone());
