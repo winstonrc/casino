@@ -658,16 +658,16 @@ mod tests {
     #[test]
     fn pair_is_ranked_correctly() {
         let king_of_clubs = Card::king_of_clubs();
-        let king_of_hearts = Card::king_of_hearts();
         let seven_of_diamonds = Card::seven_of_diamonds();
         let two_of_clubs = Card::two_of_clubs();
+        let king_of_hearts = Card::king_of_hearts();
         let five_of_spades = Card::five_of_spades();
 
         let cards: Vec<Card> = vec![
             king_of_clubs,
-            king_of_hearts,
             seven_of_diamonds,
             two_of_clubs,
+            king_of_hearts,
             five_of_spades,
         ];
 
@@ -680,17 +680,17 @@ mod tests {
     #[test]
     fn two_pair_is_ranked_correctly() {
         let king_of_clubs = Card::king_of_clubs();
-        let king_of_hearts = Card::king_of_hearts();
         let seven_of_diamonds = Card::seven_of_diamonds();
-        let seven_of_clubs = Card::seven_of_clubs();
         let five_of_spades = Card::five_of_spades();
+        let king_of_hearts = Card::king_of_hearts();
+        let seven_of_clubs = Card::seven_of_clubs();
 
         let cards: Vec<Card> = vec![
             king_of_clubs,
-            king_of_hearts,
             seven_of_diamonds,
-            seven_of_clubs,
             five_of_spades,
+            king_of_hearts,
+            seven_of_clubs,
         ];
 
         let hand_rank = rank_hand(cards);
@@ -707,17 +707,17 @@ mod tests {
     #[test]
     fn three_of_a_kind_is_ranked_correctly() {
         let king_of_clubs = Card::king_of_clubs();
-        let king_of_hearts = Card::king_of_hearts();
-        let king_of_diamonds = Card::king_of_diamonds();
         let seven_of_clubs = Card::seven_of_clubs();
-        let five_of_spades = Card::five_of_spades();
+        let king_of_hearts = Card::king_of_hearts();
 
+        let five_of_spades = Card::five_of_spades();
+        let king_of_diamonds = Card::king_of_diamonds();
         let cards: Vec<Card> = vec![
             king_of_clubs,
-            king_of_hearts,
-            king_of_diamonds,
             seven_of_clubs,
+            king_of_hearts,
             five_of_spades,
+            king_of_diamonds,
         ];
 
         let hand_rank = rank_hand(cards);
@@ -729,6 +729,7 @@ mod tests {
 
     #[test]
     fn straight_is_ranked_correctly() {
+        let two_of_diamonds = Card::two_of_diamonds();
         let three_of_clubs = Card::three_of_clubs();
         let four_of_hearts = Card::four_of_hearts();
         let five_of_diamonds = Card::five_of_diamonds();
@@ -736,6 +737,7 @@ mod tests {
         let seven_of_spades = Card::seven_of_spades();
 
         let cards: Vec<Card> = vec![
+            two_of_diamonds,
             three_of_clubs,
             four_of_hearts,
             five_of_diamonds,
@@ -762,6 +764,7 @@ mod tests {
         let three_of_hearts = Card::three_of_hearts();
         let four_of_spades = Card::four_of_spades();
         let five_of_hearts = Card::five_of_hearts();
+        let seven_of_diamonds = Card::seven_of_diamonds();
 
         let cards: Vec<Card> = vec![
             ace_of_spades,
@@ -769,6 +772,7 @@ mod tests {
             three_of_hearts,
             four_of_spades,
             five_of_hearts,
+            seven_of_diamonds,
         ];
 
         let hand_rank = rank_hand(cards);
@@ -932,6 +936,7 @@ mod tests {
         let three_of_diamonds = Card::three_of_diamonds();
         let four_of_diamonds = Card::four_of_diamonds();
         let five_of_diamonds = Card::five_of_diamonds();
+        let seven_of_diamonds = Card::seven_of_diamonds();
 
         let cards: Vec<Card> = vec![
             ace_of_diamonds,
@@ -939,6 +944,7 @@ mod tests {
             three_of_diamonds,
             four_of_diamonds,
             five_of_diamonds,
+            seven_of_diamonds,
         ];
 
         let hand_rank = rank_hand(cards);
