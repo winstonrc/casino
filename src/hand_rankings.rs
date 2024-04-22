@@ -330,7 +330,18 @@ fn check_for_four_of_a_kind(cards: &Vec<Card>) -> Option<[Card; 4]> {
         return None;
     }
 
-    // todo: implement
+    let mut ranks: HashMap<Rank, Vec<Card>> = HashMap::new();
+
+    for &card in cards {
+        let rank_entry = ranks.entry(card.rank).or_default();
+        rank_entry.push(card);
+    }
+
+    for (_rank, cards) in ranks.iter() {
+        if cards.len() == 4 {
+            return Some([cards[0], cards[1], cards[2], cards[3]]);
+        }
+    }
 
     None
 }
