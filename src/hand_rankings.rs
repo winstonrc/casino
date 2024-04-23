@@ -773,7 +773,7 @@ mod tests {
         let ten_of_clubs = card!(Ten, Club);
         let king_of_clubs = card!(King, Club);
 
-        let high_card = HandRank::HighCard(king_of_clubs);
+        let high_card = king_of_clubs;
 
         let mut cards: Vec<Card> = vec![
             ten_of_clubs,
@@ -785,7 +785,7 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = get_high_card_value(&cards) {
-            let identified_high_card = HandRank::HighCard(cards);
+            let identified_high_card = cards;
             assert_eq!(identified_high_card, high_card);
         } else {
             panic!("Expected a High Card, but none was found.");
@@ -829,7 +829,7 @@ mod tests {
         let king_of_hearts = card!(King, Heart);
         let ace_of_spades = card!(Ace, Spade);
 
-        let pair = HandRank::Pair([king_of_clubs, king_of_hearts]);
+        let pair = [king_of_clubs, king_of_hearts];
 
         // Base case
         let mut cards: Vec<Card> = vec![
@@ -842,7 +842,7 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = check_for_pair(&cards) {
-            let identified_pair = HandRank::Pair(cards);
+            let identified_pair = cards;
             assert_eq!(identified_pair, pair);
         } else {
             panic!("Expected a Pair, but none was found.");
@@ -860,7 +860,7 @@ mod tests {
         cards2.sort();
 
         if let Some(cards) = check_for_pair(&cards2) {
-            let identified_pair = HandRank::Pair(cards);
+            let identified_pair = cards;
             assert_eq!(identified_pair, pair);
         } else {
             panic!("Expected a Pair, but none was found.");
@@ -918,12 +918,12 @@ mod tests {
         let king_of_clubs = card!(King, Club);
         let king_of_hearts = card!(King, Heart);
 
-        let two_pair = HandRank::TwoPair([
+        let two_pair = [
             king_of_clubs,
             king_of_hearts,
             seven_of_clubs,
             seven_of_diamonds,
-        ]);
+        ];
 
         let mut cards: Vec<Card> = vec![
             king_of_clubs,
@@ -935,7 +935,7 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = check_for_two_pair(&cards) {
-            let identified_two_pair = HandRank::TwoPair(cards);
+            let identified_two_pair = cards;
             assert_eq!(identified_two_pair, two_pair);
         } else {
             panic!("Expected a Two Pair, but none was found.");
@@ -953,7 +953,7 @@ mod tests {
         cards2.sort();
 
         if let Some(cards) = check_for_two_pair(&cards2) {
-            let identified_two_pair = HandRank::TwoPair(cards);
+            let identified_two_pair = cards;
             assert_eq!(identified_two_pair, two_pair);
         } else {
             panic!("Expected a Two Pair, but none was found.");
@@ -1018,8 +1018,7 @@ mod tests {
         let king_of_diamonds = card!(King, Diamond);
         let king_of_hearts = card!(King, Heart);
 
-        let three_of_a_kind =
-            HandRank::ThreeOfAKind([king_of_clubs, king_of_diamonds, king_of_hearts]);
+        let three_of_a_kind = [king_of_clubs, king_of_diamonds, king_of_hearts];
 
         // Base case
         let mut cards: Vec<Card> = vec![
@@ -1032,7 +1031,7 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = check_for_three_of_a_kind(&cards) {
-            let identified_three_of_a_kind = HandRank::ThreeOfAKind(cards);
+            let identified_three_of_a_kind = cards;
             assert_eq!(identified_three_of_a_kind, three_of_a_kind);
         } else {
             panic!("Expected a Three of a Kind, but none was found.");
@@ -1051,7 +1050,7 @@ mod tests {
         cards2.sort();
 
         if let Some(cards) = check_for_three_of_a_kind(&cards2) {
-            let identified_three_of_a_kind = HandRank::ThreeOfAKind(cards);
+            let identified_three_of_a_kind = cards;
             assert_eq!(identified_three_of_a_kind, three_of_a_kind);
         } else {
             panic!("Expected a Three of a Kind, but none was found.");
@@ -1113,13 +1112,13 @@ mod tests {
         let six_of_clubs = card!(Six, Club);
         let seven_of_spades = card!(Seven, Spade);
 
-        let straight = HandRank::Straight([
+        let straight = [
             three_of_clubs,
             four_of_hearts,
             five_of_diamonds,
             six_of_clubs,
             seven_of_spades,
-        ]);
+        ];
 
         // Base case
         let mut cards: Vec<Card> = vec![
@@ -1132,7 +1131,7 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = check_for_straight(&cards) {
-            let identified_straight = HandRank::Straight(cards);
+            let identified_straight = cards;
             assert_eq!(identified_straight, straight);
         } else {
             panic!("Expected a Straight, but none was found.");
@@ -1150,7 +1149,7 @@ mod tests {
         cards2.sort();
 
         if let Some(cards) = check_for_straight(&cards2) {
-            let identified_straight = HandRank::Straight(cards);
+            let identified_straight = cards;
             assert_eq!(identified_straight, straight);
         } else {
             panic!("Expected a Straight, but none was found.");
@@ -1217,13 +1216,13 @@ mod tests {
         let eight_of_clubs = card!(Eight, Club);
         let ace_of_spades = card!(Ace, Spade);
 
-        let ace_low_straight = HandRank::Straight([
+        let ace_low_straight = [
             ace_of_spades,
             two_of_clubs,
             three_of_hearts,
             four_of_spades,
             five_of_hearts,
-        ]);
+        ];
 
         // Base case
         let mut cards: Vec<Card> = vec![
@@ -1236,7 +1235,7 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = check_for_straight(&cards) {
-            let identified_straight = HandRank::Straight(cards);
+            let identified_straight = cards;
             assert_eq!(identified_straight, ace_low_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
@@ -1254,7 +1253,7 @@ mod tests {
         cards2.sort();
 
         if let Some(cards) = check_for_straight(&cards2) {
-            let identified_straight = HandRank::Straight(cards);
+            let identified_straight = cards;
             assert_eq!(identified_straight, ace_low_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
@@ -1273,7 +1272,7 @@ mod tests {
         cards3.sort();
 
         if let Some(cards) = check_for_straight(&cards3) {
-            let identified_straight = HandRank::Straight(cards);
+            let identified_straight = cards;
             assert_eq!(identified_straight, ace_low_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
@@ -1291,7 +1290,7 @@ mod tests {
         cards4.sort();
 
         if let Some(cards) = check_for_straight(&cards4) {
-            let identified_straight = HandRank::Straight(cards);
+            let identified_straight = cards;
             assert_eq!(identified_straight, ace_low_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
@@ -1385,13 +1384,13 @@ mod tests {
         let king_of_hearts = card!(King, Heart);
         let ace_of_spades = card!(Ace, Spade);
 
-        let ace_high_straight = HandRank::Straight([
+        let ace_high_straight = [
             ten_of_clubs,
             jack_of_hearts,
             queen_of_spades,
             king_of_hearts,
             ace_of_spades,
-        ]);
+        ];
 
         // Base case
         let mut cards: Vec<Card> = vec![
@@ -1404,7 +1403,7 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = check_for_straight(&cards) {
-            let identified_straight = HandRank::Straight(cards);
+            let identified_straight = cards;
             assert_eq!(identified_straight, ace_high_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
@@ -1422,7 +1421,7 @@ mod tests {
         cards2.sort();
 
         if let Some(cards) = check_for_straight(&cards2) {
-            let identified_straight = HandRank::Straight(cards);
+            let identified_straight = cards;
             assert_eq!(identified_straight, ace_high_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
@@ -1488,13 +1487,13 @@ mod tests {
         let queen_of_clubs = card!(Queen, Club);
         let king_of_clubs = card!(King, Club);
 
-        let flush = HandRank::Flush([
+        let flush = [
             two_of_clubs,
             eight_of_clubs,
             nine_of_clubs,
             queen_of_clubs,
             king_of_clubs,
-        ]);
+        ];
 
         // Base case
         let mut cards: Vec<Card> = vec![
@@ -1507,19 +1506,19 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = check_for_flush(&cards) {
-            let identified_flush = HandRank::Flush(cards);
+            let identified_flush = cards;
             assert_eq!(identified_flush, flush);
         } else {
             panic!("Expected a Flush, but none was found.");
         }
 
-        let flush2 = HandRank::Flush([
+        let flush2 = [
             three_of_clubs,
             eight_of_clubs,
             nine_of_clubs,
             queen_of_clubs,
             king_of_clubs,
-        ]);
+        ];
 
         // Tests that the higher Flush of 3♣, 8♣, 9♣, Q♣, K♣ is identified over the lower Flush of 2♣, 3♣, 8♣, 9♣, Q♣.
         let mut cards2: Vec<Card> = vec![
@@ -1534,7 +1533,7 @@ mod tests {
         cards2.sort();
 
         if let Some(cards) = check_for_flush(&cards2) {
-            let identified_flush = HandRank::Flush(cards);
+            let identified_flush = cards;
             assert_eq!(identified_flush, flush2);
         } else {
             panic!("Expected a Flush, but none was found.");
@@ -1610,13 +1609,13 @@ mod tests {
         let king_of_diamonds = card!(King, Diamond);
         let king_of_hearts = card!(King, Heart);
 
-        let full_house = HandRank::FullHouse([
+        let full_house = [
             king_of_clubs,
             king_of_diamonds,
             king_of_hearts,
             seven_of_clubs,
             seven_of_spades,
-        ]);
+        ];
 
         // Base case
         let mut cards: Vec<Card> = vec![
@@ -1629,7 +1628,7 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = check_for_full_house(&cards) {
-            let identified_full_house = HandRank::FullHouse(cards);
+            let identified_full_house = cards;
             assert_eq!(identified_full_house, full_house);
         } else {
             panic!("Expected a Full House, but none was found.");
@@ -1648,7 +1647,7 @@ mod tests {
         cards2.sort();
 
         if let Some(cards) = check_for_full_house(&cards2) {
-            let identified_full_house = HandRank::FullHouse(cards);
+            let identified_full_house = cards;
             assert_eq!(identified_full_house, full_house);
         } else {
             panic!("Expected a Full House, but none was found.");
@@ -1716,8 +1715,7 @@ mod tests {
         let king_of_hearts = card!(King, Heart);
         let king_of_spades = card!(King, Spade);
 
-        let four_of_a_kind =
-            HandRank::FourOfAKind([six_of_clubs, six_of_diamonds, six_of_hearts, six_of_spades]);
+        let four_of_a_kind = [six_of_clubs, six_of_diamonds, six_of_hearts, six_of_spades];
 
         // Base case
         let mut cards: Vec<Card> = vec![
@@ -1730,14 +1728,11 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = check_for_four_of_a_kind(&cards) {
-            let identified_four_of_a_kind = HandRank::FourOfAKind(cards);
+            let identified_four_of_a_kind = cards;
             assert_eq!(identified_four_of_a_kind, four_of_a_kind);
         } else {
             panic!("Expected a Four of a Kind, but none was found.");
         }
-
-        let hand_rank = rank_hand(cards);
-        assert_eq!(hand_rank, four_of_a_kind);
 
         // Tests that the Four of a Kind is identified over the Three of a Kind.
         let mut cards2: Vec<Card> = vec![
@@ -1752,7 +1747,7 @@ mod tests {
         cards2.sort();
 
         if let Some(cards) = check_for_four_of_a_kind(&cards2) {
-            let identified_four_of_a_kind = HandRank::FourOfAKind(cards);
+            let identified_four_of_a_kind = cards;
             assert_eq!(identified_four_of_a_kind, four_of_a_kind);
         } else {
             panic!("Expected a Four of a Kind, but none was found.");
@@ -1814,13 +1809,13 @@ mod tests {
         let six_of_spades = card!(Six, Spade);
         let seven_of_spades = card!(Seven, Spade);
 
-        let straight_flush = HandRank::StraightFlush([
+        let straight_flush = [
             two_of_spades,
             three_of_spades,
             four_of_spades,
             five_of_spades,
             six_of_spades,
-        ]);
+        ];
 
         let mut cards: Vec<Card> = vec![
             two_of_spades,
@@ -1832,20 +1827,20 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = check_for_straight_flush(&cards) {
-            let identified_straight_flush = HandRank::StraightFlush(cards);
+            let identified_straight_flush = cards;
             assert_eq!(identified_straight_flush, straight_flush);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
         }
 
         // Tests that the higher Straight of 3, 4, 5, 6, 7 is identified over the lower Straight of 2, 3, 4, 5, 6.
-        let straight_flush2 = HandRank::StraightFlush([
+        let straight_flush2 = [
             three_of_spades,
             four_of_spades,
             five_of_spades,
             six_of_spades,
             seven_of_spades,
-        ]);
+        ];
 
         let mut cards2: Vec<Card> = vec![
             two_of_spades,
@@ -1858,7 +1853,7 @@ mod tests {
         cards2.sort();
 
         if let Some(cards) = check_for_straight_flush(&cards2) {
-            let identified_straight_flush = HandRank::StraightFlush(cards);
+            let identified_straight_flush = cards;
             assert_eq!(identified_straight_flush, straight_flush2);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
@@ -1931,13 +1926,13 @@ mod tests {
         let seven_of_diamonds = card!(Seven, Diamond);
         let eight_of_diamonds = card!(Eight, Diamond);
 
-        let ace_low_straight_flush = HandRank::StraightFlush([
+        let ace_low_straight_flush = [
             ace_of_diamonds,
             two_of_diamonds,
             three_of_diamonds,
             four_of_diamonds,
             five_of_diamonds,
-        ]);
+        ];
 
         // Base case
         let mut cards: Vec<Card> = vec![
@@ -1950,7 +1945,7 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = check_for_straight_flush(&cards) {
-            let identified_straight_flush = HandRank::StraightFlush(cards);
+            let identified_straight_flush = cards;
             assert_eq!(identified_straight_flush, ace_low_straight_flush);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
@@ -1968,7 +1963,7 @@ mod tests {
         cards2.sort();
 
         if let Some(cards) = check_for_straight_flush(&cards2) {
-            let identified_straight_flush = HandRank::StraightFlush(cards);
+            let identified_straight_flush = cards;
             assert_eq!(identified_straight_flush, ace_low_straight_flush);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
@@ -1987,7 +1982,7 @@ mod tests {
         cards3.sort();
 
         if let Some(cards) = check_for_straight_flush(&cards3) {
-            let identified_straight_flush = HandRank::StraightFlush(cards);
+            let identified_straight_flush = cards;
             assert_eq!(identified_straight_flush, ace_low_straight_flush);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
@@ -2067,13 +2062,13 @@ mod tests {
         let king_of_hearts = card!(King, Heart);
         let ace_of_hearts = card!(Ace, Heart);
 
-        let ace_high_straight_flush = HandRank::StraightFlush([
+        let ace_high_straight_flush = [
             ten_of_hearts,
             jack_of_hearts,
             queen_of_hearts,
             king_of_hearts,
             ace_of_hearts,
-        ]);
+        ];
 
         // Base case
         let mut cards: Vec<Card> = vec![
@@ -2086,7 +2081,7 @@ mod tests {
         cards.sort();
 
         if let Some(cards) = check_for_straight_flush(&cards) {
-            let identified_straight_flush = HandRank::StraightFlush(cards);
+            let identified_straight_flush = cards;
             assert_eq!(identified_straight_flush, ace_high_straight_flush);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
@@ -2104,7 +2099,7 @@ mod tests {
         cards2.sort();
 
         if let Some(cards) = check_for_straight_flush(&cards2) {
-            let identified_straight_flush = HandRank::StraightFlush(cards);
+            let identified_straight_flush = cards;
             assert_eq!(identified_straight_flush, ace_high_straight_flush);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
