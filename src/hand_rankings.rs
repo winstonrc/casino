@@ -380,28 +380,39 @@ fn check_for_straight(cards: &Vec<Card>) -> Option<[Card; 5]> {
     }
 
     // Check for non-Ace Straight or an Ace-high Straight
-    let mut straight_cards: Vec<Card> = Vec::new();
-    straight_cards.push(cards[0]);
+    let mut longest_straight: Vec<Card> = Vec::new();
+    let mut current_straight: Vec<Card> = vec![cards[0]];
 
     for i in 1..cards.len() {
-        if cards[i].rank.value() == cards[i - 1].rank.value() + 1 {
-            straight_cards.push(cards[i]);
+        let current_rank_value = cards[i].rank.value();
+        let previous_rank_value = current_straight.last().unwrap().rank.value();
+        if current_rank_value == previous_rank_value + 1 {
+            current_straight.push(cards[i]);
+        } else if current_rank_value == previous_rank_value {
+            // Skip over duplicate values
+            continue;
         } else {
-            // Check if the current card is not part of a sequence and happens to equal previous card.
-            if cards[i].rank.value() != cards[i - 1].rank.value() {
-                straight_cards.clear();
-                straight_cards.push(cards[i]);
+            // Start a new sequence if the current card breaks the sequence
+            if current_straight.len() > longest_straight.len() {
+                longest_straight = current_straight.clone();
             }
+            current_straight.clear();
+            current_straight.push(cards[i]);
         }
     }
 
-    if straight_cards.len() >= 5 {
+    // Check if the last sequence is the longest
+    if current_straight.len() > longest_straight.len() {
+        longest_straight = current_straight;
+    }
+
+    if longest_straight.len() >= 5 {
         let straight_cards = [
-            cards[cards.len() - 5],
-            cards[cards.len() - 4],
-            cards[cards.len() - 3],
-            cards[cards.len() - 2],
-            cards[cards.len() - 1],
+            longest_straight[longest_straight.len() - 5],
+            longest_straight[longest_straight.len() - 4],
+            longest_straight[longest_straight.len() - 3],
+            longest_straight[longest_straight.len() - 2],
+            longest_straight[longest_straight.len() - 1],
         ];
 
         return Some(straight_cards);
@@ -1154,6 +1165,40 @@ mod tests {
         } else {
             panic!("Expected a Straight, but none was found.");
         }
+
+        let five_of_clubs = card!(Five, Club);
+        let nine_of_spades = card!(Nine, Spade);
+        let ten_of_diamonds = card!(Ten, Diamond);
+        let jack_of_clubs = card!(Jack, Club);
+        let jack_of_spades = card!(Jack, Spade);
+        let queen_of_spades = card!(Queen, Spade);
+        let king_of_diamonds = card!(King, Diamond);
+
+        let straight2 = [
+            nine_of_spades,
+            ten_of_diamonds,
+            jack_of_clubs,
+            queen_of_spades,
+            king_of_diamonds,
+        ];
+
+        let mut cards3: Vec<Card> = vec![
+            king_of_diamonds,
+            jack_of_spades,
+            ten_of_diamonds,
+            five_of_clubs,
+            jack_of_clubs,
+            nine_of_spades,
+            queen_of_spades,
+        ];
+        cards3.sort();
+
+        if let Some(cards) = check_for_straight(&cards3) {
+            let identified_straight = cards;
+            assert_eq!(identified_straight, straight2);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
     }
 
     /// Tests rank_hand().
@@ -1200,6 +1245,35 @@ mod tests {
 
         let hand_rank2 = rank_hand(cards2);
         assert_eq!(hand_rank2, straight);
+
+        let five_of_clubs = card!(Five, Club);
+        let nine_of_spades = card!(Nine, Spade);
+        let ten_of_diamonds = card!(Ten, Diamond);
+        let jack_of_clubs = card!(Jack, Club);
+        let jack_of_spades = card!(Jack, Spade);
+        let queen_of_spades = card!(Queen, Spade);
+        let king_of_diamonds = card!(King, Diamond);
+
+        let straight2 = HandRank::Straight([
+            nine_of_spades,
+            ten_of_diamonds,
+            jack_of_clubs,
+            queen_of_spades,
+            king_of_diamonds,
+        ]);
+
+        let cards3: Vec<Card> = vec![
+            king_of_diamonds,
+            jack_of_spades,
+            ten_of_diamonds,
+            five_of_clubs,
+            jack_of_clubs,
+            nine_of_spades,
+            queen_of_spades,
+        ];
+
+        let hand_rank3 = rank_hand(cards3);
+        assert_eq!(hand_rank3, straight2);
     }
 
     /// Tests check_for_straight().
@@ -1279,6 +1353,14 @@ mod tests {
         }
 
         // Tests that an Ace-low Straight is ignored, and a higher Straight is identified.
+        let non_ace_low_straight = [
+            two_of_clubs,
+            three_of_hearts,
+            four_of_spades,
+            five_of_hearts,
+            six_of_diamonds,
+        ];
+
         let mut cards4: Vec<Card> = vec![
             two_of_clubs,
             three_of_hearts,
@@ -1291,7 +1373,7 @@ mod tests {
 
         if let Some(cards) = check_for_straight(&cards4) {
             let identified_straight = cards;
-            assert_eq!(identified_straight, ace_low_straight);
+            assert_eq!(identified_straight, non_ace_low_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
         }
@@ -1359,6 +1441,14 @@ mod tests {
         assert_eq!(hand_rank3, ace_low_straight);
 
         // Tests that an Ace-low Straight is ignored, and a higher Straight is identified.
+        let non_ace_low_straight = HandRank::Straight([
+            two_of_clubs,
+            three_of_hearts,
+            four_of_spades,
+            five_of_hearts,
+            six_of_diamonds,
+        ]);
+
         let cards4: Vec<Card> = vec![
             two_of_clubs,
             three_of_hearts,
@@ -1369,7 +1459,7 @@ mod tests {
         ];
 
         let hand_rank4 = rank_hand(cards4);
-        assert_eq!(hand_rank4, ace_low_straight);
+        assert_eq!(hand_rank4, non_ace_low_straight);
     }
 
     /// Tests check_for_straight().
