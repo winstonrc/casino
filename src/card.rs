@@ -16,19 +16,6 @@ macro_rules! card {
     };
 }
 
-/// Creates a new card.
-///
-/// Requires the Rank and Suit to be provided as an expr.
-#[macro_export]
-macro_rules! card_from_expr {
-    ($rank:expr, $suit:expr) => {
-        Card {
-            rank: $rank,
-            suit: $suit,
-        }
-    };
-}
-
 /// Numerical values for the ranks.
 ///
 /// Ranks contain Two through Ace (high by default).
@@ -52,6 +39,27 @@ pub enum Rank {
 impl Rank {
     pub fn value(&self) -> u8 {
         *self as u8
+    }
+}
+
+impl From<Rank> for String {
+    fn from(value: Rank) -> Self {
+        match value {
+            Rank::Two => "2",
+            Rank::Three => "3",
+            Rank::Four => "4",
+            Rank::Five => "5",
+            Rank::Six => "6",
+            Rank::Seven => "7",
+            Rank::Eight => "8",
+            Rank::Nine => "9",
+            Rank::Ten => "10",
+            Rank::Jack => "J",
+            Rank::Queen => "Q",
+            Rank::King => "K",
+            Rank::Ace => "A",
+        }
+        .into()
     }
 }
 
@@ -192,9 +200,10 @@ impl PartialOrd for Card {
     }
 }
 
+/// Uses String instead of char for Rank because "10" cannot be represented as a char.
 impl fmt::Display for Card {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}{}", char::from(self.rank), char::from(self.suit))
+        write!(f, "{}{}", String::from(self.rank), char::from(self.suit))
     }
 }
 
