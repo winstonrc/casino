@@ -540,8 +540,8 @@ mod tests {
 
     use strum::IntoEnumIterator;
 
+    use cards::card;
     use cards::card::{Card, Rank, Suit};
-    use cards::{card, card_from_expr};
 
     /// Tests that High Cards of the same Rank are equal, regardless of Suit.
     #[test]
@@ -552,8 +552,8 @@ mod tests {
                 if let Some(previous_suit) = previous_suit {
                     // Compare the current suit with the previous suit with the same rank
                     assert_eq!(
-                        HandRank::HighCard(card_from_expr!(rank, previous_suit)),
-                        HandRank::HighCard(card_from_expr!(rank, suit))
+                        HandRank::HighCard(Card::new(rank, previous_suit)),
+                        HandRank::HighCard(Card::new(rank, suit))
                     );
                 }
 
@@ -571,8 +571,8 @@ mod tests {
                 if let Some(previous_rank) = previous_rank {
                     // Compare the current rank with the previous rank in the same suit
                     assert!(
-                        HandRank::HighCard(card_from_expr!(previous_rank, suit))
-                            < HandRank::HighCard(card_from_expr!(rank, suit))
+                        HandRank::HighCard(Card::new(previous_rank, suit))
+                            < HandRank::HighCard(Card::new(rank, suit))
                     );
                 }
 
@@ -591,10 +591,10 @@ mod tests {
                     // Compare the current suit with the previous suit with the same rank
                     assert_eq!(
                         HandRank::Pair([
-                            card_from_expr!(rank, previous_suit),
-                            card_from_expr!(rank, previous_suit)
+                            Card::new(rank, previous_suit),
+                            Card::new(rank, previous_suit)
                         ]),
-                        HandRank::Pair([card_from_expr!(rank, suit), card_from_expr!(rank, suit)])
+                        HandRank::Pair([Card::new(rank, suit), Card::new(rank, suit)])
                     );
                 }
 
@@ -613,12 +613,9 @@ mod tests {
                     // Compare the current rank with the previous rank in the same suit
                     assert!(
                         HandRank::Pair([
-                            card_from_expr!(previous_rank, suit),
-                            card_from_expr!(previous_rank, suit)
-                        ]) < HandRank::Pair([
-                            card_from_expr!(rank, suit),
-                            card_from_expr!(rank, suit)
-                        ])
+                            Card::new(previous_rank, suit),
+                            Card::new(previous_rank, suit)
+                        ]) < HandRank::Pair([Card::new(rank, suit), Card::new(rank, suit)])
                     );
                 }
 
