@@ -1122,6 +1122,14 @@ mod tests {
         let five_of_diamonds = card!(Five, Diamond);
         let six_of_clubs = card!(Six, Club);
         let seven_of_spades = card!(Seven, Spade);
+        let five_of_clubs = card!(Five, Club);
+        let nine_of_spades = card!(Nine, Spade);
+        let ten_of_diamonds = card!(Ten, Diamond);
+        let jack_of_clubs = card!(Jack, Club);
+        let jack_of_hearts = card!(Jack, Heart);
+        let jack_of_spades = card!(Jack, Spade);
+        let queen_of_spades = card!(Queen, Spade);
+        let king_of_diamonds = card!(King, Diamond);
 
         let straight = [
             three_of_clubs,
@@ -1166,14 +1174,7 @@ mod tests {
             panic!("Expected a Straight, but none was found.");
         }
 
-        let five_of_clubs = card!(Five, Club);
-        let nine_of_spades = card!(Nine, Spade);
-        let ten_of_diamonds = card!(Ten, Diamond);
-        let jack_of_clubs = card!(Jack, Club);
-        let jack_of_spades = card!(Jack, Spade);
-        let queen_of_spades = card!(Queen, Spade);
-        let king_of_diamonds = card!(King, Diamond);
-
+        // Tests that a Straight is still identified with 2 repeating ranks in the middle.
         let straight2 = [
             nine_of_spades,
             ten_of_diamonds,
@@ -1199,6 +1200,25 @@ mod tests {
         } else {
             panic!("Expected a Straight, but none was found.");
         }
+
+        // Tests that a Straight is still identified with 3 repeating ranks in the middle.
+        let mut cards4: Vec<Card> = vec![
+            king_of_diamonds,
+            jack_of_spades,
+            ten_of_diamonds,
+            jack_of_hearts,
+            jack_of_clubs,
+            nine_of_spades,
+            queen_of_spades,
+        ];
+        cards4.sort();
+
+        if let Some(cards) = check_for_straight(&cards4) {
+            let identified_straight = cards;
+            assert_eq!(identified_straight, straight2);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
     }
 
     /// Tests rank_hand().
@@ -1212,6 +1232,14 @@ mod tests {
         let five_of_diamonds = card!(Five, Diamond);
         let six_of_clubs = card!(Six, Club);
         let seven_of_spades = card!(Seven, Spade);
+        let five_of_clubs = card!(Five, Club);
+        let nine_of_spades = card!(Nine, Spade);
+        let ten_of_diamonds = card!(Ten, Diamond);
+        let jack_of_clubs = card!(Jack, Club);
+        let jack_of_hearts = card!(Jack, Heart);
+        let jack_of_spades = card!(Jack, Spade);
+        let queen_of_spades = card!(Queen, Spade);
+        let king_of_diamonds = card!(King, Diamond);
 
         let straight = HandRank::Straight([
             three_of_clubs,
@@ -1246,14 +1274,7 @@ mod tests {
         let hand_rank2 = rank_hand(cards2);
         assert_eq!(hand_rank2, straight);
 
-        let five_of_clubs = card!(Five, Club);
-        let nine_of_spades = card!(Nine, Spade);
-        let ten_of_diamonds = card!(Ten, Diamond);
-        let jack_of_clubs = card!(Jack, Club);
-        let jack_of_spades = card!(Jack, Spade);
-        let queen_of_spades = card!(Queen, Spade);
-        let king_of_diamonds = card!(King, Diamond);
-
+        // Tests that a Straight is still identified with 2 repeating ranks in the middle.
         let straight2 = HandRank::Straight([
             nine_of_spades,
             ten_of_diamonds,
@@ -1274,6 +1295,20 @@ mod tests {
 
         let hand_rank3 = rank_hand(cards3);
         assert_eq!(hand_rank3, straight2);
+
+        // Tests that a Straight is still identified with 3 repeating ranks in the middle.
+        let cards4: Vec<Card> = vec![
+            king_of_diamonds,
+            jack_of_spades,
+            ten_of_diamonds,
+            jack_of_hearts,
+            jack_of_clubs,
+            nine_of_spades,
+            queen_of_spades,
+        ];
+
+        let hand_rank4 = rank_hand(cards4);
+        assert_eq!(hand_rank4, straight2);
     }
 
     /// Tests check_for_straight().
