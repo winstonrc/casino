@@ -77,14 +77,63 @@ impl PartialEq for HandRank {
 impl fmt::Display for HandRank {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let printable = match self {
-            HandRank::HighCard(_) => format!("a High Card"),
-            HandRank::Pair(_) => format!("a Pair"),
-            HandRank::TwoPair(_) => format!("Two Pairs"),
-            HandRank::ThreeOfAKind(_) => format!("Three of a Kind"),
-            HandRank::Straight(_) => format!("a Straight"),
-            HandRank::Flush(_) => format!("a Flush"),
-            HandRank::FullHouse(_) => format!("a Full House"),
-            HandRank::FourOfAKind(_) => format!("Four of a Kind"),
+            HandRank::HighCard(card) => format!("a High Card: {}", card.to_symbol()),
+
+            HandRank::Pair([card1, card2]) => {
+                format!("a Pair: {} {}", card1.to_symbol(), card2.to_symbol())
+            }
+
+            HandRank::TwoPair([card1, card2, card3, card4]) => format!(
+                "Two Pairs: {} {} {} {}",
+                card1.to_symbol(),
+                card2.to_symbol(),
+                card3.to_symbol(),
+                card4.to_symbol()
+            ),
+
+            HandRank::ThreeOfAKind([card1, card2, card3]) => format!(
+                "Three of a Kind: {} {} {}",
+                card1.to_symbol(),
+                card2.to_symbol(),
+                card3.to_symbol(),
+            ),
+
+            HandRank::Straight([card1, card2, card3, card4, card5]) => {
+                format!(
+                    "a Straight: {} {} {} {} {}",
+                    card1.to_symbol(),
+                    card2.to_symbol(),
+                    card3.to_symbol(),
+                    card4.to_symbol(),
+                    card5.to_symbol()
+                )
+            }
+
+            HandRank::Flush([card1, card2, card3, card4, card5]) => format!(
+                "a Flush: {} {} {} {} {}",
+                card1.to_symbol(),
+                card2.to_symbol(),
+                card3.to_symbol(),
+                card4.to_symbol(),
+                card5.to_symbol()
+            ),
+
+            HandRank::FullHouse([card1, card2, card3, card4, card5]) => format!(
+                "a Full House: {} {} {} {} {}",
+                card1.to_symbol(),
+                card2.to_symbol(),
+                card3.to_symbol(),
+                card4.to_symbol(),
+                card5.to_symbol()
+            ),
+            HandRank::FourOfAKind([card1, card2, card3, card4]) => format!(
+                "Four of a Kind: {} {} {} {}",
+                card1.to_symbol(),
+                card2.to_symbol(),
+                card3.to_symbol(),
+                card4.to_symbol()
+            ),
+
             HandRank::StraightFlush(cards) => {
                 let is_royal_flush = cards.iter().all(|card| {
                     card.rank == Rank::Ten
@@ -94,10 +143,26 @@ impl fmt::Display for HandRank {
                         || card.rank == Rank::Ace
                 });
 
+                let [card1, card2, card3, card4, card5] = cards;
+
                 if is_royal_flush {
-                    format!("a Royal Flush")
+                    format!(
+                        "a Royal Flush: {} {} {} {} {}",
+                        card1.to_symbol(),
+                        card2.to_symbol(),
+                        card3.to_symbol(),
+                        card4.to_symbol(),
+                        card5.to_symbol()
+                    )
                 } else {
-                    format!("a Straight Flush")
+                    format!(
+                        "a Straight Flush: {} {} {} {} {}",
+                        card1.to_symbol(),
+                        card2.to_symbol(),
+                        card3.to_symbol(),
+                        card4.to_symbol(),
+                        card5.to_symbol()
+                    )
                 }
             }
         };
