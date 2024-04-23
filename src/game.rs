@@ -1,16 +1,22 @@
 use std::collections::{HashMap, HashSet};
+use std::io::{self, Write};
 
 use cards::card::Card;
 use cards::deck::Deck;
 use cards::hand::Hand;
-use uuid::Uuid;
 
 use crate::hand_rankings::{rank_hand, HandRank};
 use crate::player::Player;
 
-const DEFAULT_BUY_IN_CHIPS_AMOUNT: u32 = 100;
+const CURRENCY: &str = "USD";
+const MAXIMUM_PLAYERS_COUNT: usize = 10;
+const MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT: u32 = 100;
 
 /// The core of the Texas hold 'em game.
+///
+/// Only a single table is implemented currently.
+///
+/// A maximum of 10 players are allowed at a table.
 pub struct Game {
     deck: Deck,
     players: HashSet<Player>,
@@ -31,42 +37,92 @@ impl Game {
         }
     }
 
-    /// Add a player into the game with the default buy-in chips amount.
-    pub fn add_player(&mut self, player_name: &str) {
-        self.add_player_with_chips(player_name, DEFAULT_BUY_IN_CHIPS_AMOUNT);
+    // Create a new player with zero chips.
+    pub fn new_player(&mut self, name: &str) -> Player {
+        let player = Player::new(name);
+
+        player
     }
 
-    /// Add a player into the game with a defined buy-in chips amount.
-    pub fn add_player_with_chips(&mut self, player_name: &str, chips: u32) {
-        let identifier = Uuid::new_v4();
+    // Create a new player with a defined amount of chips.
+    pub fn new_player_with_chips(&mut self, name: &str, chips: u32) -> Player {
+        let player = Player::new_with_chips(name, chips);
 
-        let player = Player {
-            identifier,
-            name: player_name.to_string(),
-            chips,
-        };
-
-        println!(
-            "{} bought in with {} chips. Good luck!",
-            &player.name, &player.chips
-        );
-        self.players.insert(player);
+        player
     }
 
-    // todo: implement
+    /// Add a player into the game.
+    pub fn add_player(&mut self, player: &mut Player) -> bool {
+        if self.players.len() > MAXIMUM_PLAYERS_COUNT {
+            println!("Unable to join the table. It is already at max capacity.");
+            return false;
+        }
+
+        if player.chips < MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT {
+            println!("You do not have enough chips to play at this table.");
+            self.buy_chips(player);
+        } else {
+            println!(
+                "{} bought in with {} chips. Good luck!",
+                &player.name, &player.chips
+            );
+            self.players.insert(player.clone());
+        }
+
+        self.players.insert(player.clone());
+        true
+    }
+
     /// Remove a player from the game.
-    pub fn remove_player(&mut self, player: &Player) {
-        self.players.remove(player);
+    pub fn remove_player(&mut self, player: &mut Player) -> Option<Player> {
+        if self.players.len() < 1 {
+            eprintln!("Unable to remove player. The table is empty.");
+            return None;
+        }
+
+        if self.players.get(player).is_none() {
+            eprintln!(
+                "Unable to remove player. {} is not at the table.",
+                player.name
+            );
+            return None;
+        }
+
+        self.players.take(player)
     }
 
-    /// Play the game.
-    pub fn play(&mut self) {
-        while !self.game_over {
-            self.play_round();
-            self.game_over = self.is_game_over();
+    /// Buy chips.
+    fn buy_chips(&mut self, player: &mut Player) {
+        println!("How many chips would you like to buy?");
 
-            // todo: remove after implementing game over trigger
-            self.game_over = true;
+        loop {
+            print!(
+                "Please enter your desired amount in {} or enter 'q' to quit: ",
+                CURRENCY
+            );
+            io::stdout().flush().expect("Failed to flush stdout.");
+
+            let mut input = String::new();
+            io::stdin()
+                .read_line(&mut input)
+                .expect("Failed to read line");
+
+            let trimmed_input = input.trim();
+
+            if trimmed_input.to_lowercase() == "q" {
+                println!("No chips were purchased. Transaction canceled.");
+                break;
+            }
+
+            // Attempt to parse input as u32
+            match trimmed_input.parse::<u32>() {
+                Ok(number) => {
+                    println!("You purchased {} {} worth of chips.", CURRENCY, number);
+                    player.update_chips(number);
+                    break;
+                }
+                Err(_) => println!("Error: Not a valid number."),
+            }
         }
     }
 
@@ -86,92 +142,196 @@ impl Game {
         false
     }
 
-    fn play_round(&mut self) {
-        self.deck.shuffle();
-        println!("Deck shuffled.");
+    /// Play the game.
+    pub fn play(&mut self) {
+        while !self.game_over {
+            self.play_round();
+            self.game_over = self.is_game_over();
 
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
-        // todo: implement dealer, small blind, big blind, and dealing order
-        for player in self.players.clone() {
-            println!();
-            let hand = self.deal_hand();
-            println!("Hand dealt to {}.", player.name);
-
-            player_hands.insert(player, hand.clone());
+            // todo: remove after implementing game over trigger
+            self.game_over = true;
         }
+    }
 
-        let table_cards: Vec<Card> = Vec::new();
-
-        // todo: implement betting system
-        // todo: implement folding
+    // todo: implement betting system
+    // todo: implement folding
+    // todo: add hand timer
+    fn play_round(&mut self) {
         let mut round_over = false;
         while !round_over {
-            let mut leading_players: HashMap<Player, HandRank> = HashMap::new();
-            let mut best_hand: Vec<HandRank> = Vec::new();
-            for (player, hand) in player_hands.iter() {
-                // todo: refactor hand ranking logic to consider cards on the table
-                let mut cards_to_rank: Vec<Card> = table_cards.clone();
-                cards_to_rank.push(hand.cards[0]);
-                cards_to_rank.push(hand.cards[1]);
+            self.deck.shuffle();
+            println!();
+            println!("Deck shuffled.");
 
-                let hand_rank = rank_hand(cards_to_rank);
-                // todo: remove after testing
-                println!("{:?}", hand_rank);
+            // todo: determine player seat position & dealing order
+            // todo: implement dealer, small blind, big blind, and dealing order
 
-                // todo: Add logic to check for a kicker (high card) when players are tied with
-                // matching Pairs, Two Pairs, Three of a Kinds, or Four of a Kinds on the table but one has a higher card in their hand.
-                // Be sure to make sure that a hand is not unintentionally outranking an equal hand based on its suit in the rank_hand() comparison!
-                if best_hand.is_empty() {
-                    best_hand.push(hand_rank);
-                    leading_players.insert(player.clone(), hand_rank);
-                } else if hand_rank > best_hand[best_hand.len() - 1] {
-                    best_hand.clear();
-                    best_hand.push(hand_rank);
-                    leading_players.clear();
-                    leading_players.insert(player.clone(), hand_rank);
-                } else if hand_rank == best_hand[best_hand.len() - 1] {
-                    best_hand.push(hand_rank);
-                    leading_players.insert(player.clone(), hand_rank);
-                } else {
-                    continue;
+            let mut table_cards = Hand::new();
+            let mut burned_cards = Hand::new();
+            let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+
+            for player in self.players.clone() {
+                if let Some(hand) = self.deal_hand() {
+                    // todo: update to only show hand of user
+                    println!("Hand dealt to {}: {}", player.name, hand.to_symbols());
+                    player_hands.insert(player.clone(), hand);
+                }
+            }
+            println!();
+
+            // Pre-flop betting round
+            let mut pre_flop_betting_round_over = false;
+            while !pre_flop_betting_round_over {
+                // bet
+                // todo: remove after implementing pre_flop_betting_round_over trigger
+                pre_flop_betting_round_over = true;
+            }
+
+            // Flop
+            if let Some(card) = self.deal_card() {
+                burned_cards.push(card);
+            }
+
+            for _ in 0..3 {
+                if let Some(card) = self.deal_card() {
+                    table_cards.push(card);
                 }
             }
 
-            if leading_players.len() == 1 {
-                let (winning_player, winning_hand_rank): (&Player, &HandRank) =
-                    leading_players.iter().next().unwrap().clone();
+            println!("Table cards: {}", table_cards.to_symbols());
+            println!();
 
-                let winning_hand: Hand = player_hands.get(&winning_player).unwrap().clone();
-
-                print!("{} wins with {}: ", winning_player.name, winning_hand_rank);
-                winning_hand.print_symbols();
-            } else if leading_players.len() > 1 {
-                for (player, tied_hand_rank) in leading_players.iter() {
-                    let player_hand: Hand = player_hands.get(&player).unwrap().clone();
-
-                    print!("{} pushes with {}: ", player.name, tied_hand_rank);
-                    player_hand.print_symbols();
-                }
+            // Flop betting round
+            let mut flop_betting_round_over = false;
+            while !flop_betting_round_over {
+                // bet
+                // todo: remove after implementing flop_betting_round_over trigger
+                flop_betting_round_over = true;
             }
 
-            // todo: remove after implementing round over trigger
+            // Turn
+            if let Some(card) = self.deal_card() {
+                burned_cards.push(card);
+            }
+
+            if let Some(card) = self.deal_card() {
+                table_cards.push(card);
+            }
+
+            println!("Table cards: {}", table_cards.to_symbols());
+            println!();
+
+            // Turn betting round
+            let mut turn_betting_round_over = false;
+            while !turn_betting_round_over {
+                // bet
+                // todo: remove after implementing turn_betting_round_over trigger
+                turn_betting_round_over = true;
+            }
+
+            // River
+            if let Some(card) = self.deal_card() {
+                burned_cards.push(card);
+            }
+
+            if let Some(card) = self.deal_card() {
+                table_cards.push(card);
+            }
+
+            println!("Table cards: {}", table_cards.to_symbols());
+            println!();
+
+            // River betting round
+            let mut river_betting_round_over = false;
+            while !river_betting_round_over {
+                // bet
+                // todo: remove after implementing river_betting_round_over trigger
+                river_betting_round_over = true;
+            }
+
+            let leading_players = self.rank_all_hands(&player_hands, &table_cards);
+
+            self.determine_winners(&leading_players);
+
+            // todo: remove after implementing round_over trigger
             round_over = true;
         }
     }
 
-    fn deal_hand(&mut self) -> Hand {
-        let mut cards: Vec<Card> = Vec::new();
-        let card1 = self.deck.deal().unwrap();
-        cards.push(card1);
+    fn deal_card(&mut self) -> Option<Card> {
+        if let Some(card) = self.deck.deal() {
+            return Some(card);
+        }
 
-        let card2 = self.deck.deal().unwrap();
-        cards.push(card2);
+        None
+    }
 
-        let hand = Hand { cards };
+    fn deal_hand(&mut self) -> Option<Hand> {
+        let mut hand = Hand::new();
 
-        // todo: update to only show user's hand
-        hand.print_symbols();
+        if let Some(card1) = self.deal_card() {
+            hand.push(card1);
+        } else {
+            return None;
+        }
 
-        hand
+        if let Some(card2) = self.deal_card() {
+            hand.push(card2);
+        } else {
+            return None;
+        }
+
+        Some(hand)
+    }
+
+    fn rank_all_hands(
+        &self,
+        player_hands: &HashMap<Player, Hand>,
+        table_cards: &Hand,
+    ) -> HashMap<Player, HandRank> {
+        let mut leading_players: HashMap<Player, HandRank> = HashMap::new();
+        let mut best_hand: Vec<HandRank> = Vec::new();
+        for (player, hand) in player_hands.iter() {
+            let mut cards_to_rank: Vec<Card> = table_cards.get_cards().clone();
+            cards_to_rank.push(hand.cards[0]);
+            cards_to_rank.push(hand.cards[1]);
+
+            let hand_rank = rank_hand(cards_to_rank);
+            // todo: remove after testing
+            println!("{} has {}", player.name, hand_rank);
+
+            // todo: Add logic to check for a kicker (high card) when players are tied with
+            // matching Pairs, Two Pairs, Three of a Kinds, or Four of a Kinds on the table but one has a higher card in their hand.
+            // Be sure to make sure that a hand is not unintentionally outranking an equal hand based on its suit in the rank_hand() comparison!
+            if best_hand.is_empty() {
+                best_hand.push(hand_rank);
+                leading_players.insert(player.clone(), hand_rank);
+            } else if hand_rank > best_hand[best_hand.len() - 1] {
+                best_hand.clear();
+                best_hand.push(hand_rank);
+                leading_players.clear();
+                leading_players.insert(player.clone(), hand_rank);
+            } else if hand_rank == best_hand[best_hand.len() - 1] {
+                best_hand.push(hand_rank);
+                leading_players.insert(player.clone(), hand_rank);
+            } else {
+                continue;
+            }
+        }
+
+        leading_players
+    }
+
+    fn determine_winners(&self, leading_players: &HashMap<Player, HandRank>) {
+        if leading_players.len() == 1 {
+            let (winning_player, winning_hand_rank): (&Player, &HandRank) =
+                leading_players.iter().next().unwrap().clone();
+
+            println!("{} wins with {}", winning_player.name, winning_hand_rank);
+        } else if leading_players.len() > 1 {
+            for (player, tied_hand_rank) in leading_players.iter() {
+                println!("{} pushes with {}", player.name, tied_hand_rank);
+            }
+        }
     }
 }
