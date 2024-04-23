@@ -106,8 +106,8 @@ impl Game {
         // todo: implement folding
         let mut round_over = false;
         while !round_over {
-            let mut leading_players: HashSet<Player> = HashSet::new();
-            let mut best_hand: Option<HandRank> = None;
+            let mut leading_players: HashMap<Player, HandRank> = HashMap::new();
+            let mut best_hand: Vec<HandRank> = Vec::new();
             for (player, hand) in player_hands.iter() {
                 // todo: refactor hand ranking logic to consider cards on the table
                 let mut cards_to_rank: Vec<Card> = table_cards.clone();
@@ -121,31 +121,35 @@ impl Game {
                 // todo: Add logic to check for a kicker (high card) when players are tied with
                 // matching Pairs, Two Pairs, Three of a Kinds, or Four of a Kinds on the table but one has a higher card in their hand.
                 // Be sure to make sure that a hand is not unintentionally outranking an equal hand based on its suit in the rank_hand() comparison!
-                if best_hand.is_none() {
-                    best_hand = Some(hand_rank);
-                    leading_players.insert(player.clone());
-                } else if hand_rank > best_hand.unwrap() {
-                    best_hand = Some(hand_rank);
+                if best_hand.is_empty() {
+                    best_hand.push(hand_rank);
+                    leading_players.insert(player.clone(), hand_rank);
+                } else if hand_rank > best_hand[best_hand.len() - 1] {
+                    best_hand.clear();
+                    best_hand.push(hand_rank);
                     leading_players.clear();
-                    leading_players.insert(player.clone());
-                } else if hand_rank == best_hand.unwrap() {
-                    leading_players.insert(player.clone());
+                    leading_players.insert(player.clone(), hand_rank);
+                } else if hand_rank == best_hand[best_hand.len() - 1] {
+                    best_hand.push(hand_rank);
+                    leading_players.insert(player.clone(), hand_rank);
                 } else {
                     continue;
                 }
             }
 
             if leading_players.len() == 1 {
-                let winning_player: Player = leading_players.iter().next().unwrap().clone();
+                let (winning_player, winning_hand_rank): (&Player, &HandRank) =
+                    leading_players.iter().next().unwrap().clone();
+
                 let winning_hand: Hand = player_hands.get(&winning_player).unwrap().clone();
 
-                print!("{} wins with {}: ", winning_player.name, best_hand.unwrap());
+                print!("{} wins with {}: ", winning_player.name, winning_hand_rank);
                 winning_hand.print_symbols();
             } else if leading_players.len() > 1 {
-                for player in leading_players.iter() {
+                for (player, tied_hand_rank) in leading_players.iter() {
                     let player_hand: Hand = player_hands.get(&player).unwrap().clone();
 
-                    print!("{} pushes with {}: ", player.name, best_hand.unwrap());
+                    print!("{} pushes with {}: ", player.name, tied_hand_rank);
                     player_hand.print_symbols();
                 }
             }
