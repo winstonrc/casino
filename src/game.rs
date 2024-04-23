@@ -38,6 +38,49 @@ impl Game {
         }
     }
 
+    /// Play the game.
+    pub fn play(&mut self) {
+        while !self.game_over {
+            self.play_round();
+
+            loop {
+                println!("Play another round?");
+                print!("Yes (Y) / No (n): ");
+                io::stdout().flush().expect("Failed to flush stdout.");
+
+                let mut input = String::new();
+                io::stdin()
+                    .read_line(&mut input)
+                    .expect("Failed to read line");
+                let trimmed_input = input.trim();
+
+                match trimmed_input.to_lowercase().as_str() {
+                    "q" => {
+                        println!("Quitting game.");
+                        process::exit(0);
+                    }
+                    "n" => {
+                        self.game_over = true;
+                        break;
+                    }
+                    "y" => {
+                        break;
+                    }
+                    "" => {
+                        break;
+                    }
+                    _ => println!(
+                        "Invalid input. Please enter 'y' or 'n' or enter 'q' to quit the game."
+                    ),
+                }
+            }
+
+            self.game_over = self.is_game_over();
+        }
+
+        println!("Game over. Thanks for playing!");
+    }
+
     // Create a new player with zero chips.
     pub fn new_player(&mut self, name: &str) -> Player {
         let player = Player::new(name);
@@ -73,6 +116,8 @@ impl Game {
                     MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT - player.chips
                 );
 
+                println!();
+
                 self.buy_chips(player);
             }
         }
@@ -106,12 +151,10 @@ impl Game {
     /// Buy chips.
     fn buy_chips(&mut self, player: &mut Player) {
         println!("How many chips would you like to buy?");
+        println!("Enter 'q' at anytime to quit.\n");
 
         loop {
-            print!(
-                "Please enter your desired amount in {} or enter 'q' to quit: ",
-                CURRENCY
-            );
+            print!("Please enter your desired amount in {}: ", CURRENCY);
             io::stdout().flush().expect("Failed to flush stdout.");
 
             let mut input = String::new();
@@ -122,7 +165,7 @@ impl Game {
             let trimmed_input = input.trim();
 
             if trimmed_input.to_lowercase() == "q" {
-                println!("No chips were purchased. Transaction canceled.");
+                println!("No chips were purchased. Quitting game.");
                 process::exit(0);
             }
 
@@ -138,6 +181,9 @@ impl Game {
     }
 
     fn is_game_over(&self) -> bool {
+        if self.game_over == true {
+            return true;
+        }
         if self.players.len() == 0 {
             println!("No players remaining. Game over!");
 
@@ -153,23 +199,13 @@ impl Game {
         false
     }
 
-    /// Play the game.
-    pub fn play(&mut self) {
-        while !self.game_over {
-            self.play_round();
-            self.game_over = self.is_game_over();
-
-            // todo: remove after implementing game over trigger
-            self.game_over = true;
-        }
-    }
-
     // todo: implement betting system
     // todo: implement folding
     // todo: add hand timer
     fn play_round(&mut self) {
         let mut round_over = false;
         while !round_over {
+            println!("The deck contains {} cards", self.deck.len());
             self.deck.shuffle();
             println!();
             println!("Deck shuffled.");
@@ -263,6 +299,24 @@ impl Game {
             let leading_players = self.rank_all_hands(&player_hands, &table_cards);
 
             self.determine_winners(&leading_players);
+
+            // Return cards from hands to deck
+            for (_player, hand) in player_hands.iter() {
+                if let (Some(card1), Some(card2)) = (hand.cards.get(0), hand.cards.get(1)) {
+                    self.deck.insert_at_top(*card1).unwrap();
+                    self.deck.insert_at_top(*card2).unwrap();
+                }
+            }
+
+            // Return cards from table to deck
+            for card in table_cards.get_cards() {
+                self.deck.insert_at_top(*card).unwrap();
+            }
+
+            // Return cards from burned piles to deck
+            for card in burned_cards.get_cards() {
+                self.deck.insert_at_top(*card).unwrap();
+            }
 
             // todo: remove after implementing round_over trigger
             round_over = true;
