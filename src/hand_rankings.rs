@@ -314,46 +314,7 @@ fn check_for_straight(cards: &Vec<Card>) -> Option<[Card; 5]> {
         return None;
     }
 
-    let contains_ace = cards.iter().any(|&card| card.rank == Rank::Ace);
-
-    // Check for a straight containing an Ace if an Ace is present
-    if contains_ace {
-        // Check for Ace-low straight
-        if cards[0].rank == Rank::Two
-            && cards[1].rank == Rank::Three
-            && cards[2].rank == Rank::Four
-            && cards[3].rank == Rank::Five
-            && cards[cards.len() - 1].rank == Rank::Ace
-        {
-            return Some([
-                cards[cards.len() - 1],
-                cards[cards.len() - 5],
-                cards[cards.len() - 4],
-                cards[cards.len() - 3],
-                cards[cards.len() - 2],
-            ]);
-        }
-
-        // Check for Ace-high straight
-        if cards[cards.len() - 5].rank == Rank::Ten
-            && cards[cards.len() - 4].rank == Rank::Jack
-            && cards[cards.len() - 3].rank == Rank::Queen
-            && cards[cards.len() - 2].rank == Rank::King
-            && cards[cards.len() - 1].rank == Rank::Ace
-        {
-            return Some([
-                cards[cards.len() - 5],
-                cards[cards.len() - 4],
-                cards[cards.len() - 3],
-                cards[cards.len() - 2],
-                cards[cards.len() - 1],
-            ]);
-        }
-
-        return None;
-    }
-
-    // Check for non-Ace straight
+    // Check for non-Ace Straight or an Ace-high Straight
     let mut straight_cards: Vec<Card> = Vec::new();
     straight_cards.push(cards[0]);
 
@@ -370,13 +331,37 @@ fn check_for_straight(cards: &Vec<Card>) -> Option<[Card; 5]> {
     }
 
     if straight_cards.len() >= 5 {
-        return Some([
+        let straight_cards = [
             cards[cards.len() - 5],
             cards[cards.len() - 4],
             cards[cards.len() - 3],
             cards[cards.len() - 2],
             cards[cards.len() - 1],
-        ]);
+        ];
+
+        return Some(straight_cards);
+    }
+
+    // Check for an Ace-low Straight.
+    // This check comes last in the function since it's the lowest possible straight.
+    let ace_pos = cards.iter().position(|&card| card.rank == Rank::Ace);
+    let two_pos = cards.iter().position(|&card| card.rank == Rank::Two);
+    let three_pos = cards.iter().position(|&card| card.rank == Rank::Three);
+    let four_pos = cards.iter().position(|&card| card.rank == Rank::Four);
+    let five_pos = cards.iter().position(|&card| card.rank == Rank::Five);
+
+    if let (Some(ace_pos), Some(two_pos), Some(three_pos), Some(four_pos), Some(five_pos)) =
+        (ace_pos, two_pos, three_pos, four_pos, five_pos)
+    {
+        let straight_cards = [
+            cards[ace_pos],
+            cards[two_pos],
+            cards[three_pos],
+            cards[four_pos],
+            cards[five_pos],
+        ];
+
+        return Some(straight_cards);
     }
 
     None
@@ -401,32 +386,39 @@ fn check_for_flush(cards: &Vec<Card>) -> Option<[Card; 5]> {
 
     for (_suit, cards) in suits.iter() {
         if cards.len() >= 5 {
-            let contains_ace = cards.iter().any(|&card| card.rank == Rank::Ace);
-            if contains_ace {
-                // Check for Ace-low flush, which helps when this is also a straight
-                if cards[cards.len() - 5].rank == Rank::Two
-                    && cards[cards.len() - 4].rank == Rank::Three
-                    && cards[cards.len() - 3].rank == Rank::Four
-                    && cards[cards.len() - 2].rank == Rank::Five
-                    && cards[cards.len() - 1].rank == Rank::Ace
-                {
-                    return Some([
-                        cards[cards.len() - 1],
-                        cards[cards.len() - 5],
-                        cards[cards.len() - 4],
-                        cards[cards.len() - 3],
-                        cards[cards.len() - 2],
-                    ]);
-                }
+            // Check for an Ace-low Flush, which helps when this is also a Straight.
+            // This check comes first in the function since the ranks that make up a Flush don't matter,
+            // but the ranks for a Straight Flush do matter.
+            let ace_pos = cards.iter().position(|&card| card.rank == Rank::Ace);
+            let two_pos = cards.iter().position(|&card| card.rank == Rank::Two);
+            let three_pos = cards.iter().position(|&card| card.rank == Rank::Three);
+            let four_pos = cards.iter().position(|&card| card.rank == Rank::Four);
+            let five_pos = cards.iter().position(|&card| card.rank == Rank::Five);
+
+            // Check if all ranks are present
+            if let (Some(ace_pos), Some(two_pos), Some(three_pos), Some(four_pos), Some(five_pos)) =
+                (ace_pos, two_pos, three_pos, four_pos, five_pos)
+            {
+                let straight_cards = [
+                    cards[ace_pos],
+                    cards[two_pos],
+                    cards[three_pos],
+                    cards[four_pos],
+                    cards[five_pos],
+                ];
+
+                return Some(straight_cards);
             }
 
-            return Some([
+            let flush_cards = [
                 cards[cards.len() - 5],
                 cards[cards.len() - 4],
                 cards[cards.len() - 3],
                 cards[cards.len() - 2],
                 cards[cards.len() - 1],
-            ]);
+            ];
+
+            return Some(flush_cards);
         }
     }
 
@@ -505,7 +497,9 @@ fn check_for_four_of_a_kind(cards: &Vec<Card>) -> Option<[Card; 4]> {
 
     for (_rank, cards) in ranks.iter() {
         if cards.len() == 4 {
-            return Some([cards[0], cards[1], cards[2], cards[3]]);
+            let four_of_a_kind_cards = [cards[0], cards[1], cards[2], cards[3]];
+
+            return Some(four_of_a_kind_cards);
         }
     }
 
@@ -1151,7 +1145,7 @@ mod tests {
     ///
     /// Tests if an Ace-low Straight is correctly identified.
     #[test]
-    fn check_for_straight_ace_low_straight_works() {
+    fn check_for_straight_ace_low_works() {
         let two_of_clubs = card!(Two, Club);
         let three_of_hearts = card!(Three, Heart);
         let four_of_spades = card!(Four, Spade);
@@ -1246,7 +1240,7 @@ mod tests {
     ///
     /// Tests if a hand containing an Ace-low Straight is ranked correctly.
     #[test]
-    fn rank_hand_ace_low_straight_works() {
+    fn rank_hand_straight_ace_low_works() {
         let two_of_clubs = card!(Two, Club);
         let three_of_hearts = card!(Three, Heart);
         let four_of_spades = card!(Four, Spade);
@@ -1321,7 +1315,7 @@ mod tests {
     ///
     /// Tests if an Ace-high Straight is correctly identified.
     #[test]
-    fn check_for_straight_ace_high_straight_works() {
+    fn check_for_straight_ace_high_works() {
         let nine_of_diamonds = card!(Nine, Diamond);
         let ten_of_clubs = card!(Ten, Club);
         let jack_of_hearts = card!(Jack, Heart);
@@ -1377,7 +1371,7 @@ mod tests {
     ///
     /// Tests if a hand containing an Ace-high Straight is ranked correctly.
     #[test]
-    fn rank_hand_ace_high_straight_works() {
+    fn rank_hand_straight_ace_high_works() {
         let nine_of_diamonds = card!(Nine, Diamond);
         let ten_of_clubs = card!(Ten, Club);
         let jack_of_hearts = card!(Jack, Heart);
