@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
+use std::process;
 
 use cards::card::Card;
 use cards::deck::Deck;
@@ -59,16 +60,27 @@ impl Game {
         }
 
         if player.chips < MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT {
-            println!("You do not have enough chips to play at this table.");
-            self.buy_chips(player);
-        } else {
-            println!(
-                "{} bought in with {} chips. Good luck!",
-                &player.name, &player.chips
-            );
-            self.players.insert(player.clone());
+            while player.chips < MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT {
+                println!("You do not have enough chips to play at this table.");
+                println!("Current chips amount: {}", player.chips);
+                println!(
+                    "Required chips amount: {}",
+                    MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT
+                );
+
+                println!(
+                    "Additional chips needed: {}",
+                    MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT - player.chips
+                );
+
+                self.buy_chips(player);
+            }
         }
 
+        println!(
+            "{} bought in with {} chips. Good luck!",
+            &player.name, &player.chips
+        );
         self.players.insert(player.clone());
         true
     }
@@ -111,10 +123,9 @@ impl Game {
 
             if trimmed_input.to_lowercase() == "q" {
                 println!("No chips were purchased. Transaction canceled.");
-                break;
+                process::exit(0);
             }
 
-            // Attempt to parse input as u32
             match trimmed_input.parse::<u32>() {
                 Ok(number) => {
                     println!("You purchased {} {} worth of chips.", CURRENCY, number);
