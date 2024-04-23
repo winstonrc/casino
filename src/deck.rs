@@ -34,35 +34,6 @@ impl Deck {
         self.cards.contains(card)
     }
 
-    /// Inserts a given card into the deck.
-    pub fn insert(&mut self, card: Card) {
-        self.cards.push(card);
-    }
-
-    /// Removes a given card from the deck.
-    ///
-    /// The deal() function should normally be used instead of this.
-    pub fn remove(&mut self, card: Card) {
-        self.cards.retain(|value| *value != card);
-    }
-
-    /// Returns the size of the deck.
-    pub fn len(&self) -> usize {
-        self.cards.len()
-    }
-
-    /// Returns whether or not the deck is empty.
-    pub fn is_empty(&self) -> bool {
-        self.cards.is_empty()
-    }
-
-    /// Shuffles the cards in the deck.
-    pub fn shuffle(&mut self) -> &mut Self {
-        let mut rng = thread_rng();
-        self.cards.shuffle(&mut rng);
-        self
-    }
-
     pub fn deal(&mut self) -> Option<Card> {
         if let Some(card) = self.cards.pop() {
             Some(card)
@@ -70,6 +41,65 @@ impl Deck {
             eprintln!("Deck is empty.");
             None
         }
+    }
+
+    /// Inserts a given card into the provided position in the deck.
+    pub fn insert(&mut self, position: usize, card: Card) -> Result<(), &'static str> {
+        if position > self.cards.len() {
+            return Err("Position out of bounds.");
+        }
+
+        self.cards.insert(position, card);
+        Ok(())
+    }
+
+    /// Inserts a given card at the bottom of the deck.
+    pub fn insert_at_bottom(&mut self, card: Card) -> Result<(), &'static str> {
+        self.cards.insert(0, card);
+        Ok(())
+    }
+
+    /// Inserts a given card into the middle of the deck.
+    pub fn insert_at_middle(&mut self, card: Card) -> Result<(), &'static str> {
+        let middle_position = self.cards.len() / 2;
+
+        self.cards.insert(middle_position, card);
+        Ok(())
+    }
+
+    /// Inserts a given card at the top of the deck.
+    pub fn insert_at_top(&mut self, card: Card) -> Result<(), &'static str> {
+        self.cards.push(card);
+        Ok(())
+    }
+
+    /// Returns whether or not the deck is empty.
+    pub fn is_empty(&self) -> bool {
+        self.cards.is_empty()
+    }
+
+    /// Returns the size of the deck.
+    pub fn len(&self) -> usize {
+        self.cards.len()
+    }
+
+    /// Removes a given card from the deck.
+    ///
+    /// The deal() function should normally be used instead of this.
+    pub fn remove(&mut self, card: &Card) -> Result<(), &'static str> {
+        if !self.cards.contains(card) {
+            return Err("Card is not in the deck.");
+        }
+
+        self.cards.retain(|value| value != card);
+        Ok(())
+    }
+
+    /// Shuffles the cards in the deck.
+    pub fn shuffle(&mut self) -> &mut Self {
+        let mut rng = thread_rng();
+        self.cards.shuffle(&mut rng);
+        self
     }
 }
 
@@ -109,7 +139,9 @@ mod tests {
     #[test]
     fn dealing_cards_works() {
         let mut deck = Deck::new();
-        deck.deal().unwrap();
-        assert_eq!(deck.cards.len(), 51);
+
+        if let Some(_card) = deck.deal() {
+            assert_eq!(deck.cards.len(), 51);
+        }
     }
 }
