@@ -9,9 +9,8 @@ use cards::hand::Hand;
 use crate::hand_rankings::{rank_hand, HandRank};
 use crate::player::Player;
 
-const CURRENCY: &str = "USD";
+pub const MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT: u32 = 100;
 const MAXIMUM_PLAYERS_COUNT: usize = 10;
-const MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT: u32 = 100;
 
 /// The core of the Texas hold 'em game.
 ///
@@ -60,7 +59,7 @@ impl Game {
                         process::exit(0);
                     }
                     "n" => {
-                        self.game_over = true;
+                        self.end_game();
                         break;
                     }
                     "y" => {
@@ -75,10 +74,15 @@ impl Game {
                 }
             }
 
-            self.game_over = self.is_game_over();
+            self.check_for_game_over();
         }
 
         println!("Game over. Thanks for playing!");
+    }
+
+    /// End the game.
+    pub fn end_game(&mut self) {
+        self.game_over = true;
     }
 
     // Create a new player with zero chips.
@@ -96,38 +100,31 @@ impl Game {
     }
 
     /// Add a player into the game.
-    pub fn add_player(&mut self, player: &mut Player) -> bool {
+    pub fn add_player(&mut self, player: Player) -> Result<(), &'static str> {
         if self.players.len() > MAXIMUM_PLAYERS_COUNT {
-            println!("Unable to join the table. It is already at max capacity.");
-            return false;
+            return Err("Unable to join the table. It is already at max capacity.");
         }
 
         if player.chips < MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT {
-            while player.chips < MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT {
-                println!("You do not have enough chips to play at this table.");
-                println!("Current chips amount: {}", player.chips);
-                println!(
-                    "Required chips amount: {}",
-                    MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT
-                );
-
-                println!(
-                    "Additional chips needed: {}",
-                    MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT - player.chips
-                );
-
-                println!();
-
-                self.buy_chips(player);
-            }
+            println!("You do not have enough chips to play at this table.");
+            println!("Current chips amount: {}", player.chips);
+            println!(
+                "Required chips amount: {}",
+                MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT
+            );
+            println!(
+                "Additional chips needed: {}",
+                MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT - player.chips
+            );
+            return Err("You do not have enough chips to play at this table.");
         }
 
         println!(
             "{} bought in with {} chips. Good luck!",
             &player.name, &player.chips
         );
-        self.players.insert(player.clone());
-        true
+        self.players.insert(player);
+        Ok(())
     }
 
     /// Remove a player from the game.
@@ -148,55 +145,16 @@ impl Game {
         self.players.take(player)
     }
 
-    /// Buy chips.
-    fn buy_chips(&mut self, player: &mut Player) {
-        println!("How many chips would you like to buy?");
-        println!("Enter 'q' at anytime to quit.\n");
-
-        loop {
-            print!("Please enter your desired amount in {}: ", CURRENCY);
-            io::stdout().flush().expect("Failed to flush stdout.");
-
-            let mut input = String::new();
-            io::stdin()
-                .read_line(&mut input)
-                .expect("Failed to read line");
-
-            let trimmed_input = input.trim();
-
-            if trimmed_input.to_lowercase() == "q" {
-                println!("No chips were purchased. Quitting game.");
-                process::exit(0);
-            }
-
-            match trimmed_input.parse::<u32>() {
-                Ok(number) => {
-                    println!("You purchased {} {} worth of chips.", CURRENCY, number);
-                    player.update_chips(number);
-                    break;
-                }
-                Err(_) => println!("Error: Not a valid number."),
-            }
-        }
-    }
-
-    fn is_game_over(&self) -> bool {
-        if self.game_over == true {
-            return true;
-        }
+    fn check_for_game_over(&mut self) {
         if self.players.len() == 0 {
             println!("No players remaining. Game over!");
-
-            return true;
+            self.game_over = true;
         }
 
         if self.players.len() == 1 {
             println!("One player remaining. Game over!");
-
-            return true;
+            self.game_over = true;
         }
-
-        false
     }
 
     // todo: implement betting system
