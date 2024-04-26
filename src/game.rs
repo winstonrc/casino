@@ -1,6 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{self, Write};
-use std::process;
 
 use cards::card::Card;
 use cards::deck::Deck;
@@ -17,23 +15,20 @@ const MAXIMUM_PLAYERS_COUNT: usize = 10;
 /// Only a single table is implemented currently.
 ///
 /// A maximum of 10 players are allowed at a table.
-pub struct Game {
+pub struct TexasHoldEm {
     deck: Deck,
     players: HashSet<Player>,
-    game_over: bool,
+
+    pub game_over: bool,
 }
 
-impl Game {
+impl TexasHoldEm {
     /// Create a new game that internally contains a deck and players.
     pub fn new() -> Self {
-        let deck = Deck::new();
-        let players = HashSet::new();
-        let game_over = false;
-
         Self {
-            deck,
-            players,
-            game_over,
+            deck: Deck::new(),
+            players: HashSet::new(),
+            game_over: false,
         }
     }
 
@@ -41,39 +36,6 @@ impl Game {
     pub fn play(&mut self) {
         while !self.game_over {
             self.play_round();
-
-            loop {
-                println!("Play another round?");
-                print!("Yes (Y) / No (n): ");
-                io::stdout().flush().expect("Failed to flush stdout.");
-
-                let mut input = String::new();
-                io::stdin()
-                    .read_line(&mut input)
-                    .expect("Failed to read line");
-                let trimmed_input = input.trim();
-
-                match trimmed_input.to_lowercase().as_str() {
-                    "q" => {
-                        println!("Quitting game.");
-                        process::exit(0);
-                    }
-                    "n" => {
-                        self.end_game();
-                        break;
-                    }
-                    "y" => {
-                        break;
-                    }
-                    "" => {
-                        break;
-                    }
-                    _ => println!(
-                        "Invalid input. Please enter 'y' or 'n' or enter 'q' to quit the game."
-                    ),
-                }
-            }
-
             self.check_for_game_over();
         }
 
@@ -145,7 +107,7 @@ impl Game {
         self.players.take(player)
     }
 
-    fn check_for_game_over(&mut self) {
+    pub fn check_for_game_over(&mut self) {
         if self.players.len() == 0 {
             println!("No players remaining. Game over!");
             self.game_over = true;
@@ -160,30 +122,31 @@ impl Game {
     // todo: implement betting system
     // todo: implement folding
     // todo: add hand timer
-    fn play_round(&mut self) {
+    /// Play a single round.
+    pub fn play_round(&mut self) {
+        println!("The deck contains {} cards", self.deck.len());
+        self.deck.shuffle();
+        println!();
+        println!("Deck shuffled.");
+
+        // todo: determine player seat position & dealing order
+        // todo: implement dealer, small blind, big blind, and dealing order
+
+        let mut table_cards = Hand::new();
+        let mut burned_cards = Hand::new();
+        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+
+        for player in self.players.clone() {
+            if let Some(hand) = self.deal_hand() {
+                // todo: update to only show hand of user
+                println!("Hand dealt to {}: {}", player.name, hand.to_symbols());
+                player_hands.insert(player.clone(), hand);
+            }
+        }
+        println!();
+
         let mut round_over = false;
         while !round_over {
-            println!("The deck contains {} cards", self.deck.len());
-            self.deck.shuffle();
-            println!();
-            println!("Deck shuffled.");
-
-            // todo: determine player seat position & dealing order
-            // todo: implement dealer, small blind, big blind, and dealing order
-
-            let mut table_cards = Hand::new();
-            let mut burned_cards = Hand::new();
-            let mut player_hands: HashMap<Player, Hand> = HashMap::new();
-
-            for player in self.players.clone() {
-                if let Some(hand) = self.deal_hand() {
-                    // todo: update to only show hand of user
-                    println!("Hand dealt to {}: {}", player.name, hand.to_symbols());
-                    player_hands.insert(player.clone(), hand);
-                }
-            }
-            println!();
-
             // Pre-flop betting round
             let mut pre_flop_betting_round_over = false;
             while !pre_flop_betting_round_over {
@@ -254,30 +217,30 @@ impl Game {
                 river_betting_round_over = true;
             }
 
-            let leading_players = self.rank_all_hands(&player_hands, &table_cards);
-
-            self.determine_winners(&leading_players);
-
-            // Return cards from hands to deck
-            for (_player, hand) in player_hands.iter() {
-                if let (Some(card1), Some(card2)) = (hand.cards.get(0), hand.cards.get(1)) {
-                    self.deck.insert_at_top(*card1).unwrap();
-                    self.deck.insert_at_top(*card2).unwrap();
-                }
-            }
-
-            // Return cards from table to deck
-            for card in table_cards.get_cards() {
-                self.deck.insert_at_top(*card).unwrap();
-            }
-
-            // Return cards from burned piles to deck
-            for card in burned_cards.get_cards() {
-                self.deck.insert_at_top(*card).unwrap();
-            }
-
             // todo: remove after implementing round_over trigger
             round_over = true;
+        }
+
+        // Post-round
+        let leading_players = self.rank_all_hands(&player_hands, &table_cards);
+        self.determine_round_result(&leading_players);
+
+        // Return cards from hands to deck
+        for (_player, hand) in player_hands.iter() {
+            if let (Some(card1), Some(card2)) = (hand.cards.get(0), hand.cards.get(1)) {
+                self.deck.insert_at_top(*card1).unwrap();
+                self.deck.insert_at_top(*card2).unwrap();
+            }
+        }
+
+        // Return cards from the table to the deck
+        for card in table_cards.get_cards() {
+            self.deck.insert_at_top(*card).unwrap();
+        }
+
+        // Return cards from the burned pile to the deck
+        for card in burned_cards.get_cards() {
+            self.deck.insert_at_top(*card).unwrap();
         }
     }
 
@@ -345,7 +308,7 @@ impl Game {
         leading_players
     }
 
-    fn determine_winners(&self, leading_players: &HashMap<Player, HandRank>) {
+    fn determine_round_result(&self, leading_players: &HashMap<Player, HandRank>) {
         if leading_players.len() == 1 {
             let (winning_player, winning_hand_rank): (&Player, &HandRank) =
                 leading_players.iter().next().unwrap().clone();
