@@ -3,7 +3,7 @@ use std::fmt;
 
 use cards::card::{Card, Rank, Suit};
 
-#[derive(Clone, Copy, Debug, Eq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialOrd)]
 pub enum HandRank {
     /// Simple value of the card.
     /// Lowest: 2 – Highest: Ace.
@@ -31,43 +31,45 @@ impl PartialEq for HandRank {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (HandRank::HighCard(card1), HandRank::HighCard(card2)) => card1.rank == card2.rank,
-            (HandRank::Pair(cards1), HandRank::Pair(cards2)) => cards1
-                .iter()
-                .map(|card| card.rank)
-                .eq(cards2.iter().map(|card| card.rank)),
-            (HandRank::TwoPair(cards1), HandRank::TwoPair(cards2)) => cards1
-                .iter()
-                .map(|card| card.rank)
-                .eq(cards2.iter().map(|card| card.rank)),
-            (HandRank::ThreeOfAKind(cards1), HandRank::ThreeOfAKind(cards2)) => cards1
-                .iter()
-                .map(|card| card.rank)
-                .eq(cards2.iter().map(|card| card.rank)),
+            (HandRank::Pair(cards1), HandRank::Pair(cards2)) => cards1[1].rank == cards2[1].rank,
+            (HandRank::TwoPair(cards1), HandRank::TwoPair(cards2)) => {
+                cards1.first().unwrap().rank == cards2.first().unwrap().rank
+                    && cards1.last().unwrap().rank == cards2.last().unwrap().rank
+            }
+            (HandRank::ThreeOfAKind(cards1), HandRank::ThreeOfAKind(cards2)) => {
+                cards1.last().unwrap().rank == cards2.last().unwrap().rank
+            }
+
             (HandRank::Straight(cards1), HandRank::Straight(cards2)) => {
-                // Compare the ranks of the highest cards
-                cards1[4].rank == cards2[4].rank
+                // Compare the ranks of the highest card of the straight
+                cards1.last().unwrap().rank == cards2.last().unwrap().rank
             }
             (HandRank::Flush(cards1), HandRank::Flush(cards2)) => {
-                // Compare the suits of the highest cards
-                cards1[4].suit == cards2[4].suit
+                // A flush made up of any set of cards equals a flush made up of another set of cards.
+                // Since a flush requires the use of table cards, it can only be made up of a single suit in a round.
+                // Accordingly, the suits should always equal each other.
+                cards1.last().unwrap().suit == cards2.last().unwrap().suit
             }
             (HandRank::FullHouse(cards1), HandRank::FullHouse(cards2)) => {
-                let (triple1, pair1) = (cards1[0].rank, cards1[3].rank);
-                let (triple2, pair2) = (cards2[0].rank, cards2[3].rank);
-                // Compare the ranks of the triple and the pair separately
-                (triple1 == triple2 && pair1 == pair2) || (triple1 == pair2 && pair1 == triple2)
-            }
-            (HandRank::FourOfAKind(cards1), HandRank::FourOfAKind(cards2)) => cards1
-                .iter()
-                .map(|card| card.rank)
-                .eq(cards2.iter().map(|card| card.rank)),
-            (HandRank::StraightFlush(cards1), HandRank::StraightFlush(cards2)) => {
-                // Compare the ranks of the highest cards
-                if cards1[4].rank != cards2[4].rank {
-                    return false;
+                let (three_of_a_kind1_rank, pair1_rank) =
+                    (cards1.first().unwrap().rank, cards1.last().unwrap().rank);
+                let (three_of_a_kind2_rank, pair2_rank) =
+                    (cards2.first().unwrap().rank, cards2.last().unwrap().rank);
+
+                // Compare the ranks of the Three of a Kind cards first.
+                // If they are not equal, then compare the ranks of the Pair cards.
+                if three_of_a_kind1_rank != three_of_a_kind2_rank {
+                    pair1_rank == pair2_rank
+                } else {
+                    three_of_a_kind1_rank == three_of_a_kind2_rank
                 }
-                // Compare the suits of the highest cards
-                cards1[4].suit == cards2[4].suit
+            }
+            (HandRank::FourOfAKind(cards1), HandRank::FourOfAKind(cards2)) => {
+                cards1.last().unwrap().rank == cards2.last().unwrap().rank
+            }
+            (HandRank::StraightFlush(cards1), HandRank::StraightFlush(cards2)) => {
+                // Compare the ranks of the highest card of the straight
+                cards1.last().unwrap().rank == cards2.last().unwrap().rank
             }
             _ => false,
         }
@@ -795,9 +797,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = get_high_card_value(&cards) {
-            let identified_high_card = cards;
-            assert_eq!(identified_high_card, high_card);
+        if let Some(result) = get_high_card_value(&cards) {
+            assert_eq!(result, high_card);
         } else {
             panic!("Expected a High Card, but none was found.");
         }
@@ -852,9 +853,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = check_for_pair(&cards) {
-            let identified_pair = cards;
-            assert_eq!(identified_pair, pair);
+        if let Some(result) = check_for_pair(&cards) {
+            assert_eq!(result, pair);
         } else {
             panic!("Expected a Pair, but none was found.");
         };
@@ -870,9 +870,8 @@ mod tests {
         ];
         cards2.sort();
 
-        if let Some(cards) = check_for_pair(&cards2) {
-            let identified_pair = cards;
-            assert_eq!(identified_pair, pair);
+        if let Some(result) = check_for_pair(&cards2) {
+            assert_eq!(result, pair);
         } else {
             panic!("Expected a Pair, but none was found.");
         };
@@ -945,9 +944,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = check_for_two_pair(&cards) {
-            let identified_two_pair = cards;
-            assert_eq!(identified_two_pair, two_pair);
+        if let Some(result) = check_for_two_pair(&cards) {
+            assert_eq!(result, two_pair);
         } else {
             panic!("Expected a Two Pair, but none was found.");
         };
@@ -963,9 +961,8 @@ mod tests {
         ];
         cards2.sort();
 
-        if let Some(cards) = check_for_two_pair(&cards2) {
-            let identified_two_pair = cards;
-            assert_eq!(identified_two_pair, two_pair);
+        if let Some(result) = check_for_two_pair(&cards2) {
+            assert_eq!(result, two_pair);
         } else {
             panic!("Expected a Two Pair, but none was found.");
         };
@@ -1041,9 +1038,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = check_for_three_of_a_kind(&cards) {
-            let identified_three_of_a_kind = cards;
-            assert_eq!(identified_three_of_a_kind, three_of_a_kind);
+        if let Some(result) = check_for_three_of_a_kind(&cards) {
+            assert_eq!(result, three_of_a_kind);
         } else {
             panic!("Expected a Three of a Kind, but none was found.");
         };
@@ -1060,9 +1056,8 @@ mod tests {
         ];
         cards2.sort();
 
-        if let Some(cards) = check_for_three_of_a_kind(&cards2) {
-            let identified_three_of_a_kind = cards;
-            assert_eq!(identified_three_of_a_kind, three_of_a_kind);
+        if let Some(result) = check_for_three_of_a_kind(&cards2) {
+            assert_eq!(result, three_of_a_kind);
         } else {
             panic!("Expected a Three of a Kind, but none was found.");
         };
@@ -1149,9 +1144,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = check_for_straight(&cards) {
-            let identified_straight = cards;
-            assert_eq!(identified_straight, straight);
+        if let Some(result) = check_for_straight(&cards) {
+            assert_eq!(result, straight);
         } else {
             panic!("Expected a Straight, but none was found.");
         }
@@ -1167,9 +1161,8 @@ mod tests {
         ];
         cards2.sort();
 
-        if let Some(cards) = check_for_straight(&cards2) {
-            let identified_straight = cards;
-            assert_eq!(identified_straight, straight);
+        if let Some(result) = check_for_straight(&cards2) {
+            assert_eq!(result, straight);
         } else {
             panic!("Expected a Straight, but none was found.");
         }
@@ -1194,9 +1187,8 @@ mod tests {
         ];
         cards3.sort();
 
-        if let Some(cards) = check_for_straight(&cards3) {
-            let identified_straight = cards;
-            assert_eq!(identified_straight, straight2);
+        if let Some(result) = check_for_straight(&cards3) {
+            assert_eq!(result, straight2);
         } else {
             panic!("Expected a Straight, but none was found.");
         }
@@ -1213,9 +1205,8 @@ mod tests {
         ];
         cards4.sort();
 
-        if let Some(cards) = check_for_straight(&cards4) {
-            let identified_straight = cards;
-            assert_eq!(identified_straight, straight2);
+        if let Some(result) = check_for_straight(&cards4) {
+            assert_eq!(result, straight2);
         } else {
             panic!("Expected a Straight, but none was found.");
         }
@@ -1313,6 +1304,306 @@ mod tests {
 
     /// Tests check_for_straight().
     ///
+    /// Tests if a winning Straight on the table is correctly identified for all parties.
+    #[test]
+    fn check_for_straight_on_the_table_works() {
+        let two_of_diamonds = card!(Two, Diamond);
+        let three_of_clubs = card!(Three, Club);
+        let four_of_hearts = card!(Four, Heart);
+        let five_of_diamonds = card!(Five, Diamond);
+        let six_of_clubs = card!(Six, Club);
+        let seven_of_spades = card!(Seven, Spade);
+        let five_of_clubs = card!(Five, Club);
+        let nine_of_spades = card!(Nine, Spade);
+        let ten_of_diamonds = card!(Ten, Diamond);
+        let jack_of_clubs = card!(Jack, Club);
+        let jack_of_hearts = card!(Jack, Heart);
+        let jack_of_spades = card!(Jack, Spade);
+        let queen_of_spades = card!(Queen, Spade);
+        let king_of_diamonds = card!(King, Diamond);
+        let ace_of_hearts = card!(Ace, Heart);
+
+        let straight = [
+            ten_of_diamonds,
+            jack_of_clubs,
+            queen_of_spades,
+            king_of_diamonds,
+            ace_of_hearts,
+        ];
+
+        let mut table_cards: Vec<Card> = vec![
+            ten_of_diamonds,
+            jack_of_clubs,
+            queen_of_spades,
+            king_of_diamonds,
+            ace_of_hearts,
+        ];
+        table_cards.sort();
+
+        if let Some(result) = check_for_straight(&table_cards) {
+            assert_eq!(result, straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+
+        let mut player1_cards: Vec<Card> = vec![three_of_clubs, four_of_hearts];
+        player1_cards.extend(table_cards.clone());
+        player1_cards.sort();
+
+        if let Some(result) = check_for_straight(&player1_cards) {
+            assert_eq!(result, straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+
+        let mut player2_cards: Vec<Card> = vec![five_of_diamonds, six_of_clubs];
+        player2_cards.extend(table_cards.clone());
+        player2_cards.sort();
+
+        if let Some(result) = check_for_straight(&player2_cards) {
+            assert_eq!(result, straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+
+        let mut player3_cards: Vec<Card> = vec![seven_of_spades, nine_of_spades];
+        player3_cards.extend(table_cards.clone());
+        player3_cards.sort();
+
+        if let Some(result) = check_for_straight(&player3_cards) {
+            assert_eq!(result, straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+
+        let mut player4_cards: Vec<Card> = vec![two_of_diamonds, five_of_clubs];
+        player4_cards.extend(table_cards.clone());
+        player4_cards.sort();
+
+        if let Some(result) = check_for_straight(&player4_cards) {
+            assert_eq!(result, straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+
+        let mut player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
+        player5_cards.extend(table_cards.clone());
+        player5_cards.sort();
+
+        if let Some(result) = check_for_straight(&player5_cards) {
+            assert_eq!(result, straight);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a winning Straight on the table is ranked correctly for all parties.
+    #[test]
+    fn rank_hand_straight_on_the_table_works() {
+        let two_of_diamonds = card!(Two, Diamond);
+        let three_of_clubs = card!(Three, Club);
+        let four_of_hearts = card!(Four, Heart);
+        let five_of_diamonds = card!(Five, Diamond);
+        let six_of_clubs = card!(Six, Club);
+        let seven_of_spades = card!(Seven, Spade);
+        let five_of_clubs = card!(Five, Club);
+        let nine_of_spades = card!(Nine, Spade);
+        let ten_of_diamonds = card!(Ten, Diamond);
+        let jack_of_clubs = card!(Jack, Club);
+        let jack_of_hearts = card!(Jack, Heart);
+        let jack_of_spades = card!(Jack, Spade);
+        let queen_of_spades = card!(Queen, Spade);
+        let king_of_diamonds = card!(King, Diamond);
+        let ace_of_hearts = card!(Ace, Heart);
+
+        let straight = HandRank::Straight([
+            ten_of_diamonds,
+            jack_of_clubs,
+            queen_of_spades,
+            king_of_diamonds,
+            ace_of_hearts,
+        ]);
+
+        let table_cards: Vec<Card> = vec![
+            ten_of_diamonds,
+            jack_of_clubs,
+            queen_of_spades,
+            king_of_diamonds,
+            ace_of_hearts,
+        ];
+
+        let table_cards_hand_rank = rank_hand(table_cards.clone());
+        assert_eq!(table_cards_hand_rank, straight);
+
+        let mut player1_cards: Vec<Card> = vec![three_of_clubs, four_of_hearts];
+        player1_cards.extend(table_cards.clone());
+        let player1_hand_rank = rank_hand(player1_cards);
+        assert_eq!(player1_hand_rank, straight);
+
+        let mut player2_cards: Vec<Card> = vec![five_of_diamonds, six_of_clubs];
+        player2_cards.extend(table_cards.clone());
+        let player2_hand_rank = rank_hand(player2_cards);
+        assert_eq!(player2_hand_rank, straight);
+
+        let mut player3_cards: Vec<Card> = vec![seven_of_spades, nine_of_spades];
+        player3_cards.extend(table_cards.clone());
+        let player3_hand_rank = rank_hand(player3_cards);
+        assert_eq!(player3_hand_rank, straight);
+
+        let mut player4_cards: Vec<Card> = vec![two_of_diamonds, five_of_clubs];
+        player4_cards.extend(table_cards.clone());
+        let player4_hand_rank = rank_hand(player4_cards);
+        assert_eq!(player4_hand_rank, straight);
+
+        let mut player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
+        player5_cards.extend(table_cards.clone());
+        let player5_hand_rank = rank_hand(player5_cards);
+        assert_eq!(player5_hand_rank, straight);
+
+        assert_eq!(player1_hand_rank, player2_hand_rank);
+        assert_eq!(player2_hand_rank, player3_hand_rank);
+        assert_eq!(player3_hand_rank, player4_hand_rank);
+        assert_eq!(player4_hand_rank, player5_hand_rank);
+    }
+
+    /// Tests check_for_straight().
+    ///
+    /// Tests if a winning Straight on the table is correctly identified for all parties.
+    #[test]
+    fn check_for_straight_equal_straights_in_hand_works() {
+        let three_of_clubs = card!(Three, Club);
+        let four_of_hearts = card!(Four, Heart);
+        let five_of_diamonds = card!(Five, Diamond);
+        let ten_of_diamonds = card!(Ten, Diamond);
+        let ten_of_hearts = card!(Ten, Heart);
+        let jack_of_clubs = card!(Jack, Club);
+        let queen_of_spades = card!(Queen, Spade);
+        let king_of_diamonds = card!(King, Diamond);
+        let ace_of_hearts = card!(Ace, Heart);
+
+        let straight1 = [
+            ten_of_diamonds,
+            jack_of_clubs,
+            queen_of_spades,
+            king_of_diamonds,
+            ace_of_hearts,
+        ];
+
+        let straight2 = [
+            ten_of_hearts,
+            jack_of_clubs,
+            queen_of_spades,
+            king_of_diamonds,
+            ace_of_hearts,
+        ];
+
+        let mut table_cards: Vec<Card> = vec![
+            four_of_hearts,
+            jack_of_clubs,
+            queen_of_spades,
+            king_of_diamonds,
+            ace_of_hearts,
+        ];
+        table_cards.sort();
+
+        let mut player1_cards: Vec<Card> = vec![three_of_clubs, ten_of_diamonds];
+        player1_cards.extend(table_cards.clone());
+        player1_cards.sort();
+
+        if let Some(result) = check_for_straight(&player1_cards) {
+            assert_eq!(result, straight1);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+
+        let mut player2_cards: Vec<Card> = vec![five_of_diamonds, ten_of_hearts];
+        player2_cards.extend(table_cards.clone());
+        player2_cards.sort();
+
+        if let Some(result) = check_for_straight(&player2_cards) {
+            assert_eq!(result, straight2);
+        } else {
+            panic!("Expected a Straight, but none was found.");
+        }
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if players with equal Straights in their hands push.
+    #[test]
+    fn rank_hand_straight_equal_straights_in_hand_works() {
+        let two_of_diamonds = card!(Two, Diamond);
+        let three_of_clubs = card!(Three, Club);
+        let four_of_hearts = card!(Four, Heart);
+        let five_of_diamonds = card!(Five, Diamond);
+        let seven_of_spades = card!(Seven, Spade);
+        let five_of_clubs = card!(Five, Club);
+        let nine_of_spades = card!(Nine, Spade);
+        let ten_of_diamonds = card!(Ten, Diamond);
+        let ten_of_hearts = card!(Ten, Heart);
+        let jack_of_clubs = card!(Jack, Club);
+        let jack_of_hearts = card!(Jack, Heart);
+        let jack_of_spades = card!(Jack, Spade);
+        let queen_of_spades = card!(Queen, Spade);
+        let king_of_diamonds = card!(King, Diamond);
+        let ace_of_hearts = card!(Ace, Heart);
+
+        let straight1 = HandRank::Straight([
+            ten_of_diamonds,
+            jack_of_clubs,
+            queen_of_spades,
+            king_of_diamonds,
+            ace_of_hearts,
+        ]);
+
+        let straight2 = HandRank::Straight([
+            ten_of_hearts,
+            jack_of_clubs,
+            queen_of_spades,
+            king_of_diamonds,
+            ace_of_hearts,
+        ]);
+
+        let table_cards: Vec<Card> = vec![
+            four_of_hearts,
+            jack_of_clubs,
+            queen_of_spades,
+            king_of_diamonds,
+            ace_of_hearts,
+        ];
+
+        let mut player1_cards: Vec<Card> = vec![three_of_clubs, ten_of_diamonds];
+        player1_cards.extend(table_cards.clone());
+        let player1_hand_rank = rank_hand(player1_cards);
+        assert_eq!(player1_hand_rank, straight1);
+
+        let mut player2_cards: Vec<Card> = vec![five_of_diamonds, ten_of_hearts];
+        player2_cards.extend(table_cards.clone());
+        let player2_hand_rank = rank_hand(player2_cards);
+        assert_eq!(player2_hand_rank, straight2);
+
+        let mut player3_cards: Vec<Card> = vec![seven_of_spades, nine_of_spades];
+        player3_cards.extend(table_cards.clone());
+        let player3_hand_rank = rank_hand(player3_cards);
+
+        let mut player4_cards: Vec<Card> = vec![two_of_diamonds, five_of_clubs];
+        player4_cards.extend(table_cards.clone());
+        let player4_hand_rank = rank_hand(player4_cards);
+
+        let mut player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
+        player5_cards.extend(table_cards.clone());
+        let player5_hand_rank = rank_hand(player5_cards);
+
+        assert_eq!(player1_hand_rank, player2_hand_rank);
+        assert_ne!(player1_hand_rank, player3_hand_rank);
+        assert_ne!(player1_hand_rank, player4_hand_rank);
+        assert_ne!(player1_hand_rank, player5_hand_rank);
+    }
+
+    /// Tests check_for_straight().
+    ///
     /// Tests if an Ace-low Straight is correctly identified.
     #[test]
     fn check_for_straight_ace_low_works() {
@@ -1343,9 +1634,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = check_for_straight(&cards) {
-            let identified_straight = cards;
-            assert_eq!(identified_straight, ace_low_straight);
+        if let Some(result) = check_for_straight(&cards) {
+            assert_eq!(result, ace_low_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
         }
@@ -1361,9 +1651,8 @@ mod tests {
         ];
         cards2.sort();
 
-        if let Some(cards) = check_for_straight(&cards2) {
-            let identified_straight = cards;
-            assert_eq!(identified_straight, ace_low_straight);
+        if let Some(result) = check_for_straight(&cards2) {
+            assert_eq!(result, ace_low_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
         }
@@ -1380,9 +1669,8 @@ mod tests {
         ];
         cards3.sort();
 
-        if let Some(cards) = check_for_straight(&cards3) {
-            let identified_straight = cards;
-            assert_eq!(identified_straight, ace_low_straight);
+        if let Some(result) = check_for_straight(&cards3) {
+            assert_eq!(result, ace_low_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
         }
@@ -1406,9 +1694,8 @@ mod tests {
         ];
         cards4.sort();
 
-        if let Some(cards) = check_for_straight(&cards4) {
-            let identified_straight = cards;
-            assert_eq!(identified_straight, non_ace_low_straight);
+        if let Some(result) = check_for_straight(&cards4) {
+            assert_eq!(result, non_ace_low_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
         }
@@ -1527,9 +1814,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = check_for_straight(&cards) {
-            let identified_straight = cards;
-            assert_eq!(identified_straight, ace_high_straight);
+        if let Some(result) = check_for_straight(&cards) {
+            assert_eq!(result, ace_high_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
         }
@@ -1545,9 +1831,8 @@ mod tests {
         ];
         cards2.sort();
 
-        if let Some(cards) = check_for_straight(&cards2) {
-            let identified_straight = cards;
-            assert_eq!(identified_straight, ace_high_straight);
+        if let Some(result) = check_for_straight(&cards2) {
+            assert_eq!(result, ace_high_straight);
         } else {
             panic!("Expected a Straight, but none was found.");
         }
@@ -1630,9 +1915,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = check_for_flush(&cards) {
-            let identified_flush = cards;
-            assert_eq!(identified_flush, flush);
+        if let Some(result) = check_for_flush(&cards) {
+            assert_eq!(result, flush);
         } else {
             panic!("Expected a Flush, but none was found.");
         }
@@ -1657,9 +1941,8 @@ mod tests {
         ];
         cards2.sort();
 
-        if let Some(cards) = check_for_flush(&cards2) {
-            let identified_flush = cards;
-            assert_eq!(identified_flush, flush2);
+        if let Some(result) = check_for_flush(&cards2) {
+            assert_eq!(result, flush2);
         } else {
             panic!("Expected a Flush, but none was found.");
         }
@@ -1721,6 +2004,305 @@ mod tests {
         assert_eq!(hand_rank2, flush2);
     }
 
+    /// Tests check_for_flush().
+    ///
+    /// Tests if a winning Flush on the table is correctly identified for all parties.
+    #[test]
+    fn check_for_flush_on_the_table_works() {
+        let two_of_clubs = card!(Two, Club);
+        let two_of_diamonds = card!(Two, Diamond);
+        let three_of_diamonds = card!(Three, Diamond);
+        let four_of_hearts = card!(Four, Heart);
+        let five_of_diamonds = card!(Five, Diamond);
+        let five_of_hearts = card!(Five, Heart);
+        let six_of_spades = card!(Six, Spade);
+        let seven_of_spades = card!(Seven, Spade);
+        let eight_of_clubs = card!(Eight, Club);
+        let nine_of_clubs = card!(Nine, Club);
+        let nine_of_spades = card!(Nine, Spade);
+        let jack_of_hearts = card!(Jack, Heart);
+        let jack_of_spades = card!(Jack, Spade);
+        let queen_of_clubs = card!(Queen, Club);
+        let king_of_clubs = card!(King, Club);
+
+        let flush = [
+            two_of_clubs,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ];
+
+        let mut table_cards: Vec<Card> = vec![
+            two_of_clubs,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ];
+        table_cards.sort();
+
+        if let Some(result) = check_for_flush(&table_cards) {
+            assert_eq!(result, flush);
+        } else {
+            panic!("Expected a Flush, but none was found.");
+        }
+
+        let mut player1_cards: Vec<Card> = vec![three_of_diamonds, four_of_hearts];
+        player1_cards.extend(table_cards.clone());
+        player1_cards.sort();
+
+        if let Some(result) = check_for_flush(&player1_cards) {
+            assert_eq!(result, flush);
+        } else {
+            panic!("Expected a Flush, but none was found.");
+        }
+
+        let mut player2_cards: Vec<Card> = vec![five_of_diamonds, six_of_spades];
+        player2_cards.extend(table_cards.clone());
+        player2_cards.sort();
+
+        if let Some(result) = check_for_flush(&player2_cards) {
+            assert_eq!(result, flush);
+        } else {
+            panic!("Expected a Flush, but none was found.");
+        }
+
+        let mut player3_cards: Vec<Card> = vec![seven_of_spades, nine_of_spades];
+        player3_cards.extend(table_cards.clone());
+        player3_cards.sort();
+
+        if let Some(result) = check_for_flush(&player3_cards) {
+            assert_eq!(result, flush);
+        } else {
+            panic!("Expected a Flush, but none was found.");
+        }
+
+        let mut player4_cards: Vec<Card> = vec![two_of_diamonds, five_of_hearts];
+        player4_cards.extend(table_cards.clone());
+        player4_cards.sort();
+
+        if let Some(result) = check_for_flush(&player4_cards) {
+            assert_eq!(result, flush);
+        } else {
+            panic!("Expected a Flush, but none was found.");
+        }
+
+        let mut player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
+        player5_cards.extend(table_cards.clone());
+        player5_cards.sort();
+
+        if let Some(result) = check_for_flush(&player5_cards) {
+            assert_eq!(result, flush);
+        } else {
+            panic!("Expected a Flush, but none was found.");
+        }
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if a winning Flush on the table is ranked correctly for all parties.
+    #[test]
+    fn rank_hand_flush_table_flush_works() {
+        let two_of_clubs = card!(Two, Club);
+        let two_of_diamonds = card!(Two, Diamond);
+        let three_of_diamonds = card!(Three, Diamond);
+        let four_of_hearts = card!(Four, Heart);
+        let five_of_diamonds = card!(Five, Diamond);
+        let five_of_hearts = card!(Five, Heart);
+        let six_of_spades = card!(Six, Spade);
+        let seven_of_spades = card!(Seven, Spade);
+        let eight_of_clubs = card!(Eight, Club);
+        let nine_of_clubs = card!(Nine, Club);
+        let nine_of_spades = card!(Nine, Spade);
+        let jack_of_hearts = card!(Jack, Heart);
+        let jack_of_spades = card!(Jack, Spade);
+        let queen_of_clubs = card!(Queen, Club);
+        let king_of_clubs = card!(King, Club);
+
+        let flush = HandRank::Flush([
+            two_of_clubs,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ]);
+
+        let table_cards: Vec<Card> = vec![
+            two_of_clubs,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ];
+
+        let table_cards_hand_rank = rank_hand(table_cards.clone());
+        assert_eq!(table_cards_hand_rank, flush);
+
+        let mut player1_cards: Vec<Card> = vec![three_of_diamonds, four_of_hearts];
+        player1_cards.extend(table_cards.clone());
+        let player1_hand_rank = rank_hand(player1_cards);
+        assert_eq!(player1_hand_rank, flush);
+
+        let mut player2_cards: Vec<Card> = vec![five_of_diamonds, six_of_spades];
+        player2_cards.extend(table_cards.clone());
+        let player2_hand_rank = rank_hand(player2_cards);
+        assert_eq!(player2_hand_rank, flush);
+
+        let mut player3_cards: Vec<Card> = vec![seven_of_spades, nine_of_spades];
+        player3_cards.extend(table_cards.clone());
+        let player3_hand_rank = rank_hand(player3_cards);
+        assert_eq!(player3_hand_rank, flush);
+
+        let mut player4_cards: Vec<Card> = vec![two_of_diamonds, five_of_hearts];
+        player4_cards.extend(table_cards.clone());
+        let player4_hand_rank = rank_hand(player4_cards);
+        assert_eq!(player4_hand_rank, flush);
+
+        let mut player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
+        player5_cards.extend(table_cards.clone());
+        let player5_hand_rank = rank_hand(player5_cards);
+        assert_eq!(player5_hand_rank, flush);
+
+        assert_eq!(player1_hand_rank, player2_hand_rank);
+        assert_eq!(player2_hand_rank, player3_hand_rank);
+        assert_eq!(player3_hand_rank, player4_hand_rank);
+        assert_eq!(player4_hand_rank, player5_hand_rank);
+    }
+
+    /// Tests check_for_flush().
+    ///
+    /// Tests if a winning Flush on the table is correctly identified for all parties.
+    #[test]
+    fn check_for_flush_equal_flushes_in_hand_works() {
+        let two_of_clubs = card!(Two, Club);
+        let two_of_diamonds = card!(Two, Diamond);
+        let four_of_hearts = card!(Four, Heart);
+        let five_of_clubs = card!(Five, Club);
+        let six_of_spades = card!(Six, Spade);
+        let eight_of_clubs = card!(Eight, Club);
+        let nine_of_clubs = card!(Nine, Club);
+        let queen_of_clubs = card!(Queen, Club);
+        let king_of_clubs = card!(King, Club);
+
+        let flush1 = [
+            two_of_clubs,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ];
+
+        let flush2 = [
+            five_of_clubs,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ];
+
+        let mut table_cards: Vec<Card> = vec![
+            two_of_diamonds,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ];
+        table_cards.sort();
+
+        let mut player1_cards: Vec<Card> = vec![two_of_clubs, four_of_hearts];
+        player1_cards.extend(table_cards.clone());
+        player1_cards.sort();
+
+        if let Some(result) = check_for_flush(&player1_cards) {
+            assert_eq!(result, flush1);
+        } else {
+            panic!("Expected a Flush, but none was found.");
+        }
+
+        let mut player2_cards: Vec<Card> = vec![five_of_clubs, six_of_spades];
+        player2_cards.extend(table_cards.clone());
+        player2_cards.sort();
+
+        if let Some(result) = check_for_flush(&player2_cards) {
+            assert_eq!(result, flush2);
+        } else {
+            panic!("Expected a Flush, but none was found.");
+        }
+    }
+
+    /// Tests rank_hand().
+    ///
+    /// Tests if players with equal Flushes in their hands push.
+    #[test]
+    fn rank_hand_flush_equal_flushes_in_hand_works() {
+        let two_of_clubs = card!(Two, Club);
+        let two_of_diamonds = card!(Two, Diamond);
+        let four_of_hearts = card!(Four, Heart);
+        let five_of_clubs = card!(Five, Club);
+        let five_of_hearts = card!(Five, Heart);
+        let six_of_spades = card!(Six, Spade);
+        let seven_of_spades = card!(Seven, Spade);
+        let eight_of_clubs = card!(Eight, Club);
+        let nine_of_clubs = card!(Nine, Club);
+        let nine_of_spades = card!(Nine, Spade);
+        let jack_of_hearts = card!(Jack, Heart);
+        let jack_of_spades = card!(Jack, Spade);
+        let queen_of_clubs = card!(Queen, Club);
+        let king_of_clubs = card!(King, Club);
+
+        let flush1 = HandRank::Flush([
+            two_of_clubs,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ]);
+
+        let flush2 = HandRank::Flush([
+            five_of_clubs,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ]);
+
+        let table_cards: Vec<Card> = vec![
+            two_of_diamonds,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ];
+
+        let mut player1_cards: Vec<Card> = vec![two_of_clubs, four_of_hearts];
+        player1_cards.extend(table_cards.clone());
+        let player1_hand_rank = rank_hand(player1_cards);
+        assert_eq!(player1_hand_rank, flush1);
+
+        let mut player2_cards: Vec<Card> = vec![five_of_clubs, six_of_spades];
+        player2_cards.extend(table_cards.clone());
+        let player2_hand_rank = rank_hand(player2_cards);
+        assert_eq!(player2_hand_rank, flush2);
+
+        let mut player3_cards: Vec<Card> = vec![seven_of_spades, nine_of_spades];
+        player3_cards.extend(table_cards.clone());
+        let player3_hand_rank = rank_hand(player3_cards);
+
+        let mut player4_cards: Vec<Card> = vec![two_of_diamonds, five_of_hearts];
+        player4_cards.extend(table_cards.clone());
+        let player4_hand_rank = rank_hand(player4_cards);
+
+        let mut player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
+        player5_cards.extend(table_cards.clone());
+        let player5_hand_rank = rank_hand(player5_cards);
+
+        assert_eq!(player1_hand_rank, player2_hand_rank);
+        assert_ne!(player1_hand_rank, player3_hand_rank);
+        assert_ne!(player1_hand_rank, player4_hand_rank);
+        assert_ne!(player1_hand_rank, player5_hand_rank);
+    }
+
     /// Tests check_for_full_house().
     ///
     /// Tests if a Full House is correctly identified.
@@ -1752,9 +2334,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = check_for_full_house(&cards) {
-            let identified_full_house = cards;
-            assert_eq!(identified_full_house, full_house);
+        if let Some(result) = check_for_full_house(&cards) {
+            assert_eq!(result, full_house);
         } else {
             panic!("Expected a Full House, but none was found.");
         }
@@ -1771,9 +2352,8 @@ mod tests {
         ];
         cards2.sort();
 
-        if let Some(cards) = check_for_full_house(&cards2) {
-            let identified_full_house = cards;
-            assert_eq!(identified_full_house, full_house);
+        if let Some(result) = check_for_full_house(&cards2) {
+            assert_eq!(result, full_house);
         } else {
             panic!("Expected a Full House, but none was found.");
         }
@@ -1852,9 +2432,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = check_for_four_of_a_kind(&cards) {
-            let identified_four_of_a_kind = cards;
-            assert_eq!(identified_four_of_a_kind, four_of_a_kind);
+        if let Some(result) = check_for_four_of_a_kind(&cards) {
+            assert_eq!(result, four_of_a_kind);
         } else {
             panic!("Expected a Four of a Kind, but none was found.");
         }
@@ -1871,9 +2450,8 @@ mod tests {
         ];
         cards2.sort();
 
-        if let Some(cards) = check_for_four_of_a_kind(&cards2) {
-            let identified_four_of_a_kind = cards;
-            assert_eq!(identified_four_of_a_kind, four_of_a_kind);
+        if let Some(result) = check_for_four_of_a_kind(&cards2) {
+            assert_eq!(result, four_of_a_kind);
         } else {
             panic!("Expected a Four of a Kind, but none was found.");
         }
@@ -1951,9 +2529,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = check_for_straight_flush(&cards) {
-            let identified_straight_flush = cards;
-            assert_eq!(identified_straight_flush, straight_flush);
+        if let Some(result) = check_for_straight_flush(&cards) {
+            assert_eq!(result, straight_flush);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
         }
@@ -1977,9 +2554,8 @@ mod tests {
         ];
         cards2.sort();
 
-        if let Some(cards) = check_for_straight_flush(&cards2) {
-            let identified_straight_flush = cards;
-            assert_eq!(identified_straight_flush, straight_flush2);
+        if let Some(result) = check_for_straight_flush(&cards2) {
+            assert_eq!(result, straight_flush2);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
         }
@@ -2069,9 +2645,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = check_for_straight_flush(&cards) {
-            let identified_straight_flush = cards;
-            assert_eq!(identified_straight_flush, ace_low_straight_flush);
+        if let Some(result) = check_for_straight_flush(&cards) {
+            assert_eq!(result, ace_low_straight_flush);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
         }
@@ -2087,9 +2662,8 @@ mod tests {
         ];
         cards2.sort();
 
-        if let Some(cards) = check_for_straight_flush(&cards2) {
-            let identified_straight_flush = cards;
-            assert_eq!(identified_straight_flush, ace_low_straight_flush);
+        if let Some(result) = check_for_straight_flush(&cards2) {
+            assert_eq!(result, ace_low_straight_flush);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
         }
@@ -2106,9 +2680,8 @@ mod tests {
         ];
         cards3.sort();
 
-        if let Some(cards) = check_for_straight_flush(&cards3) {
-            let identified_straight_flush = cards;
-            assert_eq!(identified_straight_flush, ace_low_straight_flush);
+        if let Some(result) = check_for_straight_flush(&cards3) {
+            assert_eq!(result, ace_low_straight_flush);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
         }
@@ -2205,9 +2778,8 @@ mod tests {
         ];
         cards.sort();
 
-        if let Some(cards) = check_for_straight_flush(&cards) {
-            let identified_straight_flush = cards;
-            assert_eq!(identified_straight_flush, ace_high_straight_flush);
+        if let Some(result) = check_for_straight_flush(&cards) {
+            assert_eq!(result, ace_high_straight_flush);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
         }
@@ -2223,9 +2795,8 @@ mod tests {
         ];
         cards2.sort();
 
-        if let Some(cards) = check_for_straight_flush(&cards2) {
-            let identified_straight_flush = cards;
-            assert_eq!(identified_straight_flush, ace_high_straight_flush);
+        if let Some(result) = check_for_straight_flush(&cards2) {
+            assert_eq!(result, ace_high_straight_flush);
         } else {
             panic!("Expected a Straight Flush, but none was found.");
         }
