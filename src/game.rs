@@ -270,8 +270,8 @@ impl TexasHoldEm {
         &self,
         player_hands: &HashMap<Player, Hand>,
         table_cards: &Hand,
-    ) -> HashMap<Player, HandRank> {
-        let mut leading_players: HashMap<Player, HandRank> = HashMap::new();
+    ) -> HashMap<Player, Vec<HandRank>> {
+        let mut leading_players: HashMap<Player, Vec<HandRank>> = HashMap::new();
         let mut best_hand: Vec<(HandRank, &Hand)> = Vec::new();
 
         for (player, hand) in player_hands.iter() {
@@ -283,14 +283,19 @@ impl TexasHoldEm {
             // todo: remove after testing
             println!("{} has {}", player.name, hand_rank);
 
+            let mut hand_rank_vec = Vec::new();
+            hand_rank_vec.push(hand_rank);
+
             if best_hand.is_empty() {
                 best_hand.push((hand_rank, hand));
-                leading_players.insert(player.clone(), hand_rank);
+                leading_players.insert(player.clone(), hand_rank_vec);
                 continue;
             }
 
             if let Some((best_hand_rank, best_hand_cards)) = best_hand.last() {
                 if hand_rank == *best_hand_rank {
+                    // todo: The kicker is always taking the high card from the original hand,
+                    // but if the high card in that hand is used for the hand rank, then the other hand card should be used.
                     // If hand ranks are equal and are made up of less than 5 cards then check for a kicker (high card).
                     if hand_rank.len() < 5 {
                         let current_hand_high_card = get_high_card_value(hand.get_cards());
@@ -300,22 +305,23 @@ impl TexasHoldEm {
                         // Otherwise, one of the hands must be greater and there will only be one leading player.
                         if current_hand_high_card.unwrap() == best_hand_high_card.unwrap() {
                             best_hand.push((hand_rank, hand));
-                            leading_players.insert(player.clone(), hand_rank.clone());
+                            leading_players.insert(player.clone(), hand_rank_vec);
                         } else if current_hand_high_card.unwrap() > best_hand_high_card.unwrap() {
                             best_hand.clear();
                             best_hand.push((hand_rank, hand));
                             leading_players.clear();
-                            leading_players.insert(player.clone(), hand_rank.clone());
+                            hand_rank_vec.push(HandRank::HighCard(current_hand_high_card.unwrap()));
+                            leading_players.insert(player.clone(), hand_rank_vec);
                         }
                     } else {
                         best_hand.push((hand_rank, hand));
-                        leading_players.insert(player.clone(), hand_rank.clone());
+                        leading_players.insert(player.clone(), hand_rank_vec);
                     }
                 } else if hand_rank > *best_hand_rank {
                     best_hand.clear();
                     best_hand.push((hand_rank, hand));
                     leading_players.clear();
-                    leading_players.insert(player.clone(), hand_rank);
+                    leading_players.insert(player.clone(), hand_rank_vec);
                 }
             }
         }
@@ -323,15 +329,37 @@ impl TexasHoldEm {
         leading_players
     }
 
-    fn determine_round_result(&self, leading_players: &HashMap<Player, HandRank>) {
+    fn determine_round_result(&self, leading_players: &HashMap<Player, Vec<HandRank>>) {
         if leading_players.len() == 1 {
-            let (winning_player, winning_hand_rank): (&Player, &HandRank) =
+            let (winning_player, winning_hand_rank_vec): (&Player, &Vec<HandRank>) =
                 leading_players.iter().next().unwrap().clone();
 
-            println!("{} wins with {}", winning_player.name, winning_hand_rank);
+            if winning_hand_rank_vec.len() > 1 {
+                println!(
+                    "{} wins with {} and {}",
+                    winning_player.name, winning_hand_rank_vec[0], winning_hand_rank_vec[1]
+                );
+            } else {
+                println!(
+                    "{} wins with {}",
+                    winning_player.name,
+                    winning_hand_rank_vec.last().unwrap()
+                );
+            }
         } else if leading_players.len() > 1 {
             for (player, tied_hand_rank) in leading_players.iter() {
-                println!("{} pushes with {}", player.name, tied_hand_rank);
+                if tied_hand_rank.len() > 1 {
+                    println!(
+                        "{} pushes with {} and {}",
+                        player.name, tied_hand_rank[0], tied_hand_rank[1]
+                    );
+                } else {
+                    println!(
+                        "{} pushes with {}",
+                        player.name,
+                        tied_hand_rank.last().unwrap()
+                    );
+                }
             }
         } else {
             panic!("Error: No winning player was determined.");
