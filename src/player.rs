@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Player {
     pub identifier: Uuid,
     pub name: String,
