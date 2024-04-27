@@ -4,7 +4,7 @@ use cards::card::Card;
 use cards::deck::Deck;
 use cards::hand::Hand;
 
-use crate::hand_rankings::{rank_hand, HandRank};
+use crate::hand_rankings::{get_high_card_value, rank_hand, HandRank};
 use crate::player::Player;
 
 pub const MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT: u32 = 100;
@@ -272,7 +272,7 @@ impl TexasHoldEm {
         table_cards: &Hand,
     ) -> HashMap<Player, HandRank> {
         let mut leading_players: HashMap<Player, HandRank> = HashMap::new();
-        let mut best_hand: Vec<HandRank> = Vec::new();
+        let mut best_hand: Vec<(HandRank, &Hand)> = Vec::new();
 
         for (player, hand) in player_hands.iter() {
             let mut cards_to_rank: Vec<Card> = table_cards.get_cards().clone();
@@ -284,20 +284,39 @@ impl TexasHoldEm {
             println!("{} has {}", player.name, hand_rank);
 
             if best_hand.is_empty() {
-                best_hand.push(hand_rank);
+                best_hand.push((hand_rank, hand));
                 leading_players.insert(player.clone(), hand_rank);
-            } else if &hand_rank == best_hand.last().unwrap() {
-                // todo: Add logic to check for a kicker (high card) when players are tied with
-                // matching Pairs, Two Pairs, Three of a Kinds, or Four of a Kinds on the table but one has a higher card in their hand.
-                // Be sure to make sure that a hand is not unintentionally outranking an equal hand based on its suit in the rank_hand() comparison!
-                // something like this: if hand_rank.len() < 5 {}
-                best_hand.push(hand_rank);
-                leading_players.insert(player.clone(), hand_rank);
-            } else if &hand_rank > best_hand.last().unwrap() {
-                best_hand.clear();
-                best_hand.push(hand_rank);
-                leading_players.clear();
-                leading_players.insert(player.clone(), hand_rank);
+                continue;
+            }
+
+            if let Some((best_hand_rank, best_hand_cards)) = best_hand.last() {
+                if hand_rank == *best_hand_rank {
+                    // If hand ranks are equal and are made up of less than 5 cards then check for a kicker (high card).
+                    if hand_rank.len() < 5 {
+                        let current_hand_high_card = get_high_card_value(hand.get_cards());
+                        let best_hand_high_card = get_high_card_value(best_hand_cards.get_cards());
+
+                        // If the kicker is equal, then both hands are equal.
+                        // Otherwise, one of the hands must be greater and there will only be one leading player.
+                        if current_hand_high_card.unwrap() == best_hand_high_card.unwrap() {
+                            best_hand.push((hand_rank, hand));
+                            leading_players.insert(player.clone(), hand_rank.clone());
+                        } else if current_hand_high_card.unwrap() > best_hand_high_card.unwrap() {
+                            best_hand.clear();
+                            best_hand.push((hand_rank, hand));
+                            leading_players.clear();
+                            leading_players.insert(player.clone(), hand_rank.clone());
+                        }
+                    } else {
+                        best_hand.push((hand_rank, hand));
+                        leading_players.insert(player.clone(), hand_rank.clone());
+                    }
+                } else if hand_rank > *best_hand_rank {
+                    best_hand.clear();
+                    best_hand.push((hand_rank, hand));
+                    leading_players.clear();
+                    leading_players.insert(player.clone(), hand_rank);
+                }
             }
         }
 
@@ -399,6 +418,59 @@ mod tests {
         assert_eq!(leading_players.len(), 1);
         assert!(leading_players.contains_key(&player1));
         assert_eq!(*leading_players.get(&player1).unwrap(), flush);
+    }
+
+    /// Tests rank_all_hands().
+    ///
+    /// Tests that a single winner is correctly chosen when hand ranks are equal
+    /// but one player has a higher kicker (high card) than the other.
+    #[test]
+    fn rank_all_hands_identifies_winner_based_on_kicker() {
+        let mut game = TexasHoldEm::new();
+
+        let two_of_diamonds = card!(Two, Diamond);
+        let two_of_hearts = card!(Two, Heart);
+        let six_of_diamonds = card!(Six, Diamond);
+        let nine_of_clubs = card!(Nine, Club);
+        let nine_of_hearts = card!(Nine, Heart);
+        let nine_of_spades = card!(Nine, Spade);
+        let ten_of_spades = card!(Ten, Spade);
+        let jack_of_clubs = card!(Jack, Club);
+        let ace_of_spades = card!(Ace, Spade);
+
+        let two_pair1 = HandRank::TwoPair([
+            nine_of_clubs,
+            nine_of_hearts,
+            two_of_diamonds,
+            two_of_hearts,
+        ]);
+
+        let table_cards: Vec<Card> = vec![
+            two_of_diamonds,
+            two_of_hearts,
+            nine_of_clubs,
+            ten_of_spades,
+            jack_of_clubs,
+        ];
+
+        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let table_cards = Hand::new_from_cards(table_cards);
+
+        let player1 = game.new_player_with_chips("Player 1", 100);
+        let player1_cards: Vec<Card> = vec![nine_of_hearts, ace_of_spades];
+        let player1_hand = Hand::new_from_cards(player1_cards);
+        player_hands.insert(player1.clone(), player1_hand);
+
+        let player2 = game.new_player_with_chips("Player 2", 100);
+        let player2_cards: Vec<Card> = vec![nine_of_spades, six_of_diamonds];
+        let player2_hand = Hand::new_from_cards(player2_cards);
+        player_hands.insert(player2.clone(), player2_hand);
+
+        let leading_players = game.rank_all_hands(&player_hands, &table_cards);
+
+        assert_eq!(leading_players.len(), 1);
+        assert!(leading_players.contains_key(&player1));
+        assert_eq!(*leading_players.get(&player1).unwrap(), two_pair1);
     }
 
     /// Tests rank_all_hands().

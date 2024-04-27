@@ -27,6 +27,22 @@ pub enum HandRank {
     StraightFlush([Card; 5]),
 }
 
+impl HandRank {
+    pub fn len(&self) -> usize {
+        match self {
+            HandRank::HighCard(_) => 1,
+            HandRank::Pair(_) => 2,
+            HandRank::TwoPair(_) => 4,
+            HandRank::ThreeOfAKind(_) => 3,
+            HandRank::Straight(_) => 5,
+            HandRank::Flush(_) => 5,
+            HandRank::FullHouse(_) => 5,
+            HandRank::FourOfAKind(_) => 4,
+            HandRank::StraightFlush(_) => 5,
+        }
+    }
+}
+
 impl PartialEq for HandRank {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -233,7 +249,7 @@ pub fn rank_hand(cards: Vec<Card>) -> HandRank {
 ///
 /// Example: A table with 10 of Clubs, 4 of Hearts, 7 of Diamonds, King of Clubs,
 /// and 2 of Spades will return the King of Clubs.
-fn get_high_card_value(cards: &Vec<Card>) -> Option<Card> {
+pub fn get_high_card_value(cards: &Vec<Card>) -> Option<Card> {
     let mut high_card: Option<Card> = None;
     let mut high_card_value: u8 = 0;
     for &card in cards {
