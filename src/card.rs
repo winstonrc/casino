@@ -42,30 +42,9 @@ impl Rank {
     }
 }
 
-impl From<Rank> for String {
-    fn from(value: Rank) -> Self {
-        match value {
-            Rank::Two => "2",
-            Rank::Three => "3",
-            Rank::Four => "4",
-            Rank::Five => "5",
-            Rank::Six => "6",
-            Rank::Seven => "7",
-            Rank::Eight => "8",
-            Rank::Nine => "9",
-            Rank::Ten => "10",
-            Rank::Jack => "J",
-            Rank::Queen => "Q",
-            Rank::King => "K",
-            Rank::Ace => "A",
-        }
-        .into()
-    }
-}
-
 impl From<Rank> for char {
-    fn from(value: Rank) -> Self {
-        match value {
+    fn from(rank: Rank) -> Self {
+        match rank {
             Rank::Two => '2',
             Rank::Three => '3',
             Rank::Four => '4',
@@ -80,6 +59,27 @@ impl From<Rank> for char {
             Rank::King => 'K',
             Rank::Ace => 'A',
         }
+    }
+}
+
+impl From<Rank> for String {
+    fn from(rank: Rank) -> Self {
+        match rank {
+            Rank::Two => "2",
+            Rank::Three => "3",
+            Rank::Four => "4",
+            Rank::Five => "5",
+            Rank::Six => "6",
+            Rank::Seven => "7",
+            Rank::Eight => "8",
+            Rank::Nine => "9",
+            Rank::Ten => "10",
+            Rank::Jack => "J",
+            Rank::Queen => "Q",
+            Rank::King => "K",
+            Rank::Ace => "A",
+        }
+        .to_string()
     }
 }
 
@@ -200,6 +200,64 @@ impl PartialOrd for Card {
     }
 }
 
+impl From<Card> for char {
+    fn from(card: Card) -> Self {
+        match (card.rank, card.suit) {
+            (Rank::Two, Suit::Club) => '🃒',
+            (Rank::Three, Suit::Club) => '🃓',
+            (Rank::Four, Suit::Club) => '🃔',
+            (Rank::Five, Suit::Club) => '🃕',
+            (Rank::Six, Suit::Club) => '🃖',
+            (Rank::Seven, Suit::Club) => '🃗',
+            (Rank::Eight, Suit::Club) => '🃘',
+            (Rank::Nine, Suit::Club) => '🃙',
+            (Rank::Ten, Suit::Club) => '🃚',
+            (Rank::Jack, Suit::Club) => '🃛',
+            (Rank::Queen, Suit::Club) => '🃝',
+            (Rank::King, Suit::Club) => '🃞',
+            (Rank::Ace, Suit::Club) => '🃑',
+            (Rank::Two, Suit::Diamond) => '🃂',
+            (Rank::Three, Suit::Diamond) => '🃃',
+            (Rank::Four, Suit::Diamond) => '🃄',
+            (Rank::Five, Suit::Diamond) => '🃅',
+            (Rank::Six, Suit::Diamond) => '🃆',
+            (Rank::Seven, Suit::Diamond) => '🃇',
+            (Rank::Eight, Suit::Diamond) => '🃈',
+            (Rank::Nine, Suit::Diamond) => '🃉',
+            (Rank::Ten, Suit::Diamond) => '🃊',
+            (Rank::Jack, Suit::Diamond) => '🃋',
+            (Rank::Queen, Suit::Diamond) => '🃍',
+            (Rank::King, Suit::Diamond) => '🃎',
+            (Rank::Ace, Suit::Diamond) => '🃁',
+            (Rank::Two, Suit::Heart) => '🂲',
+            (Rank::Three, Suit::Heart) => '🂳',
+            (Rank::Four, Suit::Heart) => '🂴',
+            (Rank::Five, Suit::Heart) => '🂵',
+            (Rank::Six, Suit::Heart) => '🂶',
+            (Rank::Seven, Suit::Heart) => '🂷',
+            (Rank::Eight, Suit::Heart) => '🂸',
+            (Rank::Nine, Suit::Heart) => '🂹',
+            (Rank::Ten, Suit::Heart) => '🂺',
+            (Rank::Jack, Suit::Heart) => '🂻',
+            (Rank::Queen, Suit::Heart) => '🂽',
+            (Rank::King, Suit::Heart) => '🂾',
+            (Rank::Ace, Suit::Heart) => '🂱',
+            (Rank::Two, Suit::Spade) => '🂢',
+            (Rank::Three, Suit::Spade) => '🂣',
+            (Rank::Four, Suit::Spade) => '🂤',
+            (Rank::Five, Suit::Spade) => '🂥',
+            (Rank::Six, Suit::Spade) => '🂦',
+            (Rank::Seven, Suit::Spade) => '🂧',
+            (Rank::Eight, Suit::Spade) => '🂨',
+            (Rank::Nine, Suit::Spade) => '🂩',
+            (Rank::Ten, Suit::Spade) => '🂪',
+            (Rank::Jack, Suit::Spade) => '🂫',
+            (Rank::Queen, Suit::Spade) => '🂭',
+            (Rank::King, Suit::Spade) => '🂮',
+            (Rank::Ace, Suit::Spade) => '🂡',
+        }
+    }
+}
 /// Uses String instead of char for Rank because "10" cannot be represented as a char.
 impl fmt::Display for Card {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

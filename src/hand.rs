@@ -12,6 +12,10 @@ impl Hand {
         Self { cards }
     }
 
+    pub fn new_from_cards(cards: Vec<Card>) -> Self {
+        Self { cards }
+    }
+
     /// Returns the cards in the Hand.
     pub fn get_cards(&self) -> &Vec<Card> {
         &self.cards
@@ -31,27 +35,31 @@ impl Hand {
         None
     }
 
-    pub fn to_string(&self) {
-        let mut string_to_print = String::new();
-
-        for &card in self.cards.iter() {
-            string_to_print.push_str(&card.to_string());
-        }
-
-        println!("{}", string_to_print);
-    }
-
-    pub fn to_symbols(&self) {
-        let mut string_to_print = String::new();
+    pub fn to_string(&self) -> String {
+        let mut cards_string = String::new();
 
         for (i, &card) in self.cards.iter().enumerate() {
-            string_to_print.push_str(&card.to_symbol().to_string());
+            cards_string.push_str(&card.to_string());
 
             if i < self.cards.len() - 1 {
-                string_to_print.push_str(" ");
+                cards_string.push_str(" ");
             }
         }
 
-        println!("{}", string_to_print);
+        cards_string
+    }
+
+    pub fn to_symbols(&self) -> String {
+        let mut card_symbols = String::new();
+
+        for (i, &card) in self.cards.iter().enumerate() {
+            card_symbols.push_str(&card.to_symbol().to_string());
+
+            if i < self.cards.len() - 1 {
+                card_symbols.push_str(" ");
+            }
+        }
+
+        card_symbols
     }
 }

@@ -4,7 +4,7 @@ use strum::IntoEnumIterator;
 
 use crate::card::{Card, Rank, Suit};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Deck {
     cards: Vec<Card>,
 }
