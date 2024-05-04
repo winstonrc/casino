@@ -28,6 +28,20 @@ pub enum HandRank {
 }
 
 impl HandRank {
+    pub fn contains(&self, card: &Card) -> bool {
+        match self {
+            HandRank::HighCard(cards) => *cards == *card,
+            HandRank::Pair(cards) => cards.iter().any(|c| *c == *card),
+            HandRank::TwoPair(cards) => cards.iter().any(|c| *c == *card),
+            HandRank::ThreeOfAKind(cards) => cards.iter().any(|c| *c == *card),
+            HandRank::Straight(cards) => cards.iter().any(|c| *c == *card),
+            HandRank::Flush(cards) => cards.iter().any(|c| *c == *card),
+            HandRank::FullHouse(cards) => cards.iter().any(|c| *c == *card),
+            HandRank::FourOfAKind(cards) => cards.iter().any(|c| *c == *card),
+            HandRank::StraightFlush(cards) => cards.iter().any(|c| *c == *card),
+        }
+    }
+
     pub fn len(&self) -> usize {
         match self {
             HandRank::HighCard(_) => 1,

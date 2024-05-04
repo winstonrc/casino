@@ -294,23 +294,65 @@ impl TexasHoldEm {
 
             if let Some((best_hand_rank, best_hand_cards)) = best_hand.last() {
                 if hand_rank == *best_hand_rank {
-                    // todo: The kicker is always taking the high card from the original hand,
-                    // but if the high card in that hand is used for the hand rank, then the other hand card should be used.
                     // If hand ranks are equal and are made up of less than 5 cards then check for a kicker (high card).
+                    // If the high card is on the table, then that should be used.
+
                     if hand_rank.len() < 5 {
-                        let current_hand_high_card = get_high_card_value(hand.get_cards());
-                        let best_hand_high_card = get_high_card_value(best_hand_cards.get_cards());
+                        let mut current_cards_and_table_cards: Vec<Card> =
+                            table_cards.get_cards().clone();
+
+                        current_cards_and_table_cards.push(hand.cards[0].clone());
+                        current_cards_and_table_cards.push(hand.cards[1].clone());
+
+                        let mut cards_not_used_in_current_hand_rank: Vec<Card> = Vec::new();
+                        for card in current_cards_and_table_cards {
+                            // Check to see that the kicker is not part of the hand rank.
+                            if !hand_rank.contains(&card) {
+                                cards_not_used_in_current_hand_rank.push(card);
+                            }
+                        }
+                        let current_hand_kicker =
+                            get_high_card_value(&cards_not_used_in_current_hand_rank).unwrap();
+
+                        let mut best_hand_cards_and_table_cards: Vec<Card> =
+                            table_cards.get_cards().clone();
+
+                        best_hand_cards_and_table_cards.push(best_hand_cards.cards[0].clone());
+                        best_hand_cards_and_table_cards.push(best_hand_cards.cards[1].clone());
+
+                        let mut cards_not_used_in_best_hand_rank: Vec<Card> = Vec::new();
+                        for card in best_hand_cards_and_table_cards {
+                            // Check to see that the kicker is not part of the hand rank.
+                            if !best_hand_rank.contains(&card) {
+                                cards_not_used_in_best_hand_rank.push(card);
+                            }
+                        }
+                        let best_hand_kicker =
+                            get_high_card_value(&cards_not_used_in_best_hand_rank).unwrap();
+
+                        // If there is a tie, but the best hand has a higher kicker, add that kicker to the best hand, so that it is returned when the best hand is declared
+                        if let Some((leading_player, leading_hand_vec)) =
+                            leading_players.iter().next()
+                        {
+                            if leading_hand_vec.len() < 2 {
+                                leading_players
+                                    .entry(leading_player.clone())
+                                    .or_insert(Vec::new())
+                                    .push(HandRank::HighCard(best_hand_kicker));
+                            }
+                        }
 
                         // If the kicker is equal, then both hands are equal.
                         // Otherwise, one of the hands must be greater and there will only be one leading player.
-                        if current_hand_high_card.unwrap() == best_hand_high_card.unwrap() {
+                        if current_hand_kicker.rank == best_hand_kicker.rank {
                             best_hand.push((hand_rank, hand));
+                            hand_rank_vec.push(HandRank::HighCard(current_hand_kicker));
                             leading_players.insert(player.clone(), hand_rank_vec);
-                        } else if current_hand_high_card.unwrap() > best_hand_high_card.unwrap() {
+                        } else if current_hand_kicker.rank > best_hand_kicker.rank {
                             best_hand.clear();
                             best_hand.push((hand_rank, hand));
                             leading_players.clear();
-                            hand_rank_vec.push(HandRank::HighCard(current_hand_high_card.unwrap()));
+                            hand_rank_vec.push(HandRank::HighCard(current_hand_kicker));
                             leading_players.insert(player.clone(), hand_rank_vec);
                         }
                     } else {
@@ -445,15 +487,15 @@ mod tests {
 
         assert_eq!(leading_players.len(), 1);
         assert!(leading_players.contains_key(&player1));
-        assert_eq!(*leading_players.get(&player1).unwrap(), flush);
+        assert_eq!(leading_players.get(&player1).unwrap()[0], flush);
     }
 
     /// Tests rank_all_hands().
     ///
-    /// Tests that a single winner is correctly chosen when hand ranks are equal
+    /// Tests that a single winner is correctly chosen when the winning hand ranks combines the table and hand
     /// but one player has a higher kicker (high card) than the other.
     #[test]
-    fn rank_all_hands_identifies_winner_based_on_kicker() {
+    fn rank_all_hands_identifies_winner_based_on_kicker_with_hand_winner() {
         let mut game = TexasHoldEm::new();
 
         let two_of_diamonds = card!(Two, Diamond);
@@ -498,7 +540,60 @@ mod tests {
 
         assert_eq!(leading_players.len(), 1);
         assert!(leading_players.contains_key(&player1));
-        assert_eq!(*leading_players.get(&player1).unwrap(), two_pair1);
+        assert_eq!(leading_players.get(&player1).unwrap()[0], two_pair1);
+    }
+
+    /// Tests rank_all_hands().
+    ///
+    /// Tests that a single winner is correctly chosen when the winning hand ranks is on the table
+    /// but one player has a higher kicker (high card) than the other.
+    #[test]
+    fn rank_all_hands_identifies_winner_based_on_kicker_with_table_winner() {
+        let mut game = TexasHoldEm::new();
+
+        let two_of_diamonds = card!(Two, Diamond);
+        let two_of_hearts = card!(Two, Heart);
+        let six_of_diamonds = card!(Six, Diamond);
+        let nine_of_clubs = card!(Nine, Club);
+        let nine_of_hearts = card!(Nine, Heart);
+        let ten_of_hearts = card!(Ten, Heart);
+        let ten_of_spades = card!(Ten, Spade);
+        let jack_of_clubs = card!(Jack, Club);
+        let ace_of_spades = card!(Ace, Spade);
+
+        let two_pair1 = HandRank::TwoPair([
+            nine_of_clubs,
+            nine_of_hearts,
+            two_of_diamonds,
+            two_of_hearts,
+        ]);
+
+        let table_cards: Vec<Card> = vec![
+            two_of_diamonds,
+            two_of_hearts,
+            nine_of_clubs,
+            nine_of_hearts,
+            jack_of_clubs,
+        ];
+
+        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let table_cards = Hand::new_from_cards(table_cards);
+
+        let player1 = game.new_player_with_chips("Player 1", 100);
+        let player1_cards: Vec<Card> = vec![ten_of_spades, ace_of_spades];
+        let player1_hand = Hand::new_from_cards(player1_cards);
+        player_hands.insert(player1.clone(), player1_hand);
+
+        let player2 = game.new_player_with_chips("Player 2", 100);
+        let player2_cards: Vec<Card> = vec![six_of_diamonds, ten_of_hearts];
+        let player2_hand = Hand::new_from_cards(player2_cards);
+        player_hands.insert(player2.clone(), player2_hand);
+
+        let leading_players = game.rank_all_hands(&player_hands, &table_cards);
+
+        assert_eq!(leading_players.len(), 1);
+        assert!(leading_players.contains_key(&player1));
+        assert_eq!(leading_players.get(&player1).unwrap()[0], two_pair1);
     }
 
     /// Tests rank_all_hands().
@@ -571,11 +666,11 @@ mod tests {
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
         assert_eq!(leading_players.len(), 5);
-        assert_eq!(*leading_players.get(&player1).unwrap(), flush);
-        assert_eq!(*leading_players.get(&player2).unwrap(), flush);
-        assert_eq!(*leading_players.get(&player3).unwrap(), flush);
-        assert_eq!(*leading_players.get(&player4).unwrap(), flush);
-        assert_eq!(*leading_players.get(&player5).unwrap(), flush);
+        assert_eq!(leading_players.get(&player1).unwrap()[0], flush);
+        assert_eq!(leading_players.get(&player2).unwrap()[0], flush);
+        assert_eq!(leading_players.get(&player3).unwrap()[0], flush);
+        assert_eq!(leading_players.get(&player4).unwrap()[0], flush);
+        assert_eq!(leading_players.get(&player5).unwrap()[0], flush);
     }
 
     /// Tests rank_all_hands().
@@ -658,8 +753,8 @@ mod tests {
         assert_eq!(leading_players.len(), 2);
         assert!(leading_players.contains_key(&player1));
         assert!(leading_players.contains_key(&player2));
-        assert_eq!(*leading_players.get(&player1).unwrap(), flush1);
-        assert_eq!(*leading_players.get(&player2).unwrap(), flush2);
+        assert_eq!(leading_players.get(&player1).unwrap()[0], flush1);
+        assert_eq!(leading_players.get(&player2).unwrap()[0], flush2);
         assert_eq!(
             *leading_players.get(&player1).unwrap(),
             *leading_players.get(&player2).unwrap()
@@ -736,11 +831,11 @@ mod tests {
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
         assert_eq!(leading_players.len(), 5);
-        assert_eq!(*leading_players.get(&player1).unwrap(), straight);
-        assert_eq!(*leading_players.get(&player2).unwrap(), straight);
-        assert_eq!(*leading_players.get(&player3).unwrap(), straight);
-        assert_eq!(*leading_players.get(&player4).unwrap(), straight);
-        assert_eq!(*leading_players.get(&player5).unwrap(), straight);
+        assert_eq!(leading_players.get(&player1).unwrap()[0], straight);
+        assert_eq!(leading_players.get(&player2).unwrap()[0], straight);
+        assert_eq!(leading_players.get(&player3).unwrap()[0], straight);
+        assert_eq!(leading_players.get(&player4).unwrap()[0], straight);
+        assert_eq!(leading_players.get(&player5).unwrap()[0], straight);
     }
 
     /// Tests rank_all_hands().
@@ -823,8 +918,8 @@ mod tests {
         assert_eq!(leading_players.len(), 2);
         assert!(leading_players.contains_key(&player1));
         assert!(leading_players.contains_key(&player2));
-        assert_eq!(*leading_players.get(&player1).unwrap(), straight1);
-        assert_eq!(*leading_players.get(&player2).unwrap(), straight2);
+        assert_eq!(leading_players.get(&player1).unwrap()[0], straight1);
+        assert_eq!(leading_players.get(&player2).unwrap()[0], straight2);
         assert_eq!(
             *leading_players.get(&player1).unwrap(),
             *leading_players.get(&player2).unwrap()
