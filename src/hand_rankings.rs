@@ -749,11 +749,11 @@ mod tests {
             HandRank::ThreeOfAKind([card!(King, Club), card!(King, Heart), card!(King, Diamond)]);
 
         let straight = HandRank::Straight([
+            card!(Two, Spade),
             card!(Three, Club),
             card!(Four, Heart),
             card!(Five, Diamond),
             card!(Six, Club),
-            card!(Seven, Spade),
         ]);
 
         let flush = HandRank::Flush([
@@ -803,6 +803,36 @@ mod tests {
         assert!(full_house < four_of_a_kind);
         assert!(four_of_a_kind < straight_flush);
         assert!(straight_flush < royal_flush);
+    }
+
+    #[test]
+    fn straight_ace_low_straight_is_valued_lower_than_higher_straights() {
+        let ace_low_straight = HandRank::Straight([
+            card!(Ace, Club),
+            card!(Two, Spade),
+            card!(Three, Club),
+            card!(Four, Heart),
+            card!(Five, Diamond),
+        ]);
+
+        let two_six_straight = HandRank::Straight([
+            card!(Two, Spade),
+            card!(Three, Club),
+            card!(Four, Heart),
+            card!(Five, Diamond),
+            card!(Six, Club),
+        ]);
+
+        let ace_high_straight = HandRank::Straight([
+            card!(Ten, Club),
+            card!(Jack, Heart),
+            card!(Queen, Diamond),
+            card!(King, Spade),
+            card!(Ace, Club),
+        ]);
+
+        assert!(ace_low_straight < two_six_straight);
+        assert!(two_six_straight < ace_high_straight);
     }
 
     /// Tests get_high_card_value().

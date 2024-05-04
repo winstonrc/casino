@@ -296,7 +296,6 @@ impl TexasHoldEm {
                 if hand_rank == *best_hand_rank {
                     // If hand ranks are equal and are made up of less than 5 cards then check for a kicker (high card).
                     // If the high card is on the table, then that should be used.
-
                     if hand_rank.len() < 5 {
                         let mut current_cards_and_table_cards: Vec<Card> =
                             table_cards.get_cards().clone();
@@ -356,6 +355,7 @@ impl TexasHoldEm {
                             leading_players.insert(player.clone(), hand_rank_vec);
                         }
                     } else {
+                        // If hands are still equal after considering the kicker, push the new hand.
                         best_hand.push((hand_rank, hand));
                         leading_players.insert(player.clone(), hand_rank_vec);
                     }
@@ -848,9 +848,9 @@ mod tests {
         let two_of_diamonds = card!(Two, Diamond);
         let three_of_clubs = card!(Three, Club);
         let four_of_hearts = card!(Four, Heart);
+        let five_of_clubs = card!(Five, Club);
         let five_of_diamonds = card!(Five, Diamond);
         let seven_of_spades = card!(Seven, Spade);
-        let five_of_clubs = card!(Five, Club);
         let nine_of_spades = card!(Nine, Spade);
         let ten_of_diamonds = card!(Ten, Diamond);
         let ten_of_hearts = card!(Ten, Heart);
@@ -924,5 +924,80 @@ mod tests {
             *leading_players.get(&player1).unwrap(),
             *leading_players.get(&player2).unwrap()
         );
+    }
+
+    /// Tests rank_all_hands().
+    ///
+    /// Tests that multiple equal hands result in a push for all involved players.
+    #[test]
+    fn rank_all_hands_identifies_higher_straight_beats_ace_low_straight() {
+        let mut game = TexasHoldEm::new();
+
+        let two_of_diamonds = card!(Two, Diamond);
+        let three_of_clubs = card!(Three, Club);
+        let four_of_hearts = card!(Four, Heart);
+        let five_of_clubs = card!(Five, Club);
+        let five_of_diamonds = card!(Five, Diamond);
+        let six_of_spades = card!(Six, Spade);
+        let nine_of_spades = card!(Nine, Spade);
+        let ten_of_diamonds = card!(Ten, Diamond);
+        let ten_of_hearts = card!(Ten, Heart);
+        let jack_of_clubs = card!(Jack, Club);
+        let jack_of_hearts = card!(Jack, Heart);
+        let jack_of_spades = card!(Jack, Spade);
+        let queen_of_spades = card!(Queen, Spade);
+        let king_of_diamonds = card!(King, Diamond);
+        let ace_of_hearts = card!(Ace, Heart);
+
+        let straight = HandRank::Straight([
+            two_of_diamonds,
+            three_of_clubs,
+            four_of_hearts,
+            five_of_diamonds,
+            six_of_spades,
+        ]);
+
+        let table_cards: Vec<Card> = vec![
+            two_of_diamonds,
+            three_of_clubs,
+            four_of_hearts,
+            five_of_diamonds,
+            king_of_diamonds,
+        ];
+
+        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let table_cards = Hand::new_from_cards(table_cards);
+
+        let player1 = game.new_player_with_chips("Player 1", 100);
+        let player1_cards: Vec<Card> = vec![ten_of_diamonds, ace_of_hearts];
+        let player1_hand = Hand::new_from_cards(player1_cards);
+        player_hands.insert(player1.clone(), player1_hand);
+
+        let player2 = game.new_player_with_chips("Player 2", 100);
+        let player2_cards: Vec<Card> = vec![six_of_spades, jack_of_clubs];
+        let player2_hand = Hand::new_from_cards(player2_cards);
+        player_hands.insert(player2.clone(), player2_hand);
+
+        let player3 = game.new_player_with_chips("Player 3", 100);
+        let player3_cards: Vec<Card> = vec![nine_of_spades, ten_of_hearts];
+        let player3_hand = Hand::new_from_cards(player3_cards);
+        player_hands.insert(player3.clone(), player3_hand);
+
+        let player4 = game.new_player_with_chips("Player 4", 100);
+        let player4_cards: Vec<Card> = vec![five_of_clubs, queen_of_spades];
+        let player4_hand = Hand::new_from_cards(player4_cards);
+        player_hands.insert(player4.clone(), player4_hand);
+
+        let player5 = game.new_player_with_chips("Player 5", 100);
+        let player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
+        let player5_hand = Hand::new_from_cards(player5_cards);
+        player_hands.insert(player5.clone(), player5_hand);
+
+        let leading_players = game.rank_all_hands(&player_hands, &table_cards);
+
+        assert_eq!(leading_players.len(), 1);
+        assert!(!leading_players.contains_key(&player1));
+        assert!(leading_players.contains_key(&player2));
+        assert_eq!(leading_players.get(&player2).unwrap()[0], straight);
     }
 }
