@@ -1,5 +1,5 @@
 [package]
-name = "texas-hold-em"
+name = "poker"
 version = "0.1.0"
 edition = "2021"
 
