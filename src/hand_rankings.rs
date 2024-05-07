@@ -71,7 +71,7 @@ impl PartialEq for HandRank {
             }
 
             (HandRank::Straight(cards1), HandRank::Straight(cards2)) => {
-                // Compare the ranks of the highest card of the straight
+                // Compare the ranks of the highest card of the straight with the assumption that the straight is sorted low to high.
                 cards1.last().unwrap().rank == cards2.last().unwrap().rank
             }
             (HandRank::Flush(cards1), HandRank::Flush(cards2)) => {
@@ -109,62 +109,38 @@ impl PartialEq for HandRank {
 impl fmt::Display for HandRank {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let printable = match self {
-            HandRank::HighCard(card) => format!("a High Card: {}", card.to_symbol()),
+            HandRank::HighCard(card) => format!("a High Card: {}", card),
 
             HandRank::Pair([card1, card2]) => {
-                format!("a Pair: {} {}", card1.to_symbol(), card2.to_symbol())
+                format!("a Pair: {} {}", card1, card2)
             }
 
-            HandRank::TwoPair([card1, card2, card3, card4]) => format!(
-                "Two Pairs: {} {} {} {}",
-                card1.to_symbol(),
-                card2.to_symbol(),
-                card3.to_symbol(),
-                card4.to_symbol()
-            ),
+            HandRank::TwoPair([card1, card2, card3, card4]) => {
+                format!("Two Pairs: {} {} {} {}", card1, card2, card3, card4)
+            }
 
-            HandRank::ThreeOfAKind([card1, card2, card3]) => format!(
-                "Three of a Kind: {} {} {}",
-                card1.to_symbol(),
-                card2.to_symbol(),
-                card3.to_symbol(),
-            ),
+            HandRank::ThreeOfAKind([card1, card2, card3]) => {
+                format!("Three of a Kind: {} {} {}", card1, card2, card3,)
+            }
 
             HandRank::Straight([card1, card2, card3, card4, card5]) => {
                 format!(
                     "a Straight: {} {} {} {} {}",
-                    card1.to_symbol(),
-                    card2.to_symbol(),
-                    card3.to_symbol(),
-                    card4.to_symbol(),
-                    card5.to_symbol()
+                    card1, card2, card3, card4, card5
                 )
             }
 
-            HandRank::Flush([card1, card2, card3, card4, card5]) => format!(
-                "a Flush: {} {} {} {} {}",
-                card1.to_symbol(),
-                card2.to_symbol(),
-                card3.to_symbol(),
-                card4.to_symbol(),
-                card5.to_symbol()
-            ),
+            HandRank::Flush([card1, card2, card3, card4, card5]) => {
+                format!("a Flush: {} {} {} {} {}", card1, card2, card3, card4, card5)
+            }
 
             HandRank::FullHouse([card1, card2, card3, card4, card5]) => format!(
                 "a Full House: {} {} {} {} {}",
-                card1.to_symbol(),
-                card2.to_symbol(),
-                card3.to_symbol(),
-                card4.to_symbol(),
-                card5.to_symbol()
+                card1, card2, card3, card4, card5
             ),
-            HandRank::FourOfAKind([card1, card2, card3, card4]) => format!(
-                "Four of a Kind: {} {} {} {}",
-                card1.to_symbol(),
-                card2.to_symbol(),
-                card3.to_symbol(),
-                card4.to_symbol()
-            ),
+            HandRank::FourOfAKind([card1, card2, card3, card4]) => {
+                format!("Four of a Kind: {} {} {} {}", card1, card2, card3, card4)
+            }
 
             HandRank::StraightFlush(cards) => {
                 let is_royal_flush = cards.iter().all(|card| {
@@ -180,20 +156,12 @@ impl fmt::Display for HandRank {
                 if is_royal_flush {
                     format!(
                         "a Royal Flush: {} {} {} {} {}",
-                        card1.to_symbol(),
-                        card2.to_symbol(),
-                        card3.to_symbol(),
-                        card4.to_symbol(),
-                        card5.to_symbol()
+                        card1, card2, card3, card4, card5
                     )
                 } else {
                     format!(
                         "a Straight Flush: {} {} {} {} {}",
-                        card1.to_symbol(),
-                        card2.to_symbol(),
-                        card3.to_symbol(),
-                        card4.to_symbol(),
-                        card5.to_symbol()
+                        card1, card2, card3, card4, card5
                     )
                 }
             }
