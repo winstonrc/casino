@@ -233,12 +233,13 @@ pub fn rank_hand(cards: Vec<Card>) -> HandRank {
 /// and 2 of Spades will return the King of Clubs.
 pub fn get_high_card_value(cards: &Vec<Card>) -> Option<Card> {
     let mut high_card: Option<Card> = None;
-    let mut high_card_value: u8 = 0;
-    for &card in cards {
-        let card_rank_value = card.rank.value();
 
-        if card_rank_value > high_card_value {
-            high_card_value = card_rank_value;
+    for &card in cards {
+        if let Some(max_high_card) = high_card {
+            if card.rank > max_high_card.rank {
+                high_card = Some(card);
+            }
+        } else {
             high_card = Some(card);
         }
     }
@@ -264,18 +265,20 @@ fn check_for_pair(cards: &Vec<Card>) -> Option<[Card; 2]> {
     }
 
     let mut high_pair_cards: Option<[Card; 2]> = None;
-    let mut high_pair_rank_value = 0;
 
     for (rank, cards) in ranks.iter() {
-        let rank_value = rank.value();
-
-        if cards.len() == 2 && rank_value > high_pair_rank_value {
-            high_pair_rank_value = rank_value;
-            high_pair_cards = Some([cards[0], cards[1]]);
+        if let Some(max_high_pair_cards) = high_pair_cards {
+            if cards.len() == 2 && rank > &max_high_pair_cards[0].rank {
+                high_pair_cards = Some([cards[0], cards[1]]);
+            }
+        } else {
+            if cards.len() == 2 {
+                high_pair_cards = Some([cards[0], cards[1]]);
+            }
         }
     }
 
-    if high_pair_rank_value > 0 {
+    if high_pair_cards.is_some() {
         return high_pair_cards;
     }
 
@@ -347,12 +350,17 @@ fn check_for_three_of_a_kind(cards: &Vec<Card>) -> Option<[Card; 3]> {
         rank_entry.push(card);
     }
 
-    let mut high_rank = 0;
     let mut three_of_a_kind_cards: Option<[Card; 3]> = None;
+
     for (rank, cards) in ranks.iter() {
-        if cards.len() == 3 && rank.value() > high_rank {
-            high_rank = rank.value();
-            three_of_a_kind_cards = Some([cards[0], cards[1], cards[2]]);
+        if let Some(max_three_of_a_kind_cards) = three_of_a_kind_cards {
+            if cards.len() == 3 && rank > &max_three_of_a_kind_cards[0].rank {
+                three_of_a_kind_cards = Some([cards[0], cards[1], cards[2]]);
+            }
+        } else {
+            if cards.len() == 3 {
+                three_of_a_kind_cards = Some([cards[0], cards[1], cards[2]]);
+            }
         }
     }
 
@@ -384,11 +392,11 @@ fn check_for_straight(cards: &Vec<Card>) -> Option<[Card; 5]> {
     let mut current_straight: Vec<Card> = vec![cards[0]];
 
     for i in 1..cards.len() {
-        let current_rank_value = cards[i].rank.value();
-        let previous_rank_value = current_straight.last().unwrap().rank.value();
-        if current_rank_value == previous_rank_value + 1 {
+        let current_rank = cards[i].rank;
+        let previous_rank = current_straight.last().unwrap().rank;
+        if current_rank.value() == previous_rank.value() + 1 {
             current_straight.push(cards[i]);
-        } else if current_rank_value == previous_rank_value {
+        } else if current_rank == previous_rank {
             // Skip over duplicate values
             continue;
         } else {
