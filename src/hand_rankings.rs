@@ -1,9 +1,10 @@
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 
 use cards::card::{Card, Rank, Suit};
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord)]
 pub enum HandRank {
     /// Simple value of the card.
     /// Lowest: 2 – Highest: Ace.
@@ -103,6 +104,81 @@ impl PartialEq for HandRank {
             }
             _ => false,
         }
+    }
+}
+
+impl PartialOrd for HandRank {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(match (self, other) {
+            (HandRank::HighCard(_), _) => Ordering::Less,
+            (_, HandRank::HighCard(_)) => Ordering::Greater,
+            (HandRank::Pair(_), _) => Ordering::Less,
+            (_, HandRank::Pair(_)) => Ordering::Greater,
+            (HandRank::TwoPair(_), _) => Ordering::Less,
+            (_, HandRank::TwoPair(_)) => Ordering::Greater,
+            (HandRank::ThreeOfAKind(_), _) => Ordering::Less,
+            (_, HandRank::ThreeOfAKind(_)) => Ordering::Greater,
+            (HandRank::Straight(cards1), HandRank::Straight(cards2)) => {
+                // Ace-low straight check
+                let is_ace_low_straight1 =
+                    cards1[0].rank == Rank::Ace && cards1[1].rank == Rank::Two;
+                let is_ace_low_straight2 =
+                    cards2[0].rank == Rank::Ace && cards2[1].rank == Rank::Two;
+
+                if is_ace_low_straight1 && !is_ace_low_straight2 {
+                    Ordering::Less
+                } else if !is_ace_low_straight1 && is_ace_low_straight2 {
+                    Ordering::Greater
+                } else {
+                    // Regular straight comparison
+                    let max_card_value1 = &cards1[4].rank;
+                    let max_card_value2 = &cards2[4].rank;
+                    max_card_value1.cmp(max_card_value2)
+                }
+            }
+            (HandRank::Straight(_), HandRank::Flush(_)) => Ordering::Less,
+            (HandRank::Flush(_), HandRank::Flush(_)) => Ordering::Equal,
+            (HandRank::Flush(_), _) => Ordering::Less,
+            (_, HandRank::Flush(_)) => Ordering::Greater,
+            (HandRank::FullHouse(_), HandRank::FullHouse(_)) => Ordering::Equal,
+            (HandRank::FullHouse(_), _) => Ordering::Less,
+            (_, HandRank::FullHouse(_)) => Ordering::Greater,
+            (HandRank::FourOfAKind(_), _) => Ordering::Less,
+            (_, HandRank::FourOfAKind(_)) => Ordering::Greater,
+            (HandRank::StraightFlush(cards1), HandRank::StraightFlush(cards2)) => {
+                // Check for royal flush
+                let is_royal_flush1 = cards1[0].rank == Rank::Ten
+                    && cards1[1].rank == Rank::Jack
+                    && cards1[2].rank == Rank::Queen
+                    && cards1[3].rank == Rank::King
+                    && cards1[4].rank == Rank::Ace;
+                let is_royal_flush2 = cards2[0].rank == Rank::Ten
+                    && cards2[1].rank == Rank::Jack
+                    && cards2[2].rank == Rank::Queen
+                    && cards2[3].rank == Rank::King
+                    && cards2[4].rank == Rank::Ace;
+
+                if is_royal_flush1 && is_royal_flush2 {
+                    Ordering::Equal
+                } else {
+                    // Compare the ranks of the highest cards
+                    let max_card_rank1 = &cards1[4].rank;
+                    let max_card_rank2 = &cards2[4].rank;
+                    match max_card_rank1.cmp(max_card_rank2) {
+                        Ordering::Less => Ordering::Less,
+                        Ordering::Greater => Ordering::Greater,
+                        Ordering::Equal => {
+                            // If the highest card ranks are equal, compare the suits
+                            let max_card_suit1 = &cards1[4].suit;
+                            let max_card_suit2 = &cards2[4].suit;
+                            max_card_suit1.cmp(max_card_suit2)
+                        }
+                    }
+                }
+            }
+            (_, HandRank::StraightFlush(_)) => Ordering::Less,
+            (HandRank::StraightFlush(_), _) => Ordering::Greater,
+        })
     }
 }
 
