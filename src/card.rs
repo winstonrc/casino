@@ -18,8 +18,9 @@ macro_rules! card {
 
 /// Numerical values for the ranks.
 ///
-/// Ranks contain Two through Ace (high by default).
+/// Ranks contain Two through Ace (Ace-high by default).
 #[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(u8)]
 pub enum Rank {
     Two = 2,
     Three = 3,
@@ -45,6 +46,7 @@ impl Rank {
 impl fmt::Display for Rank {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let rank = match self {
+            Rank::Ace => "A",
             Rank::Two => "2",
             Rank::Three => "3",
             Rank::Four => "4",
@@ -57,7 +59,6 @@ impl fmt::Display for Rank {
             Rank::Jack => "J",
             Rank::Queen => "Q",
             Rank::King => "K",
-            Rank::Ace => "A",
         };
 
         write!(f, "{}", rank)
@@ -103,6 +104,24 @@ pub struct Card {
 impl Card {
     pub fn new(rank: Rank, suit: Suit) -> Self {
         Self { rank, suit }
+    }
+
+    pub fn value(&self) -> u8 {
+        match self.rank {
+            Rank::Ace => 1,
+            Rank::Two => 2,
+            Rank::Three => 3,
+            Rank::Four => 4,
+            Rank::Five => 5,
+            Rank::Six => 6,
+            Rank::Seven => 7,
+            Rank::Eight => 8,
+            Rank::Nine => 9,
+            Rank::Ten => 10,
+            Rank::Jack => 10,
+            Rank::Queen => 10,
+            Rank::King => 10,
+        }
     }
 }
 
@@ -243,6 +262,23 @@ mod tests {
         assert!(Suit::Club < Suit::Diamond);
         assert!(Suit::Diamond < Suit::Heart);
         assert!(Suit::Heart < Suit::Spade);
+    }
+
+    #[test]
+    fn card_values_are_correct() {
+        assert_eq!(card!(Ace, Club).value(), 1);
+        assert_eq!(card!(Two, Club).value(), 2);
+        assert_eq!(card!(Three, Club).value(), 3);
+        assert_eq!(card!(Four, Club).value(), 4);
+        assert_eq!(card!(Five, Club).value(), 5);
+        assert_eq!(card!(Six, Club).value(), 6);
+        assert_eq!(card!(Seven, Club).value(), 7);
+        assert_eq!(card!(Eight, Club).value(), 8);
+        assert_eq!(card!(Nine, Club).value(), 9);
+        assert_eq!(card!(Ten, Club).value(), 10);
+        assert_eq!(card!(Jack, Club).value(), 10);
+        assert_eq!(card!(Queen, Club).value(), 10);
+        assert_eq!(card!(King, Club).value(), 10);
     }
 
     #[test]
