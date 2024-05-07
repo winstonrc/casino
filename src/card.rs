@@ -42,29 +42,9 @@ impl Rank {
     }
 }
 
-impl From<Rank> for char {
-    fn from(rank: Rank) -> Self {
-        match rank {
-            Rank::Two => '2',
-            Rank::Three => '3',
-            Rank::Four => '4',
-            Rank::Five => '5',
-            Rank::Six => '6',
-            Rank::Seven => '7',
-            Rank::Eight => '8',
-            Rank::Nine => '9',
-            Rank::Ten => 'T',
-            Rank::Jack => 'J',
-            Rank::Queen => 'Q',
-            Rank::King => 'K',
-            Rank::Ace => 'A',
-        }
-    }
-}
-
-impl From<Rank> for String {
-    fn from(rank: Rank) -> Self {
-        match rank {
+impl fmt::Display for Rank {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let rank = match self {
             Rank::Two => "2",
             Rank::Three => "3",
             Rank::Four => "4",
@@ -78,8 +58,9 @@ impl From<Rank> for String {
             Rank::Queen => "Q",
             Rank::King => "K",
             Rank::Ace => "A",
-        }
-        .to_string()
+        };
+
+        write!(f, "{}", rank)
     }
 }
 
@@ -100,14 +81,16 @@ impl Suit {
     }
 }
 
-impl From<Suit> for char {
-    fn from(suit: Suit) -> Self {
-        match suit {
+impl fmt::Display for Suit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let suit = match self {
             Suit::Club => '♣',
             Suit::Diamond => '♦',
             Suit::Heart => '♥',
             Suit::Spade => '♠',
-        }
+        };
+
+        write!(f, "{}", suit)
     }
 }
 
@@ -120,63 +103,6 @@ pub struct Card {
 impl Card {
     pub fn new(rank: Rank, suit: Suit) -> Self {
         Self { rank, suit }
-    }
-
-    pub fn to_symbol(self) -> char {
-        match (self.rank, self.suit) {
-            (Rank::Two, Suit::Club) => '🃒',
-            (Rank::Three, Suit::Club) => '🃓',
-            (Rank::Four, Suit::Club) => '🃔',
-            (Rank::Five, Suit::Club) => '🃕',
-            (Rank::Six, Suit::Club) => '🃖',
-            (Rank::Seven, Suit::Club) => '🃗',
-            (Rank::Eight, Suit::Club) => '🃘',
-            (Rank::Nine, Suit::Club) => '🃙',
-            (Rank::Ten, Suit::Club) => '🃚',
-            (Rank::Jack, Suit::Club) => '🃛',
-            (Rank::Queen, Suit::Club) => '🃝',
-            (Rank::King, Suit::Club) => '🃞',
-            (Rank::Ace, Suit::Club) => '🃑',
-            (Rank::Two, Suit::Diamond) => '🃂',
-            (Rank::Three, Suit::Diamond) => '🃃',
-            (Rank::Four, Suit::Diamond) => '🃄',
-            (Rank::Five, Suit::Diamond) => '🃅',
-            (Rank::Six, Suit::Diamond) => '🃆',
-            (Rank::Seven, Suit::Diamond) => '🃇',
-            (Rank::Eight, Suit::Diamond) => '🃈',
-            (Rank::Nine, Suit::Diamond) => '🃉',
-            (Rank::Ten, Suit::Diamond) => '🃊',
-            (Rank::Jack, Suit::Diamond) => '🃋',
-            (Rank::Queen, Suit::Diamond) => '🃍',
-            (Rank::King, Suit::Diamond) => '🃎',
-            (Rank::Ace, Suit::Diamond) => '🃁',
-            (Rank::Two, Suit::Heart) => '🂲',
-            (Rank::Three, Suit::Heart) => '🂳',
-            (Rank::Four, Suit::Heart) => '🂴',
-            (Rank::Five, Suit::Heart) => '🂵',
-            (Rank::Six, Suit::Heart) => '🂶',
-            (Rank::Seven, Suit::Heart) => '🂷',
-            (Rank::Eight, Suit::Heart) => '🂸',
-            (Rank::Nine, Suit::Heart) => '🂹',
-            (Rank::Ten, Suit::Heart) => '🂺',
-            (Rank::Jack, Suit::Heart) => '🂻',
-            (Rank::Queen, Suit::Heart) => '🂽',
-            (Rank::King, Suit::Heart) => '🂾',
-            (Rank::Ace, Suit::Heart) => '🂱',
-            (Rank::Two, Suit::Spade) => '🂢',
-            (Rank::Three, Suit::Spade) => '🂣',
-            (Rank::Four, Suit::Spade) => '🂤',
-            (Rank::Five, Suit::Spade) => '🂥',
-            (Rank::Six, Suit::Spade) => '🂦',
-            (Rank::Seven, Suit::Spade) => '🂧',
-            (Rank::Eight, Suit::Spade) => '🂨',
-            (Rank::Nine, Suit::Spade) => '🂩',
-            (Rank::Ten, Suit::Spade) => '🂪',
-            (Rank::Jack, Suit::Spade) => '🂫',
-            (Rank::Queen, Suit::Spade) => '🂭',
-            (Rank::King, Suit::Spade) => '🂮',
-            (Rank::Ace, Suit::Spade) => '🂡',
-        }
     }
 }
 
@@ -200,9 +126,9 @@ impl PartialOrd for Card {
     }
 }
 
-impl From<Card> for char {
-    fn from(card: Card) -> Self {
-        match (card.rank, card.suit) {
+impl fmt::Display for Card {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let card = match (self.rank, self.suit) {
             (Rank::Two, Suit::Club) => '🃒',
             (Rank::Three, Suit::Club) => '🃓',
             (Rank::Four, Suit::Club) => '🃔',
@@ -255,13 +181,9 @@ impl From<Card> for char {
             (Rank::Queen, Suit::Spade) => '🂭',
             (Rank::King, Suit::Spade) => '🂮',
             (Rank::Ace, Suit::Spade) => '🂡',
-        }
-    }
-}
-/// Uses String instead of char for Rank because "10" cannot be represented as a char.
-impl fmt::Display for Card {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}{}", String::from(self.rank), char::from(self.suit))
+        };
+
+        write!(f, "{}", card)
     }
 }
 
@@ -326,19 +248,15 @@ mod tests {
     #[test]
     fn cards_have_correct_string_values() {
         let two_of_clubs_card = card!(Two, Club);
-        assert_eq!(two_of_clubs_card.to_string(), "2♣");
-        assert_eq!(two_of_clubs_card.to_symbol(), '🃒');
+        assert_eq!(two_of_clubs_card.to_string(), "🃒");
 
         let seven_of_diamonds_card = card!(Seven, Diamond);
-        assert_eq!(seven_of_diamonds_card.to_string(), "7♦");
-        assert_eq!(seven_of_diamonds_card.to_symbol(), '🃇');
+        assert_eq!(seven_of_diamonds_card.to_string(), "🃇");
 
         let king_of_hearts_card = card!(King, Heart);
-        assert_eq!(king_of_hearts_card.to_string(), "K♥");
-        assert_eq!(king_of_hearts_card.to_symbol(), '🂾');
+        assert_eq!(king_of_hearts_card.to_string(), "🂾");
 
         let ace_of_spades_card = card!(Ace, Spade);
-        assert_eq!(ace_of_spades_card.to_string(), "A♠");
-        assert_eq!(ace_of_spades_card.to_symbol(), '🂡');
+        assert_eq!(ace_of_spades_card.to_string(), "🂡");
     }
 }

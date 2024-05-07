@@ -53,7 +53,7 @@ impl Hand {
         let mut card_symbols = String::new();
 
         for (i, &card) in self.cards.iter().enumerate() {
-            card_symbols.push_str(&card.to_symbol().to_string());
+            card_symbols.push_str(&card.to_string());
 
             if i < self.cards.len() - 1 {
                 card_symbols.push_str(" ");
