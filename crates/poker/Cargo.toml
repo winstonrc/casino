@@ -1,0 +1,9 @@
+[package]
+name = "poker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cards = { path = "../cards" }
+strum = { version = "0.26.2", features = ["derive"] }
+uuid = { version = "1.8.0", features = ["v4"] }
