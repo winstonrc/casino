@@ -16,26 +16,32 @@ const MAXIMUM_PLAYERS_COUNT: usize = 10;
 ///
 /// A maximum of 10 players are allowed at a table.
 pub struct TexasHoldEm {
+    pub game_over: bool,
     deck: Deck,
     players: HashSet<Player>,
-    pub game_over: bool,
+    seats: Vec<Player>,
 }
 
 impl TexasHoldEm {
     /// Create a new game that internally contains a deck and players.
     pub fn new() -> Self {
         Self {
+            game_over: false,
             deck: Deck::new(),
             players: HashSet::new(),
-            game_over: false,
+            seats: Vec::new(),
         }
     }
 
     /// Play the game.
     pub fn play(&mut self) {
+        let mut dealer: usize = 0;
+
         while !self.game_over {
-            self.play_round();
+            self.play_round(dealer);
             self.check_for_game_over();
+
+            dealer = (dealer + 1) % self.seats.len();
         }
 
         println!("Game over. Thanks for playing!");
@@ -84,6 +90,8 @@ impl TexasHoldEm {
             "{} bought in with {} chips. Good luck!",
             &player.name, &player.chips
         );
+
+        self.seats.push(player.clone());
         self.players.insert(player);
         Ok(())
     }
@@ -101,8 +109,12 @@ impl TexasHoldEm {
                 player.name
             );
             return None;
+        } else {
+            // Remove player from seat
+            self.seats.retain(|x| *x != *player);
         }
 
+        // Remove and return player
         self.players.take(player)
     }
 
@@ -122,7 +134,7 @@ impl TexasHoldEm {
     // todo: implement folding
     // todo: add hand timer
     /// Play a single round.
-    pub fn play_round(&mut self) {
+    pub fn play_round(&mut self, dealer: usize) {
         self.deck.shuffle();
 
         // todo: determine player seat position & dealing order
@@ -130,16 +142,8 @@ impl TexasHoldEm {
 
         let mut table_cards = Hand::new();
         let mut burned_cards = Hand::new();
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
 
-        for player in self.players.clone() {
-            if let Some(hand) = self.deal_hand() {
-                // todo: update to only show hand of user
-                println!("Hand dealt to {}: {}", player.name, hand.to_symbols());
-                player_hands.insert(player.clone(), hand);
-            }
-        }
-        println!();
+        let player_hands = self.deal_hands_to_all_players(dealer);
 
         let mut round_over = false;
         while !round_over {
@@ -240,6 +244,7 @@ impl TexasHoldEm {
         }
     }
 
+    /// Deals a single card.
     fn deal_card(&mut self) -> Option<Card> {
         if let Some(card) = self.deck.deal() {
             return Some(card);
@@ -248,6 +253,7 @@ impl TexasHoldEm {
         None
     }
 
+    /// Deal a hand of two cards.
     fn deal_hand(&mut self) -> Option<Hand> {
         let mut hand = Hand::new();
 
@@ -266,6 +272,47 @@ impl TexasHoldEm {
         Some(hand)
     }
 
+    /// Deal hands of two cards to every player starting with the player to the left of the dealer.
+    fn deal_hands_to_all_players(&mut self, dealer: usize) -> HashMap<Player, Hand> {
+        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let num_players = self.seats.len();
+        let mut current_player = (dealer + 1) % num_players;
+
+        println!();
+
+        // Deal cards to player starting to the left of the dealer
+        while current_player != dealer {
+            if let Some(hand) = self.deal_hand() {
+                // todo: update to only show hand of user
+                println!(
+                    "Hand dealt to {}: {}",
+                    self.seats[current_player].name,
+                    hand.to_symbols()
+                );
+                player_hands.insert(self.seats[current_player].clone(), hand);
+            }
+
+            // Move to the next player
+            current_player = (current_player + 1) % num_players;
+        }
+
+        // Deal cards to the dealer
+        if let Some(hand) = self.deal_hand() {
+            // todo: update to only show hand of user
+            println!(
+                "Hand dealt to {}: {}",
+                self.seats[dealer].name,
+                hand.to_symbols()
+            );
+            player_hands.insert(self.seats[dealer].clone(), hand);
+        }
+
+        println!();
+
+        player_hands
+    }
+
+    /// Rank the provided hands to determine which hands are the best.
     fn rank_all_hands(
         &self,
         player_hands: &HashMap<Player, Hand>,
