@@ -20,16 +20,22 @@ pub struct TexasHoldEm {
     deck: Deck,
     players: HashSet<Player>,
     seats: Vec<Player>,
+    small_blind: u32,
+    big_blind: u32,
+    limit: bool,
 }
 
 impl TexasHoldEm {
     /// Create a new game that internally contains a deck and players.
-    pub fn new() -> Self {
+    pub fn new(small_blind: u32, big_blind: u32, limit: bool) -> Self {
         Self {
             game_over: false,
             deck: Deck::new(),
             players: HashSet::new(),
             seats: Vec::new(),
+            small_blind,
+            big_blind,
+            limit,
         }
     }
 
