@@ -137,8 +137,7 @@ impl TexasHoldEm {
     pub fn play_round(&mut self, dealer: usize) {
         self.deck.shuffle();
 
-        // todo: determine player seat position & dealing order
-        // todo: implement dealer, small blind, big blind, and dealing order
+        // todo: implement small blind & big blind
 
         let mut table_cards = Hand::new();
         let mut burned_cards = Hand::new();
