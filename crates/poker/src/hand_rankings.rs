@@ -2971,4 +2971,19 @@ mod tests {
         let hand_rank2 = rank_hand(cards2);
         assert_eq!(hand_rank2, ace_high_straight_flush);
     }
+
+    #[test]
+    fn eq_matches_ord() {
+        // This should be true for all HandRank pairs.
+        let hr1 : HandRank = HandRank::HighCard(card!(Seven, Diamond));
+        let hr2 : HandRank = HandRank::HighCard(card!(Seven, Club));
+
+        if hr1.cmp(&hr2) == Ordering::Equal {
+            assert!(hr1.eq(&hr1));
+        }
+        if hr1.eq(&hr2) {
+            assert!(hr1.cmp(&hr2) == Ordering::Equal);
+        }
+    }
+
 }
