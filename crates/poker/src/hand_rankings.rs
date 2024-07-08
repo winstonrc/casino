@@ -4,7 +4,7 @@ use std::fmt;
 
 use cards::card::{Card, Rank, Suit};
 
-#[derive(Clone, Copy, Debug, Eq, Ord)]
+#[derive(Clone, Copy, Debug, Eq, PartialOrd)]
 pub enum HandRank {
     /// Simple value of the card.
     /// Lowest: 2 – Highest: Ace.
@@ -107,9 +107,9 @@ impl PartialEq for HandRank {
     }
 }
 
-impl PartialOrd for HandRank {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(match (self, other) {
+impl Ord for HandRank {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
             (HandRank::HighCard(_), _) => Ordering::Less,
             (_, HandRank::HighCard(_)) => Ordering::Greater,
             (HandRank::Pair(_), _) => Ordering::Less,
@@ -178,7 +178,7 @@ impl PartialOrd for HandRank {
             }
             (_, HandRank::StraightFlush(_)) => Ordering::Less,
             (HandRank::StraightFlush(_), _) => Ordering::Greater,
-        })
+        }
     }
 }
 
