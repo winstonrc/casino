@@ -112,8 +112,14 @@ impl Ord for HandRank {
         match (self, other) {
             (HandRank::HighCard(_), _) => Ordering::Less,
             (_, HandRank::HighCard(_)) => Ordering::Greater,
+
+            (HandRank::Pair(cards1), HandRank::Pair(cards2)) => {
+                cards1[0].rank.cmp(&cards2[0].rank)
+            }
             (HandRank::Pair(_), _) => Ordering::Less,
             (_, HandRank::Pair(_)) => Ordering::Greater,
+
+
             (HandRank::TwoPair(_), _) => Ordering::Less,
             (_, HandRank::TwoPair(_)) => Ordering::Greater,
             (HandRank::ThreeOfAKind(_), _) => Ordering::Less,
