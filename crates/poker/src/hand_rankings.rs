@@ -4,7 +4,7 @@ use std::fmt;
 
 use cards::card::{Card, Rank, Suit};
 
-#[derive(Clone, Copy, Debug, Eq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq)]
 pub enum HandRank {
     /// Simple value of the card.
     /// Lowest: 2 – Highest: Ace.
@@ -112,8 +112,14 @@ impl Ord for HandRank {
         match (self, other) {
             (HandRank::HighCard(_), _) => Ordering::Less,
             (_, HandRank::HighCard(_)) => Ordering::Greater,
+
+            (HandRank::Pair(cards1), HandRank::Pair(cards2)) => {
+                cards1[0].rank.cmp(&cards2[0].rank)
+            }
             (HandRank::Pair(_), _) => Ordering::Less,
             (_, HandRank::Pair(_)) => Ordering::Greater,
+
+
             (HandRank::TwoPair(_), _) => Ordering::Less,
             (_, HandRank::TwoPair(_)) => Ordering::Greater,
             (HandRank::ThreeOfAKind(_), _) => Ordering::Less,
@@ -179,6 +185,12 @@ impl Ord for HandRank {
             (_, HandRank::StraightFlush(_)) => Ordering::Less,
             (HandRank::StraightFlush(_), _) => Ordering::Greater,
         }
+    }
+}
+
+impl PartialOrd for HandRank {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -2959,4 +2971,19 @@ mod tests {
         let hand_rank2 = rank_hand(cards2);
         assert_eq!(hand_rank2, ace_high_straight_flush);
     }
+
+    #[test]
+    fn eq_matches_ord() {
+        // This should be true for all HandRank pairs.
+        let hr1 : HandRank = HandRank::HighCard(card!(Seven, Diamond));
+        let hr2 : HandRank = HandRank::HighCard(card!(Seven, Club));
+
+        if hr1.cmp(&hr2) == Ordering::Equal {
+            assert!(hr1.eq(&hr1));
+        }
+        if hr1.eq(&hr2) {
+            assert!(hr1.cmp(&hr2) == Ordering::Equal);
+        }
+    }
+
 }
