@@ -113,7 +113,14 @@ impl Ord for HandRank {
             (HandRank::Flush(_), _) => Ordering::Less,
             (_, HandRank::Flush(_)) => Ordering::Greater,
 
-            (HandRank::FullHouse(_), HandRank::FullHouse(_)) => Ordering::Equal,
+            (HandRank::FullHouse(cards1), HandRank::FullHouse(cards2)) => {
+                let cmp1 = cards1[2].rank.cmp(&cards2[2].rank);
+                if cmp1 != Ordering::Equal {
+                    return cmp1;
+                }
+
+                cards1[4].rank.cmp(&cards2[4].rank)
+            }
             (HandRank::FullHouse(_), _) => Ordering::Less,
             (_, HandRank::FullHouse(_)) => Ordering::Greater,
 
@@ -196,12 +203,12 @@ impl PartialEq for HandRank {
                     (cards2.first().unwrap().rank, cards2.last().unwrap().rank);
 
                 // Compare the ranks of the Three of a Kind cards first.
-                // If they are not equal, then compare the ranks of the Pair cards.
+                // If they are equal, then compare the ranks of the Pair cards.
                 if three_of_a_kind1_rank != three_of_a_kind2_rank {
-                    pair1_rank == pair2_rank
-                } else {
-                    three_of_a_kind1_rank == three_of_a_kind2_rank
+                    return three_of_a_kind1_rank == three_of_a_kind2_rank;
                 }
+
+                pair1_rank == pair2_rank
             }
             (HandRank::FourOfAKind(cards1), HandRank::FourOfAKind(cards2)) => {
                 cards1.last().unwrap().rank == cards2.last().unwrap().rank
@@ -3001,6 +3008,7 @@ mod tests {
         if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
             assert!(hand_rank1.eq(&hand_rank1));
         }
+
         if hand_rank1.eq(&hand_rank2) {
             assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
         }
@@ -3014,6 +3022,7 @@ mod tests {
         if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
             assert!(hand_rank1.eq(&hand_rank1));
         }
+
         if hand_rank1.eq(&hand_rank2) {
             assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
         }
@@ -3037,6 +3046,7 @@ mod tests {
         if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
             assert!(hand_rank1.eq(&hand_rank1));
         }
+
         if hand_rank1.eq(&hand_rank2) {
             assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
         }
@@ -3052,6 +3062,7 @@ mod tests {
         if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
             assert!(hand_rank1.eq(&hand_rank1));
         }
+
         if hand_rank1.eq(&hand_rank2) {
             assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
         }
@@ -3077,6 +3088,7 @@ mod tests {
         if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
             assert!(hand_rank1.eq(&hand_rank1));
         }
+
         if hand_rank1.eq(&hand_rank2) {
             assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
         }
@@ -3102,6 +3114,7 @@ mod tests {
         if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
             assert!(hand_rank1.eq(&hand_rank1));
         }
+
         if hand_rank1.eq(&hand_rank2) {
             assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
         }
@@ -3127,6 +3140,7 @@ mod tests {
         if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
             assert!(hand_rank1.eq(&hand_rank1));
         }
+
         if hand_rank1.eq(&hand_rank2) {
             assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
         }
@@ -3150,6 +3164,7 @@ mod tests {
         if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
             assert!(hand_rank1.eq(&hand_rank1));
         }
+
         if hand_rank1.eq(&hand_rank2) {
             assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
         }
@@ -3175,6 +3190,7 @@ mod tests {
         if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
             assert!(hand_rank1.eq(&hand_rank1));
         }
+
         if hand_rank1.eq(&hand_rank2) {
             assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
         }
