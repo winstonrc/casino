@@ -16,26 +16,32 @@ const MAXIMUM_PLAYERS_COUNT: usize = 10;
 ///
 /// A maximum of 10 players are allowed at a table.
 pub struct TexasHoldEm {
+    pub game_over: bool,
     deck: Deck,
     players: HashSet<Player>,
-    pub game_over: bool,
+    seats: Vec<Player>,
 }
 
 impl TexasHoldEm {
     /// Create a new game that internally contains a deck and players.
     pub fn new() -> Self {
         Self {
+            game_over: false,
             deck: Deck::new(),
             players: HashSet::new(),
-            game_over: false,
+            seats: Vec::new(),
         }
     }
 
     /// Play the game.
     pub fn play(&mut self) {
+        let mut dealer: usize = 0;
+
         while !self.game_over {
-            self.play_round();
+            self.play_round(dealer);
             self.check_for_game_over();
+
+            dealer = (dealer + 1) % self.seats.len();
         }
 
         println!("Game over. Thanks for playing!");
@@ -84,6 +90,8 @@ impl TexasHoldEm {
             "{} bought in with {} chips. Good luck!",
             &player.name, &player.chips
         );
+
+        self.seats.push(player.clone());
         self.players.insert(player);
         Ok(())
     }
@@ -101,8 +109,12 @@ impl TexasHoldEm {
                 player.name
             );
             return None;
+        } else {
+            // Remove player from seat
+            self.seats.retain(|x| *x != *player);
         }
 
+        // Remove and return player
         self.players.take(player)
     }
 
@@ -122,24 +134,15 @@ impl TexasHoldEm {
     // todo: implement folding
     // todo: add hand timer
     /// Play a single round.
-    pub fn play_round(&mut self) {
+    pub fn play_round(&mut self, dealer: usize) {
         self.deck.shuffle();
 
-        // todo: determine player seat position & dealing order
-        // todo: implement dealer, small blind, big blind, and dealing order
+        // todo: implement small blind & big blind
 
         let mut table_cards = Hand::new();
         let mut burned_cards = Hand::new();
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
 
-        for player in self.players.clone() {
-            if let Some(hand) = self.deal_hand() {
-                // todo: update to only show hand of user
-                println!("Hand dealt to {}: {}", player.name, hand.to_symbols());
-                player_hands.insert(player.clone(), hand);
-            }
-        }
-        println!();
+        let player_hands = self.deal_hands_to_all_players(dealer);
 
         let mut round_over = false;
         while !round_over {
@@ -240,6 +243,7 @@ impl TexasHoldEm {
         }
     }
 
+    /// Deals a single card.
     fn deal_card(&mut self) -> Option<Card> {
         if let Some(card) = self.deck.deal() {
             return Some(card);
@@ -248,6 +252,7 @@ impl TexasHoldEm {
         None
     }
 
+    /// Deal a hand of two cards.
     fn deal_hand(&mut self) -> Option<Hand> {
         let mut hand = Hand::new();
 
@@ -266,6 +271,47 @@ impl TexasHoldEm {
         Some(hand)
     }
 
+    /// Deal hands of two cards to every player starting with the player to the left of the dealer.
+    fn deal_hands_to_all_players(&mut self, dealer: usize) -> HashMap<Player, Hand> {
+        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let num_players = self.seats.len();
+        let mut current_player = (dealer + 1) % num_players;
+
+        println!();
+
+        // Deal cards to player starting to the left of the dealer
+        while current_player != dealer {
+            if let Some(hand) = self.deal_hand() {
+                // todo: update to only show hand of user
+                println!(
+                    "Hand dealt to {}: {}",
+                    self.seats[current_player].name,
+                    hand.to_symbols()
+                );
+                player_hands.insert(self.seats[current_player].clone(), hand);
+            }
+
+            // Move to the next player
+            current_player = (current_player + 1) % num_players;
+        }
+
+        // Deal cards to the dealer
+        if let Some(hand) = self.deal_hand() {
+            // todo: update to only show hand of user
+            println!(
+                "Hand dealt to {}: {}",
+                self.seats[dealer].name,
+                hand.to_symbols()
+            );
+            player_hands.insert(self.seats[dealer].clone(), hand);
+        }
+
+        println!();
+
+        player_hands
+    }
+
+    /// Rank the provided hands to determine which hands are the best.
     fn rank_all_hands(
         &self,
         player_hands: &HashMap<Player, Hand>,
@@ -295,7 +341,7 @@ impl TexasHoldEm {
             if let Some((best_hand_rank, best_hand_cards)) = best_hand.last() {
                 if hand_rank == *best_hand_rank {
                     // If hand ranks are equal and are made up of less than 5 cards then check for a kicker (high card).
-                    // If the high card is on the table, then that should be used.
+                    // If the kicker is on the table, then that should be used.
                     if hand_rank.len() < 5 {
                         let mut current_cards_and_table_cards: Vec<Card> =
                             table_cards.get_cards().clone();
@@ -999,5 +1045,80 @@ mod tests {
         assert!(!leading_players.contains_key(&player1));
         assert!(leading_players.contains_key(&player2));
         assert_eq!(leading_players.get(&player2).unwrap()[0], straight);
+    }
+
+    /// Tests rank_all_hands().
+    ///
+    /// Tests that hand ranking correctly updates the leader for a pair that is higher than the previously set high pair.
+    #[test]
+    fn rank_all_hands_identifies_higher_pair_as_winner_over_previous_high_pair() {
+        let mut game = TexasHoldEm::new();
+
+        let two_of_spades = card!(Two, Spade);
+        let four_of_clubs = card!(Four, Club);
+        let five_of_diamonds = card!(Five, Diamond);
+        let six_of_clubs = card!(Six, Club);
+        let seven_of_hearts = card!(Seven, Heart);
+        let nine_of_clubs = card!(Nine, Club);
+        let nine_of_spades = card!(Nine, Spade);
+        let ten_of_clubs = card!(Ten, Club);
+        let ten_of_diamonds = card!(Ten, Diamond);
+        let ten_of_spades = card!(Ten, Spade);
+        let jack_of_clubs = card!(Jack, Club);
+        let jack_of_spades = card!(Jack, Spade);
+        let queen_of_diamonds = card!(Queen, Diamond);
+        let queen_of_hearts = card!(Queen, Heart);
+        let king_of_diamonds = card!(King, Diamond);
+        let ace_of_hearts = card!(Ace, Heart);
+        let ace_of_spades = card!(Ace, Spade);
+
+        let pair = HandRank::Pair([ace_of_hearts, ace_of_spades]);
+
+        let table_cards: Vec<Card> = vec![
+            queen_of_diamonds,
+            jack_of_clubs,
+            five_of_diamonds,
+            two_of_spades,
+            ace_of_spades,
+        ];
+
+        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let table_cards = Hand::new_from_cards(table_cards);
+
+        let player2 = game.new_player_with_chips("Player 2", 100);
+        let player2_cards: Vec<Card> = vec![jack_of_spades, nine_of_spades];
+        let player2_hand = Hand::new_from_cards(player2_cards);
+        player_hands.insert(player2.clone(), player2_hand);
+
+        let player3 = game.new_player_with_chips("Player 3", 100);
+        let player3_cards: Vec<Card> = vec![nine_of_clubs, four_of_clubs];
+        let player3_hand = Hand::new_from_cards(player3_cards);
+        player_hands.insert(player3.clone(), player3_hand);
+
+        let player4 = game.new_player_with_chips("Player 4", 100);
+        let player4_cards: Vec<Card> = vec![six_of_clubs, ten_of_spades];
+        let player4_hand = Hand::new_from_cards(player4_cards);
+        player_hands.insert(player4.clone(), player4_hand);
+
+        let player5 = game.new_player_with_chips("Player 5", 100);
+        let player5_cards: Vec<Card> = vec![seven_of_hearts, queen_of_hearts];
+        let player5_hand = Hand::new_from_cards(player5_cards);
+        player_hands.insert(player5.clone(), player5_hand);
+
+        let player6 = game.new_player_with_chips("Player 6", 100);
+        let player6_cards: Vec<Card> = vec![ten_of_diamonds, ten_of_clubs];
+        let player6_hand = Hand::new_from_cards(player6_cards);
+        player_hands.insert(player6.clone(), player6_hand);
+
+        let player1 = game.new_player_with_chips("Player 1", 100);
+        let player1_cards: Vec<Card> = vec![king_of_diamonds, ace_of_hearts];
+        let player1_hand = Hand::new_from_cards(player1_cards);
+        player_hands.insert(player1.clone(), player1_hand);
+
+        let leading_players = game.rank_all_hands(&player_hands, &table_cards);
+
+        assert_eq!(leading_players.len(), 1);
+        assert!(leading_players.contains_key(&player1));
+        assert_eq!(leading_players.get(&player1).unwrap()[0], pair);
     }
 }
