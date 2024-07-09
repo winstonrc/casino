@@ -70,6 +70,7 @@ impl Ord for HandRank {
             (HandRank::Pair(cards1), HandRank::Pair(cards2)) => cards1[1].rank.cmp(&cards2[1].rank),
             (HandRank::Pair(_), _) => Ordering::Less,
             (_, HandRank::Pair(_)) => Ordering::Greater,
+
             (HandRank::TwoPair(cards1), HandRank::TwoPair(cards2)) => {
                 let cmp1 = cards1[1].rank.cmp(&cards2[1].rank);
                 if cmp1 != Ordering::Equal {
@@ -80,11 +81,13 @@ impl Ord for HandRank {
             }
             (HandRank::TwoPair(_), _) => Ordering::Less,
             (_, HandRank::TwoPair(_)) => Ordering::Greater,
+
             (HandRank::ThreeOfAKind(cards1), HandRank::ThreeOfAKind(cards2)) => {
                 cards1[2].rank.cmp(&cards2[2].rank)
             }
             (HandRank::ThreeOfAKind(_), _) => Ordering::Less,
             (_, HandRank::ThreeOfAKind(_)) => Ordering::Greater,
+
             (HandRank::Straight(cards1), HandRank::Straight(cards2)) => {
                 // Ace-low straight check
                 let is_ace_low_straight1 =
@@ -103,18 +106,23 @@ impl Ord for HandRank {
                     max_card_value1.cmp(max_card_value2)
                 }
             }
+
             (HandRank::Straight(_), HandRank::Flush(_)) => Ordering::Less,
+
             (HandRank::Flush(_), HandRank::Flush(_)) => Ordering::Equal,
             (HandRank::Flush(_), _) => Ordering::Less,
             (_, HandRank::Flush(_)) => Ordering::Greater,
+
             (HandRank::FullHouse(_), HandRank::FullHouse(_)) => Ordering::Equal,
             (HandRank::FullHouse(_), _) => Ordering::Less,
             (_, HandRank::FullHouse(_)) => Ordering::Greater,
+
             (HandRank::FourOfAKind(cards1), HandRank::FourOfAKind(cards2)) => {
                 cards1[3].rank.cmp(&cards2[3].rank)
             }
             (HandRank::FourOfAKind(_), _) => Ordering::Less,
             (_, HandRank::FourOfAKind(_)) => Ordering::Greater,
+
             (HandRank::StraightFlush(cards1), HandRank::StraightFlush(cards2)) => {
                 // Check for royal flush
                 let is_royal_flush1 = cards1[0].rank == Rank::Ten
