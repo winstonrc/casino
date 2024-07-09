@@ -54,16 +54,12 @@ impl TexasHoldEm {
 
     // Create a new player with zero chips.
     pub fn new_player(&mut self, name: &str) -> Player {
-        let player = Player::new(name);
-
-        player
+        Player::new(name)
     }
 
     // Create a new player with a defined amount of chips.
     pub fn new_player_with_chips(&mut self, name: &str, chips: u32) -> Player {
-        let player = Player::new_with_chips(name, chips);
-
-        player
+        Player::new_with_chips(name, chips)
     }
 
     /// Add a player into the game.
@@ -98,7 +94,7 @@ impl TexasHoldEm {
 
     /// Remove a player from the game.
     pub fn remove_player(&mut self, player: &mut Player) -> Option<Player> {
-        if self.players.len() < 1 {
+        if self.players.is_empty() {
             eprintln!("Unable to remove player. The table is empty.");
             return None;
         }
@@ -119,7 +115,7 @@ impl TexasHoldEm {
     }
 
     pub fn check_for_game_over(&mut self) {
-        if self.players.len() == 0 {
+        if self.players.is_empty() {
             println!("No players remaining. Game over!");
             self.game_over = true;
         }
@@ -226,7 +222,7 @@ impl TexasHoldEm {
 
         // Return cards from hands to deck
         for (_player, hand) in player_hands.iter() {
-            if let (Some(card1), Some(card2)) = (hand.cards.get(0), hand.cards.get(1)) {
+            if let (Some(card1), Some(card2)) = (hand.cards.first(), hand.cards.last()) {
                 self.deck.insert_at_top(*card1).unwrap();
                 self.deck.insert_at_top(*card2).unwrap();
             }
@@ -322,8 +318,8 @@ impl TexasHoldEm {
 
         for (player, hand) in player_hands.iter() {
             let mut cards_to_rank: Vec<Card> = table_cards.get_cards().clone();
-            cards_to_rank.push(hand.cards[0].clone());
-            cards_to_rank.push(hand.cards[1].clone());
+            cards_to_rank.push(hand.cards[0]);
+            cards_to_rank.push(hand.cards[1]);
 
             let hand_rank = rank_hand(cards_to_rank);
             // todo: remove after testing
@@ -346,8 +342,8 @@ impl TexasHoldEm {
                         let mut current_cards_and_table_cards: Vec<Card> =
                             table_cards.get_cards().clone();
 
-                        current_cards_and_table_cards.push(hand.cards[0].clone());
-                        current_cards_and_table_cards.push(hand.cards[1].clone());
+                        current_cards_and_table_cards.push(hand.cards[0]);
+                        current_cards_and_table_cards.push(hand.cards[1]);
 
                         let mut cards_not_used_in_current_hand_rank: Vec<Card> = Vec::new();
                         for card in current_cards_and_table_cards {
@@ -362,8 +358,8 @@ impl TexasHoldEm {
                         let mut best_hand_cards_and_table_cards: Vec<Card> =
                             table_cards.get_cards().clone();
 
-                        best_hand_cards_and_table_cards.push(best_hand_cards.cards[0].clone());
-                        best_hand_cards_and_table_cards.push(best_hand_cards.cards[1].clone());
+                        best_hand_cards_and_table_cards.push(best_hand_cards.cards[0]);
+                        best_hand_cards_and_table_cards.push(best_hand_cards.cards[1]);
 
                         let mut cards_not_used_in_best_hand_rank: Vec<Card> = Vec::new();
                         for card in best_hand_cards_and_table_cards {
@@ -382,7 +378,7 @@ impl TexasHoldEm {
                             if leading_hand_vec.len() < 2 {
                                 leading_players
                                     .entry(leading_player.clone())
-                                    .or_insert(Vec::new())
+                                    .or_default()
                                     .push(HandRank::HighCard(best_hand_kicker));
                             }
                         }
@@ -420,7 +416,7 @@ impl TexasHoldEm {
     fn determine_round_result(&self, leading_players: &HashMap<Player, Vec<HandRank>>) {
         if leading_players.len() == 1 {
             let (winning_player, winning_hand_rank_vec): (&Player, &Vec<HandRank>) =
-                leading_players.iter().next().unwrap().clone();
+                leading_players.iter().next().unwrap();
 
             if winning_hand_rank_vec.len() > 1 {
                 println!(
@@ -451,6 +447,17 @@ impl TexasHoldEm {
             }
         } else {
             panic!("Error: No winning player was determined.");
+        }
+    }
+}
+
+impl Default for TexasHoldEm {
+    fn default() -> Self {
+        Self {
+            game_over: false,
+            deck: Deck::new(),
+            players: HashSet::new(),
+            seats: Vec::new(),
         }
     }
 }
