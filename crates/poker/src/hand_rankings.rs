@@ -58,6 +58,106 @@ impl HandRank {
     }
 }
 
+impl Ord for HandRank {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (HandRank::HighCard(cards1), HandRank::HighCard(cards2)) => {
+                cards1.rank.cmp(&cards2.rank)
+            }
+            (HandRank::HighCard(_), _) => Ordering::Less,
+            (_, HandRank::HighCard(_)) => Ordering::Greater,
+
+            (HandRank::Pair(cards1), HandRank::Pair(cards2)) => cards1[1].rank.cmp(&cards2[1].rank),
+            (HandRank::Pair(_), _) => Ordering::Less,
+            (_, HandRank::Pair(_)) => Ordering::Greater,
+            (HandRank::TwoPair(cards1), HandRank::TwoPair(cards2)) => {
+                let cmp1 = cards1[1].rank.cmp(&cards2[1].rank);
+                if cmp1 != Ordering::Equal {
+                    return cmp1;
+                }
+
+                cards1[3].rank.cmp(&cards2[3].rank)
+            }
+            (HandRank::TwoPair(_), _) => Ordering::Less,
+            (_, HandRank::TwoPair(_)) => Ordering::Greater,
+            (HandRank::ThreeOfAKind(cards1), HandRank::ThreeOfAKind(cards2)) => {
+                cards1[2].rank.cmp(&cards2[2].rank)
+            }
+            (HandRank::ThreeOfAKind(_), _) => Ordering::Less,
+            (_, HandRank::ThreeOfAKind(_)) => Ordering::Greater,
+            (HandRank::Straight(cards1), HandRank::Straight(cards2)) => {
+                // Ace-low straight check
+                let is_ace_low_straight1 =
+                    cards1[0].rank == Rank::Ace && cards1[1].rank == Rank::Two;
+                let is_ace_low_straight2 =
+                    cards2[0].rank == Rank::Ace && cards2[1].rank == Rank::Two;
+
+                if is_ace_low_straight1 && !is_ace_low_straight2 {
+                    Ordering::Less
+                } else if !is_ace_low_straight1 && is_ace_low_straight2 {
+                    Ordering::Greater
+                } else {
+                    // Regular straight comparison
+                    let max_card_value1 = &cards1[4].rank;
+                    let max_card_value2 = &cards2[4].rank;
+                    max_card_value1.cmp(max_card_value2)
+                }
+            }
+            (HandRank::Straight(_), HandRank::Flush(_)) => Ordering::Less,
+            (HandRank::Flush(_), HandRank::Flush(_)) => Ordering::Equal,
+            (HandRank::Flush(_), _) => Ordering::Less,
+            (_, HandRank::Flush(_)) => Ordering::Greater,
+            (HandRank::FullHouse(_), HandRank::FullHouse(_)) => Ordering::Equal,
+            (HandRank::FullHouse(_), _) => Ordering::Less,
+            (_, HandRank::FullHouse(_)) => Ordering::Greater,
+            (HandRank::FourOfAKind(cards1), HandRank::FourOfAKind(cards2)) => {
+                cards1[3].rank.cmp(&cards2[3].rank)
+            }
+            (HandRank::FourOfAKind(_), _) => Ordering::Less,
+            (_, HandRank::FourOfAKind(_)) => Ordering::Greater,
+            (HandRank::StraightFlush(cards1), HandRank::StraightFlush(cards2)) => {
+                // Check for royal flush
+                let is_royal_flush1 = cards1[0].rank == Rank::Ten
+                    && cards1[1].rank == Rank::Jack
+                    && cards1[2].rank == Rank::Queen
+                    && cards1[3].rank == Rank::King
+                    && cards1[4].rank == Rank::Ace;
+                let is_royal_flush2 = cards2[0].rank == Rank::Ten
+                    && cards2[1].rank == Rank::Jack
+                    && cards2[2].rank == Rank::Queen
+                    && cards2[3].rank == Rank::King
+                    && cards2[4].rank == Rank::Ace;
+
+                if is_royal_flush1 && is_royal_flush2 {
+                    Ordering::Equal
+                } else {
+                    // Compare the ranks of the highest cards
+                    let max_card_rank1 = &cards1[4].rank;
+                    let max_card_rank2 = &cards2[4].rank;
+                    match max_card_rank1.cmp(max_card_rank2) {
+                        Ordering::Less => Ordering::Less,
+                        Ordering::Greater => Ordering::Greater,
+                        Ordering::Equal => {
+                            // If the highest card ranks are equal, compare the suits
+                            let max_card_suit1 = &cards1[4].suit;
+                            let max_card_suit2 = &cards2[4].suit;
+                            max_card_suit1.cmp(max_card_suit2)
+                        }
+                    }
+                }
+            }
+            (_, HandRank::StraightFlush(_)) => Ordering::Less,
+            (HandRank::StraightFlush(_), _) => Ordering::Greater,
+        }
+    }
+}
+
+impl PartialOrd for HandRank {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl PartialEq for HandRank {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -104,93 +204,6 @@ impl PartialEq for HandRank {
             }
             _ => false,
         }
-    }
-}
-
-impl Ord for HandRank {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (HandRank::HighCard(_), _) => Ordering::Less,
-            (_, HandRank::HighCard(_)) => Ordering::Greater,
-
-            (HandRank::Pair(cards1), HandRank::Pair(cards2)) => {
-                cards1[0].rank.cmp(&cards2[0].rank)
-            }
-            (HandRank::Pair(_), _) => Ordering::Less,
-            (_, HandRank::Pair(_)) => Ordering::Greater,
-
-
-            (HandRank::TwoPair(_), _) => Ordering::Less,
-            (_, HandRank::TwoPair(_)) => Ordering::Greater,
-            (HandRank::ThreeOfAKind(_), _) => Ordering::Less,
-            (_, HandRank::ThreeOfAKind(_)) => Ordering::Greater,
-            (HandRank::Straight(cards1), HandRank::Straight(cards2)) => {
-                // Ace-low straight check
-                let is_ace_low_straight1 =
-                    cards1[0].rank == Rank::Ace && cards1[1].rank == Rank::Two;
-                let is_ace_low_straight2 =
-                    cards2[0].rank == Rank::Ace && cards2[1].rank == Rank::Two;
-
-                if is_ace_low_straight1 && !is_ace_low_straight2 {
-                    Ordering::Less
-                } else if !is_ace_low_straight1 && is_ace_low_straight2 {
-                    Ordering::Greater
-                } else {
-                    // Regular straight comparison
-                    let max_card_value1 = &cards1[4].rank;
-                    let max_card_value2 = &cards2[4].rank;
-                    max_card_value1.cmp(max_card_value2)
-                }
-            }
-            (HandRank::Straight(_), HandRank::Flush(_)) => Ordering::Less,
-            (HandRank::Flush(_), HandRank::Flush(_)) => Ordering::Equal,
-            (HandRank::Flush(_), _) => Ordering::Less,
-            (_, HandRank::Flush(_)) => Ordering::Greater,
-            (HandRank::FullHouse(_), HandRank::FullHouse(_)) => Ordering::Equal,
-            (HandRank::FullHouse(_), _) => Ordering::Less,
-            (_, HandRank::FullHouse(_)) => Ordering::Greater,
-            (HandRank::FourOfAKind(_), _) => Ordering::Less,
-            (_, HandRank::FourOfAKind(_)) => Ordering::Greater,
-            (HandRank::StraightFlush(cards1), HandRank::StraightFlush(cards2)) => {
-                // Check for royal flush
-                let is_royal_flush1 = cards1[0].rank == Rank::Ten
-                    && cards1[1].rank == Rank::Jack
-                    && cards1[2].rank == Rank::Queen
-                    && cards1[3].rank == Rank::King
-                    && cards1[4].rank == Rank::Ace;
-                let is_royal_flush2 = cards2[0].rank == Rank::Ten
-                    && cards2[1].rank == Rank::Jack
-                    && cards2[2].rank == Rank::Queen
-                    && cards2[3].rank == Rank::King
-                    && cards2[4].rank == Rank::Ace;
-
-                if is_royal_flush1 && is_royal_flush2 {
-                    Ordering::Equal
-                } else {
-                    // Compare the ranks of the highest cards
-                    let max_card_rank1 = &cards1[4].rank;
-                    let max_card_rank2 = &cards2[4].rank;
-                    match max_card_rank1.cmp(max_card_rank2) {
-                        Ordering::Less => Ordering::Less,
-                        Ordering::Greater => Ordering::Greater,
-                        Ordering::Equal => {
-                            // If the highest card ranks are equal, compare the suits
-                            let max_card_suit1 = &cards1[4].suit;
-                            let max_card_suit2 = &cards2[4].suit;
-                            max_card_suit1.cmp(max_card_suit2)
-                        }
-                    }
-                }
-            }
-            (_, HandRank::StraightFlush(_)) => Ordering::Less,
-            (HandRank::StraightFlush(_), _) => Ordering::Greater,
-        }
-    }
-}
-
-impl PartialOrd for HandRank {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
     }
 }
 
@@ -2973,17 +2986,189 @@ mod tests {
     }
 
     #[test]
-    fn eq_matches_ord() {
-        // This should be true for all HandRank pairs.
-        let hr1 : HandRank = HandRank::HighCard(card!(Seven, Diamond));
-        let hr2 : HandRank = HandRank::HighCard(card!(Seven, Club));
+    fn eq_matches_ord_high_card() {
+        let hand_rank1: HandRank = HandRank::HighCard(card!(Two, Club));
+        let hand_rank2: HandRank = HandRank::HighCard(card!(Two, Diamond));
 
-        if hr1.cmp(&hr2) == Ordering::Equal {
-            assert!(hr1.eq(&hr1));
+        if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
+            assert!(hand_rank1.eq(&hand_rank1));
         }
-        if hr1.eq(&hr2) {
-            assert!(hr1.cmp(&hr2) == Ordering::Equal);
+        if hand_rank1.eq(&hand_rank2) {
+            assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
         }
     }
 
+    #[test]
+    fn eq_matches_ord_pair() {
+        let hand_rank1: HandRank = HandRank::Pair([card!(Two, Club), card!(Two, Heart)]);
+        let hand_rank2: HandRank = HandRank::Pair([card!(Two, Diamond), card!(Two, Spade)]);
+
+        if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
+            assert!(hand_rank1.eq(&hand_rank1));
+        }
+        if hand_rank1.eq(&hand_rank2) {
+            assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
+        }
+    }
+
+    #[test]
+    fn eq_matches_ord_two_pair() {
+        let hand_rank1: HandRank = HandRank::TwoPair([
+            card!(Two, Club),
+            card!(Two, Heart),
+            card!(Three, Club),
+            card!(Three, Heart),
+        ]);
+        let hand_rank2: HandRank = HandRank::TwoPair([
+            card!(Two, Diamond),
+            card!(Two, Spade),
+            card!(Three, Diamond),
+            card!(Three, Spade),
+        ]);
+
+        if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
+            assert!(hand_rank1.eq(&hand_rank1));
+        }
+        if hand_rank1.eq(&hand_rank2) {
+            assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
+        }
+    }
+
+    #[test]
+    fn eq_matches_ord_three_of_a_kind() {
+        let hand_rank1: HandRank =
+            HandRank::ThreeOfAKind([card!(Two, Club), card!(Two, Heart), card!(Two, Spade)]);
+        let hand_rank2: HandRank =
+            HandRank::ThreeOfAKind([card!(Two, Club), card!(Two, Heart), card!(Two, Diamond)]);
+
+        if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
+            assert!(hand_rank1.eq(&hand_rank1));
+        }
+        if hand_rank1.eq(&hand_rank2) {
+            assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
+        }
+    }
+
+    #[test]
+    fn eq_matches_ord_straight() {
+        let hand_rank1: HandRank = HandRank::Straight([
+            card!(Two, Club),
+            card!(Three, Heart),
+            card!(Four, Diamond),
+            card!(Five, Spade),
+            card!(Six, Club),
+        ]);
+        let hand_rank2: HandRank = HandRank::Straight([
+            card!(Two, Club),
+            card!(Three, Heart),
+            card!(Four, Diamond),
+            card!(Five, Spade),
+            card!(Six, Diamond),
+        ]);
+
+        if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
+            assert!(hand_rank1.eq(&hand_rank1));
+        }
+        if hand_rank1.eq(&hand_rank2) {
+            assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
+        }
+    }
+
+    #[test]
+    fn eq_matches_ord_flush() {
+        let hand_rank1: HandRank = HandRank::Flush([
+            card!(Two, Club),
+            card!(Three, Club),
+            card!(Five, Club),
+            card!(Seven, Club),
+            card!(Jack, Club),
+        ]);
+        let hand_rank2: HandRank = HandRank::Flush([
+            card!(Two, Diamond),
+            card!(Three, Diamond),
+            card!(Five, Diamond),
+            card!(Seven, Diamond),
+            card!(Jack, Diamond),
+        ]);
+
+        if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
+            assert!(hand_rank1.eq(&hand_rank1));
+        }
+        if hand_rank1.eq(&hand_rank2) {
+            assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
+        }
+    }
+
+    #[test]
+    fn eq_matches_ord_full_house() {
+        let hand_rank1: HandRank = HandRank::FullHouse([
+            card!(Two, Club),
+            card!(Two, Heart),
+            card!(Three, Club),
+            card!(Three, Heart),
+            card!(Three, Spade),
+        ]);
+        let hand_rank2: HandRank = HandRank::FullHouse([
+            card!(Two, Diamond),
+            card!(Two, Spade),
+            card!(Three, Club),
+            card!(Three, Heart),
+            card!(Three, Spade),
+        ]);
+
+        if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
+            assert!(hand_rank1.eq(&hand_rank1));
+        }
+        if hand_rank1.eq(&hand_rank2) {
+            assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
+        }
+    }
+
+    #[test]
+    fn eq_matches_ord_four_of_a_kind() {
+        let hand_rank1: HandRank = HandRank::FourOfAKind([
+            card!(Two, Club),
+            card!(Two, Diamond),
+            card!(Two, Heart),
+            card!(Two, Spade),
+        ]);
+        let hand_rank2: HandRank = HandRank::FourOfAKind([
+            card!(Two, Club),
+            card!(Two, Diamond),
+            card!(Two, Heart),
+            card!(Two, Spade),
+        ]);
+
+        if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
+            assert!(hand_rank1.eq(&hand_rank1));
+        }
+        if hand_rank1.eq(&hand_rank2) {
+            assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
+        }
+    }
+
+    #[test]
+    fn eq_matches_ord_straight_flush() {
+        let hand_rank1: HandRank = HandRank::Straight([
+            card!(Two, Club),
+            card!(Three, Club),
+            card!(Four, Club),
+            card!(Five, Club),
+            card!(Six, Club),
+        ]);
+        let hand_rank2: HandRank = HandRank::Straight([
+            card!(Two, Diamond),
+            card!(Three, Diamond),
+            card!(Four, Diamond),
+            card!(Five, Spade),
+            card!(Six, Diamond),
+        ]);
+
+        if hand_rank1.cmp(&hand_rank2) == Ordering::Equal {
+            assert!(hand_rank1.eq(&hand_rank1));
+        }
+        if hand_rank1.eq(&hand_rank2) {
+            assert!(hand_rank1.cmp(&hand_rank2) == Ordering::Equal);
+        }
+    }
 }
