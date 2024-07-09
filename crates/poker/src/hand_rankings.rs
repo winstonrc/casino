@@ -329,7 +329,7 @@ pub fn rank_hand(cards: Vec<Card>) -> HandRank {
     }
 
     if let Some(high_card) = get_high_card_value(&cards) {
-        return HandRank::HighCard(high_card);
+        HandRank::HighCard(high_card)
     } else {
         panic!(
             "An unexpected error occured while ranking the hand. There should at least be a high card returned at minimum."
@@ -387,10 +387,8 @@ fn check_for_pair(cards: &Vec<Card>) -> Option<[Card; 2]> {
             if cards.len() == 2 && rank > &max_high_pair_cards[0].rank {
                 high_pair_cards = Some([cards[0], cards[1]]);
             }
-        } else {
-            if cards.len() == 2 {
-                high_pair_cards = Some([cards[0], cards[1]]);
-            }
+        } else if cards.len() == 2 {
+            high_pair_cards = Some([cards[0], cards[1]]);
         }
     }
 
@@ -473,10 +471,8 @@ fn check_for_three_of_a_kind(cards: &Vec<Card>) -> Option<[Card; 3]> {
             if cards.len() == 3 && rank > &max_three_of_a_kind_cards[0].rank {
                 three_of_a_kind_cards = Some([cards[0], cards[1], cards[2]]);
             }
-        } else {
-            if cards.len() == 3 {
-                three_of_a_kind_cards = Some([cards[0], cards[1], cards[2]]);
-            }
+        } else if cards.len() == 3 {
+            three_of_a_kind_cards = Some([cards[0], cards[1], cards[2]]);
         }
     }
 
