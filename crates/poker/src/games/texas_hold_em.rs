@@ -19,43 +19,24 @@ pub struct TexasHoldEm {
     pub game_over: bool,
     deck: Deck,
     players: HashSet<Player>,
-    seats: Vec<Player>,
-    small_blind: u32,
-    big_blind: u32,
+    pub seats: Vec<Player>, // todo: make private after testing is complete
+    small_blind_amount: u32,
+    big_blind_amount: u32,
     limit: bool,
 }
 
 impl TexasHoldEm {
     /// Create a new game that internally contains a deck and players.
-    pub fn new(small_blind: u32, big_blind: u32, limit: bool) -> Self {
+    pub fn new(small_blind_amount: u32, big_blind_amount: u32, limit: bool) -> Self {
         Self {
             game_over: false,
             deck: Deck::new(),
             players: HashSet::new(),
             seats: Vec::new(),
-            small_blind,
-            big_blind,
+            small_blind_amount,
+            big_blind_amount,
             limit,
         }
-    }
-
-    /// Play the game.
-    pub fn play(&mut self) {
-        let mut dealer: usize = 0;
-
-        while !self.game_over {
-            self.play_round(dealer);
-            self.check_for_game_over();
-
-            dealer = (dealer + 1) % self.seats.len();
-        }
-
-        println!("Game over. Thanks for playing!");
-    }
-
-    /// End the game.
-    pub fn end_game(&mut self) {
-        self.game_over = true;
     }
 
     // Create a new player with zero chips.
@@ -120,26 +101,119 @@ impl TexasHoldEm {
         self.players.take(player)
     }
 
+    /// Play a tournament consisting of multiple rounds.
+    pub fn play_tournament(&mut self) {
+        let mut dealer: usize = 0;
+
+        while !self.game_over {
+            self.play_round(dealer);
+            self.remove_losers();
+            self.check_for_game_over();
+
+            dealer = (dealer + 1) % self.seats.len();
+        }
+
+        println!("Game over. Thanks for playing!");
+    }
+
+    pub fn remove_losers(&mut self) {
+        for mut player in self.players.clone() {
+            if player.chips == 0 {
+                println!(
+                    "{} is out of chips and was removed from the game.",
+                    player.name
+                );
+                self.remove_player(&mut player);
+            }
+        }
+    }
+
     pub fn check_for_game_over(&mut self) {
         if self.players.is_empty() {
             println!("No players remaining. Game over!");
-            self.game_over = true;
+            self.end_game();
         }
 
         if self.players.len() == 1 {
             println!("One player remaining. Game over!");
-            self.game_over = true;
+            self.end_game();
         }
+    }
+
+    /// End the game.
+    pub fn end_game(&mut self) {
+        self.game_over = true;
     }
 
     // todo: implement betting system
     // todo: implement folding
-    // todo: add hand timer
+    // todo: implement side pot
+    // todo: implement hand timer
     /// Play a single round.
     pub fn play_round(&mut self, dealer: usize) {
         self.deck.shuffle();
 
+        let active_players: HashSet<Player> = self.players.clone();
+        let mut side_pots: Vec<Pot> = Vec::new();
+        let mut main_pot: Pot = Pot::new(0, active_players.clone());
+        let mut side_pot_0: Pot = Pot::new(0, HashSet::new());
+
         // todo: implement small blind & big blind
+        let small_blind_index = (dealer + 1) % self.seats.len();
+        if let Some(small_blind_player) = self.seats.get_mut(small_blind_index) {
+            if small_blind_player.chips >= self.small_blind_amount {
+                println!("{} posted the small blind.", small_blind_player.name);
+                small_blind_player.chips -= self.small_blind_amount;
+                main_pot.amount = self.small_blind_amount;
+                main_pot.players = active_players.clone();
+            } else if small_blind_player.chips > 0 {
+                let partial_blind_amount = small_blind_player.chips;
+                small_blind_player.chips -= partial_blind_amount;
+                main_pot.amount = partial_blind_amount;
+                main_pot.players = active_players.clone();
+
+                let side_pot_players = active_players
+                    .iter()
+                    .filter(|&player| player != small_blind_player)
+                    .cloned()
+                    .collect();
+                let side_pot_amount = self.small_blind_amount - partial_blind_amount;
+                side_pot_0.amount = side_pot_amount;
+                side_pot_0.players = side_pot_players;
+                side_pots.push(side_pot_0.clone());
+                println!("{} posted {} to cover part of the small blind. The remaining {} has gone into a side pot.", small_blind_player.name, partial_blind_amount, side_pot_amount);
+            } else {
+                eprintln!("Error: The small blind player has no chips and should not be playing this hand.");
+            }
+        }
+
+        let big_blind_index = (dealer + 2) % self.seats.len();
+        if let Some(big_blind_player) = self.seats.get_mut(big_blind_index) {
+            if big_blind_player.chips >= self.big_blind_amount {
+                println!("{} posted the big blind.", big_blind_player.name);
+                big_blind_player.chips -= self.big_blind_amount;
+                main_pot.amount = self.big_blind_amount;
+                main_pot.players = active_players.clone();
+            } else if big_blind_player.chips > 0 {
+                let partial_blind_amount = big_blind_player.chips;
+                big_blind_player.chips -= partial_blind_amount;
+                main_pot.amount = partial_blind_amount;
+                main_pot.players = active_players.clone();
+
+                let side_pot_players = active_players
+                    .iter()
+                    .filter(|&player| player != big_blind_player)
+                    .cloned()
+                    .collect();
+                let side_pot_amount = self.big_blind_amount - partial_blind_amount;
+                side_pot_0.amount = side_pot_amount;
+                side_pot_0.players = side_pot_players;
+                side_pots.push(side_pot_0.clone());
+                println!("{} posted {} to cover part of the big blind. The remaining {} has gone into a side pot.", big_blind_player.name, partial_blind_amount, side_pot_amount);
+            } else {
+                eprintln!("Error: The small blind player has no chips and should not be playing this hand.");
+            }
+        }
 
         let mut table_cards = Hand::new();
         let mut burned_cards = Hand::new();
@@ -224,9 +298,9 @@ impl TexasHoldEm {
 
         // Post-round
         let leading_players = self.rank_all_hands(&player_hands, &table_cards);
-        self.determine_round_result(&leading_players);
+        self.determine_round_result(&leading_players, main_pot, side_pots);
 
-        // Return cards from hands to deck
+        // Return cards from hands to the deck
         for (_player, hand) in player_hands.iter() {
             if let (Some(card1), Some(card2)) = (hand.cards.first(), hand.cards.last()) {
                 self.deck.insert_at_top(*card1).unwrap();
@@ -420,30 +494,70 @@ impl TexasHoldEm {
         leading_players
     }
 
-    fn determine_round_result(&self, leading_players: &HashMap<Player, Vec<HandRank>>) {
+    // todo: implement side pot logic
+    fn determine_round_result(
+        &mut self,
+        leading_players: &HashMap<Player, Vec<HandRank>>,
+        main_pot: Pot,
+        _side_pots: Vec<Pot>,
+    ) {
         if leading_players.len() == 1 {
-            let (winning_player, winning_hand_rank_vec): (&Player, &Vec<HandRank>) =
+            let (player, winning_hand_rank_vec): (&Player, &Vec<HandRank>) =
                 leading_players.iter().next().unwrap();
 
             if winning_hand_rank_vec.len() > 1 {
                 println!(
                     "{} wins with {} and {}",
-                    winning_player.name, winning_hand_rank_vec[0], winning_hand_rank_vec[1]
+                    player.name, winning_hand_rank_vec[0], winning_hand_rank_vec[1]
                 );
             } else {
                 println!(
                     "{} wins with {}",
-                    winning_player.name,
+                    player.name,
                     winning_hand_rank_vec.last().unwrap()
                 );
             }
+
+            // Allocate winnings from the main pot to the winner.
+            if let Some(mut winning_player) = self.players.take(player) {
+                winning_player.update_chips(main_pot.amount);
+                println!("{} collects {} chips", winning_player.name, main_pot.amount);
+                // todo: remove after testing
+                println!("{} has {} chips", winning_player.name, winning_player.chips);
+                self.players.insert(winning_player);
+            } else {
+                eprintln!("Error: Unable to add chips to winning player's stack.");
+            }
         } else if leading_players.len() > 1 {
+            // Divide the main pot equally for the multiple winners.
+            // todo: Factor in how much stake in the main pot each winner has.
+            // A player could have put in a lesser amount of chips and therefore a side pot would
+            // be invoked.
+            // figure out what real poker does with uneven amounts to split
+            let divided_chips_amount = main_pot.amount / leading_players.len() as u32;
+            // todo: remove after testing
+            println!("divided chips amount: {}", divided_chips_amount);
+
             for (player, tied_hand_rank) in leading_players.iter() {
                 if tied_hand_rank.len() > 1 {
                     println!(
                         "{} pushes with {} and {}",
                         player.name, tied_hand_rank[0], tied_hand_rank[1]
                     );
+
+                    // Allocate winnings from the main pot to the winner.
+                    if let Some(mut winning_player) = self.players.take(player) {
+                        winning_player.update_chips(divided_chips_amount);
+                        println!(
+                            "{} collects {} chips",
+                            winning_player.name, divided_chips_amount
+                        );
+                        // todo: remove after testing
+                        println!("{} has {} chips", winning_player.name, winning_player.chips);
+                        self.players.insert(winning_player);
+                    } else {
+                        eprintln!("Error: Unable to add chips to winning player's stack.");
+                    }
                 } else {
                     println!(
                         "{} pushes with {}",
@@ -458,14 +572,16 @@ impl TexasHoldEm {
     }
 }
 
-impl Default for TexasHoldEm {
-    fn default() -> Self {
-        Self {
-            game_over: false,
-            deck: Deck::new(),
-            players: HashSet::new(),
-            seats: Vec::new(),
-        }
+/// The Pot manages how many chips have been bet and who the winnings should be allocated to.
+#[derive(Clone)]
+struct Pot {
+    amount: u32,
+    players: HashSet<Player>,
+}
+
+impl Pot {
+    fn new(amount: u32, players: HashSet<Player>) -> Self {
+        Self { amount, players }
     }
 }
 
@@ -481,7 +597,7 @@ mod tests {
     /// Tests that a single winner is correctly chosen.
     #[test]
     fn rank_all_hands_identifies_winner() {
-        let mut game = TexasHoldEm::new();
+        let mut game = TexasHoldEm::new(1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let two_of_hearts = card!(Two, Heart);
@@ -556,7 +672,7 @@ mod tests {
     /// but one player has a higher kicker (high card) than the other.
     #[test]
     fn rank_all_hands_identifies_winner_based_on_kicker_with_hand_winner() {
-        let mut game = TexasHoldEm::new();
+        let mut game = TexasHoldEm::new(1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let two_of_hearts = card!(Two, Heart);
@@ -609,7 +725,7 @@ mod tests {
     /// but one player has a higher kicker (high card) than the other.
     #[test]
     fn rank_all_hands_identifies_winner_based_on_kicker_with_table_winner() {
-        let mut game = TexasHoldEm::new();
+        let mut game = TexasHoldEm::new(1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let two_of_hearts = card!(Two, Heart);
@@ -661,7 +777,7 @@ mod tests {
     /// Tests that a single winner is correctly chosen.
     #[test]
     fn rank_all_hands_identifies_push_with_winning_table_flush() {
-        let mut game = TexasHoldEm::new();
+        let mut game = TexasHoldEm::new(1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let two_of_hearts = card!(Two, Heart);
@@ -738,7 +854,7 @@ mod tests {
     /// Tests that a single winner is correctly chosen.
     #[test]
     fn rank_all_hands_identifies_push_with_equal_winning_hand_flushes() {
-        let mut game = TexasHoldEm::new();
+        let mut game = TexasHoldEm::new(1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let two_of_hearts = card!(Two, Heart);
@@ -826,7 +942,7 @@ mod tests {
     /// Tests that all players push when the winning hand is on the table.
     #[test]
     fn rank_all_hands_identifies_push_with_winning_table_straight() {
-        let mut game = TexasHoldEm::new();
+        let mut game = TexasHoldEm::new(1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let three_of_clubs = card!(Three, Club);
@@ -903,7 +1019,7 @@ mod tests {
     /// Tests that multiple equal hands result in a push for all involved players.
     #[test]
     fn rank_all_hands_identifies_push_with_equal_winning_hand_straights() {
-        let mut game = TexasHoldEm::new();
+        let mut game = TexasHoldEm::new(1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let three_of_clubs = card!(Three, Club);
@@ -991,7 +1107,7 @@ mod tests {
     /// Tests that multiple equal hands result in a push for all involved players.
     #[test]
     fn rank_all_hands_identifies_higher_straight_beats_ace_low_straight() {
-        let mut game = TexasHoldEm::new();
+        let mut game = TexasHoldEm::new(1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let three_of_clubs = card!(Three, Club);
@@ -1066,7 +1182,7 @@ mod tests {
     /// Tests that hand ranking correctly updates the leader for a pair that is higher than the previously set high pair.
     #[test]
     fn rank_all_hands_identifies_higher_pair_as_winner_over_previous_high_pair() {
-        let mut game = TexasHoldEm::new();
+        let mut game = TexasHoldEm::new(1, 3, false);
 
         let two_of_spades = card!(Two, Spade);
         let four_of_clubs = card!(Four, Club);
@@ -1134,5 +1250,26 @@ mod tests {
         assert_eq!(leading_players.len(), 1);
         assert!(leading_players.contains_key(&player1));
         assert_eq!(leading_players.get(&player1).unwrap()[0], pair);
+    }
+
+    #[test]
+    fn play_game() {
+        let mut texas_hold_em_1_3_no_limit = TexasHoldEm::new(1, 3, false);
+
+        let user_name = "Winston";
+        let mut player1 = texas_hold_em_1_3_no_limit.new_player(&user_name);
+        texas_hold_em_1_3_no_limit.add_player(player1);
+        let mut player2 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 2", 100);
+        texas_hold_em_1_3_no_limit.add_player(player2);
+        let mut player3 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 3", 100);
+        texas_hold_em_1_3_no_limit.add_player(player3);
+        let mut player4 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 4", 100);
+        texas_hold_em_1_3_no_limit.add_player(player4);
+        let mut player5 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 5", 100);
+        texas_hold_em_1_3_no_limit.add_player(player5);
+        let mut player6 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 6", 100);
+        texas_hold_em_1_3_no_limit.add_player(player6);
+
+        texas_hold_em_1_3_no_limit.play_tournament();
     }
 }
