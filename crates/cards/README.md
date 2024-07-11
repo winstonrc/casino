@@ -33,7 +33,7 @@ fn main() {
 }
 ```
 
-### Card creation macro
+### Card creation
 
 ```rust
 use cards::card;
