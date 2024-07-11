@@ -241,7 +241,8 @@ impl TexasHoldEm {
 
     /// Deals a single card.
     fn deal_card(&mut self) -> Option<Card> {
-        if let Some(card) = self.deck.deal() {
+        // todo: change to deck.deal_face_down for all other players after testing is completed.
+        if let Some(card) = self.deck.deal_face_up() {
             return Some(card);
         }
 
@@ -278,7 +279,7 @@ impl TexasHoldEm {
         // Deal cards to player starting to the left of the dealer
         while current_player != dealer {
             if let Some(hand) = self.deal_hand() {
-                // todo: update to only show hand of user
+                // todo: Update to only show hand of user after testing is complete.
                 println!(
                     "Hand dealt to {}: {}",
                     self.seats[current_player].name,

@@ -34,8 +34,31 @@ impl Deck {
         self.cards.contains(card)
     }
 
+    /// Deals a card with the default face_up value.
     pub fn deal(&mut self) -> Option<Card> {
         if let Some(card) = self.cards.pop() {
+            Some(card)
+        } else {
+            eprintln!("Deck is empty.");
+            None
+        }
+    }
+
+    /// Deals a card face up with the Rank and Suit visible.
+    pub fn deal_face_up(&mut self) -> Option<Card> {
+        if let Some(mut card) = self.cards.pop() {
+            card.face_up = true;
+            Some(card)
+        } else {
+            eprintln!("Deck is empty.");
+            None
+        }
+    }
+
+    /// Deals a card face down with the Rank and Suit hidden.
+    pub fn deal_face_down(&mut self) -> Option<Card> {
+        if let Some(mut card) = self.cards.pop() {
+            card.face_up = false;
             Some(card)
         } else {
             eprintln!("Deck is empty.");
