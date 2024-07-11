@@ -6,12 +6,15 @@ use strum::EnumIter;
 /// Creates a new card.
 ///
 /// Requires the Rank and Suit to be provided as an ident.
+///
+/// Sets face_up to true by default.
 #[macro_export]
 macro_rules! card {
     ($rank:ident, $suit:ident) => {
         Card {
             rank: Rank::$rank,
             suit: Suit::$suit,
+            face_up: true,
         }
     };
 }
@@ -99,11 +102,16 @@ impl fmt::Display for Suit {
 pub struct Card {
     pub rank: Rank,
     pub suit: Suit,
+    pub face_up: bool,
 }
 
 impl Card {
     pub fn new(rank: Rank, suit: Suit) -> Self {
-        Self { rank, suit }
+        Self {
+            rank,
+            suit,
+            face_up: true,
+        }
     }
 
     pub fn value(&self) -> u8 {
@@ -147,7 +155,7 @@ impl PartialOrd for Card {
 
 impl fmt::Display for Card {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let card = match (self.rank, self.suit) {
+        let mut card = match (self.rank, self.suit) {
             (Rank::Two, Suit::Club) => '🃒',
             (Rank::Three, Suit::Club) => '🃓',
             (Rank::Four, Suit::Club) => '🃔',
@@ -201,6 +209,10 @@ impl fmt::Display for Card {
             (Rank::King, Suit::Spade) => '🂮',
             (Rank::Ace, Suit::Spade) => '🂡',
         };
+
+        if !self.face_up {
+            card = '🂠'
+        }
 
         write!(f, "{}", card)
     }
