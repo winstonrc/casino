@@ -1,4 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+
+use uuid::Uuid;
 
 use cards::card::Card;
 use cards::deck::Deck;
@@ -18,8 +20,8 @@ const MAXIMUM_PLAYERS_COUNT: usize = 10;
 pub struct TexasHoldEm {
     pub game_over: bool,
     deck: Deck,
-    players: HashSet<Player>,
-    pub seats: Vec<Player>, // todo: make private after testing is complete
+    players: HashMap<Uuid, Player>,
+    pub seats: Vec<Uuid>, // todo: make private after testing is complete
     small_blind_amount: u32,
     big_blind_amount: u32,
     limit: bool,
@@ -31,7 +33,7 @@ impl TexasHoldEm {
         Self {
             game_over: false,
             deck: Deck::new(),
-            players: HashSet::new(),
+            players: HashMap::new(),
             seats: Vec::new(),
             small_blind_amount,
             big_blind_amount,
@@ -74,8 +76,8 @@ impl TexasHoldEm {
             &player.name, &player.chips
         );
 
-        self.seats.push(player.clone());
-        self.players.insert(player);
+        self.seats.push(player.identifier);
+        self.players.insert(player.identifier, player);
         Ok(())
     }
 
@@ -86,7 +88,7 @@ impl TexasHoldEm {
             return None;
         }
 
-        if self.players.get(player).is_none() {
+        if self.players.get(&player.identifier).is_none() {
             eprintln!(
                 "Unable to remove player. {} is not at the table.",
                 player.name
@@ -94,11 +96,11 @@ impl TexasHoldEm {
             return None;
         } else {
             // Remove player from seat
-            self.seats.retain(|x| *x != *player);
+            self.seats.retain(|x| *x != player.identifier);
         }
 
         // Remove and return player
-        self.players.take(player)
+        self.players.remove(&player.identifier)
     }
 
     /// Play a tournament consisting of multiple rounds.
@@ -117,7 +119,7 @@ impl TexasHoldEm {
     }
 
     pub fn remove_losers(&mut self) {
-        for mut player in self.players.clone() {
+        for (_, mut player) in self.players.clone() {
             if player.chips == 0 {
                 println!(
                     "{} is out of chips and was removed from the game.",
@@ -153,66 +155,94 @@ impl TexasHoldEm {
     pub fn play_round(&mut self, dealer: usize) {
         self.deck.shuffle();
 
-        let active_players: HashSet<Player> = self.players.clone();
+        let active_players: HashMap<Uuid, Player> = self.players.clone();
         let mut side_pots: Vec<Pot> = Vec::new();
         let mut main_pot: Pot = Pot::new(0, active_players.clone());
-        let mut side_pot_0: Pot = Pot::new(0, HashSet::new());
+        let mut side_pot_0: Pot = Pot::new(0, HashMap::new());
 
         // todo: implement small blind & big blind
-        let small_blind_index = (dealer + 1) % self.seats.len();
-        if let Some(small_blind_player) = self.seats.get_mut(small_blind_index) {
-            if small_blind_player.chips >= self.small_blind_amount {
-                println!("{} posted the small blind.", small_blind_player.name);
-                small_blind_player.chips -= self.small_blind_amount;
-                main_pot.amount = self.small_blind_amount;
-                main_pot.players = active_players.clone();
-            } else if small_blind_player.chips > 0 {
-                let partial_blind_amount = small_blind_player.chips;
-                small_blind_player.chips -= partial_blind_amount;
-                main_pot.amount = partial_blind_amount;
-                main_pot.players = active_players.clone();
+        let small_blind_seat_index = (dealer + 1) % self.seats.len();
+        if let Some(small_blind_player_identifier) = self.seats.get(small_blind_seat_index) {
+            if let Some(small_blind_player) = self.players.get_mut(small_blind_player_identifier) {
+                if small_blind_player.chips >= self.small_blind_amount {
+                    println!("{} posted the small blind.", small_blind_player.name);
+                    small_blind_player.chips -= self.small_blind_amount;
+                    main_pot.amount = self.small_blind_amount;
+                    main_pot.players = active_players.clone();
+                } else if small_blind_player.chips > 0 {
+                    let partial_blind_amount = small_blind_player.chips;
+                    small_blind_player.subtract_chips(partial_blind_amount);
+                    main_pot.amount = partial_blind_amount;
+                    main_pot.players = active_players.clone();
 
-                let side_pot_players = active_players
-                    .iter()
-                    .filter(|&player| player != small_blind_player)
-                    .cloned()
-                    .collect();
-                let side_pot_amount = self.small_blind_amount - partial_blind_amount;
-                side_pot_0.amount = side_pot_amount;
-                side_pot_0.players = side_pot_players;
-                side_pots.push(side_pot_0.clone());
-                println!("{} posted {} to cover part of the small blind. The remaining {} has gone into a side pot.", small_blind_player.name, partial_blind_amount, side_pot_amount);
+                    let side_pot_players: HashMap<Uuid, Player> = active_players
+                        .iter()
+                        .filter(|(player_identifier, _)| {
+                            *player_identifier != small_blind_player_identifier
+                        })
+                        .map(|(&player_identifier, player)| (player_identifier, player.clone()))
+                        .collect();
+                    let side_pot_amount = self.small_blind_amount - partial_blind_amount;
+                    side_pot_0.amount = side_pot_amount;
+                    side_pot_0.players = side_pot_players;
+                    side_pots.push(side_pot_0.clone());
+                    println!("{} posted {} to cover part of the small blind. The remaining {} has gone into a side pot.", small_blind_player.name, partial_blind_amount, side_pot_amount);
+                } else {
+                    eprintln!("Error: The small blind player has no chips and should not be playing this hand.");
+                }
             } else {
-                eprintln!("Error: The small blind player has no chips and should not be playing this hand.");
+                eprintln!(
+                    "Error: Unable to find player with the id {}",
+                    small_blind_player_identifier
+                );
             }
+        } else {
+            eprintln!(
+                "Error: Unable to find player at the seat {}",
+                small_blind_seat_index
+            );
         }
 
-        let big_blind_index = (dealer + 2) % self.seats.len();
-        if let Some(big_blind_player) = self.seats.get_mut(big_blind_index) {
-            if big_blind_player.chips >= self.big_blind_amount {
-                println!("{} posted the big blind.", big_blind_player.name);
-                big_blind_player.chips -= self.big_blind_amount;
-                main_pot.amount = self.big_blind_amount;
-                main_pot.players = active_players.clone();
-            } else if big_blind_player.chips > 0 {
-                let partial_blind_amount = big_blind_player.chips;
-                big_blind_player.chips -= partial_blind_amount;
-                main_pot.amount = partial_blind_amount;
-                main_pot.players = active_players.clone();
+        let big_blind_seat_index = (dealer + 2) % self.seats.len();
+        if let Some(big_blind_player_identifier) = self.seats.get(big_blind_seat_index) {
+            if let Some(big_blind_player) = self.players.get_mut(big_blind_player_identifier) {
+                if big_blind_player.chips >= self.big_blind_amount {
+                    println!("{} posted the big blind.", big_blind_player.name);
+                    big_blind_player.chips -= self.big_blind_amount;
+                    main_pot.amount = self.big_blind_amount;
+                    main_pot.players = active_players.clone();
+                } else if big_blind_player.chips > 0 {
+                    let partial_blind_amount = big_blind_player.chips;
+                    big_blind_player.subtract_chips(partial_blind_amount);
+                    main_pot.amount = partial_blind_amount;
+                    main_pot.players = active_players.clone();
 
-                let side_pot_players = active_players
-                    .iter()
-                    .filter(|&player| player != big_blind_player)
-                    .cloned()
-                    .collect();
-                let side_pot_amount = self.big_blind_amount - partial_blind_amount;
-                side_pot_0.amount = side_pot_amount;
-                side_pot_0.players = side_pot_players;
-                side_pots.push(side_pot_0.clone());
-                println!("{} posted {} to cover part of the big blind. The remaining {} has gone into a side pot.", big_blind_player.name, partial_blind_amount, side_pot_amount);
+                    let side_pot_players: HashMap<Uuid, Player> = active_players
+                        .iter()
+                        .filter(|(player_identifier, _)| {
+                            *player_identifier != big_blind_player_identifier
+                        })
+                        .map(|(&player_identifier, player)| (player_identifier, player.clone()))
+                        .collect();
+                    let side_pot_amount = self.big_blind_amount - partial_blind_amount;
+                    side_pot_0.amount = side_pot_amount;
+                    side_pot_0.players = side_pot_players;
+                    side_pots.push(side_pot_0.clone());
+                    println!("{} posted {} to cover part of the big blind. The remaining {} has gone into a side pot.", big_blind_player.name, partial_blind_amount, side_pot_amount);
+                } else {
+                    eprintln!("Error: The small blind player has no chips and should not be playing this hand.");
+                }
             } else {
-                eprintln!("Error: The small blind player has no chips and should not be playing this hand.");
+                eprintln!(
+                    "Error: Unable to find player with the id {}",
+                    big_blind_player_identifier
+                );
             }
+        } else {
+            eprintln!(
+                "Error: Unable to find player at the seat {}",
+                big_blind_seat_index
+            );
         }
 
         let mut table_cards = Hand::new();
@@ -349,38 +379,65 @@ impl TexasHoldEm {
     }
 
     /// Deal hands of two cards to every player starting with the player to the left of the dealer.
-    fn deal_hands_to_all_players(&mut self, dealer: usize) -> HashMap<Player, Hand> {
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
-        let num_players = self.seats.len();
-        let mut current_player = (dealer + 1) % num_players;
+    fn deal_hands_to_all_players(&mut self, dealer_seat_index: usize) -> HashMap<Uuid, Hand> {
+        let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
+        let player_count = self.seats.len();
+        let mut current_player_seat_index = (dealer_seat_index + 1) % player_count;
 
         println!();
 
         // Deal cards to player starting to the left of the dealer
-        while current_player != dealer {
-            if let Some(hand) = self.deal_hand() {
-                // todo: Update to only show hand of user after testing is complete.
-                println!(
-                    "Hand dealt to {}: {}",
-                    self.seats[current_player].name,
-                    hand.to_symbols()
-                );
-                player_hands.insert(self.seats[current_player].clone(), hand);
+        while current_player_seat_index != dealer_seat_index {
+            if let Some(current_player_identifier) = self.seats.get(current_player_seat_index) {
+                if let Some(current_player) = self.players.get(current_player_identifier).cloned() {
+                    if let Some(hand) = self.deal_hand() {
+                        println!(
+                            "Hand dealt to {}: {}",
+                            current_player.name,
+                            hand.to_symbols()
+                        );
+                        player_hands.insert(current_player.identifier, hand);
+                    } else {
+                        eprintln!("Error: Unable to deal hand.");
+                    }
+                } else {
+                    eprintln!(
+                        "Error: Unable to find player with the id {}",
+                        current_player_identifier
+                    )
+                }
+            } else {
+                eprintln!(
+                    "Error: Unable to find player at the seat {}",
+                    current_player_seat_index
+                )
             }
 
             // Move to the next player
-            current_player = (current_player + 1) % num_players;
+            current_player_seat_index = (current_player_seat_index + 1) % player_count;
         }
 
         // Deal cards to the dealer
-        if let Some(hand) = self.deal_hand() {
-            // todo: update to only show hand of user
-            println!(
-                "Hand dealt to {}: {}",
-                self.seats[dealer].name,
-                hand.to_symbols()
-            );
-            player_hands.insert(self.seats[dealer].clone(), hand);
+        if let Some(dealer_identifier) = self.seats.get(dealer_seat_index) {
+            if let Some(dealer) = self.players.get(dealer_identifier).cloned() {
+                if let Some(hand) = self.deal_hand() {
+                    // todo: Update to only show hand of user after testing is complete.
+                    println!("Hand dealt to {}: {}", dealer.name, hand.to_symbols());
+                    player_hands.insert(dealer.identifier, hand);
+                } else {
+                    eprintln!("Error: Unable to deal hand.")
+                }
+            } else {
+                eprintln!(
+                    "Error: Unable to find player with the id {}",
+                    dealer_identifier
+                )
+            }
+        } else {
+            eprintln!(
+                "Error: Unable to find player at the seat {}",
+                dealer_seat_index
+            )
         }
 
         println!();
@@ -391,103 +448,110 @@ impl TexasHoldEm {
     /// Rank the provided hands to determine which hands are the best.
     fn rank_all_hands(
         &self,
-        player_hands: &HashMap<Player, Hand>,
+        player_hands: &HashMap<Uuid, Hand>,
         table_cards: &Hand,
     ) -> HashMap<Player, Vec<HandRank>> {
         let mut leading_players: HashMap<Player, Vec<HandRank>> = HashMap::new();
         let mut best_hand: Vec<(HandRank, &Hand)> = Vec::new();
 
-        for (player, hand) in player_hands.iter() {
-            let mut cards_to_rank: Vec<Card> = table_cards.get_cards().clone();
-            cards_to_rank.push(hand.cards[0]);
-            cards_to_rank.push(hand.cards[1]);
+        for (player_identifier, hand) in player_hands.iter() {
+            if let Some(player) = self.players.get(player_identifier) {
+                let mut cards_to_rank: Vec<Card> = table_cards.get_cards().clone();
+                cards_to_rank.push(hand.cards[0]);
+                cards_to_rank.push(hand.cards[1]);
 
-            let hand_rank = rank_hand(cards_to_rank);
-            // todo: remove after testing
-            println!("{} has {}", player.name, hand_rank);
+                let hand_rank = rank_hand(cards_to_rank);
+                // todo: remove after testing
+                println!("{} has {}", player.name, hand_rank);
 
-            let mut hand_rank_vec = Vec::new();
-            hand_rank_vec.push(hand_rank);
+                let mut hand_rank_vec = Vec::new();
+                hand_rank_vec.push(hand_rank);
 
-            if best_hand.is_empty() {
-                best_hand.push((hand_rank, hand));
-                leading_players.insert(player.clone(), hand_rank_vec);
-                continue;
-            }
+                if best_hand.is_empty() {
+                    best_hand.push((hand_rank, hand));
+                    leading_players.insert(player.clone(), hand_rank_vec);
+                    continue;
+                }
 
-            if let Some((best_hand_rank, best_hand_cards)) = best_hand.last() {
-                if hand_rank == *best_hand_rank {
-                    // If hand ranks are equal and are made up of less than 5 cards then check for a kicker (high card).
-                    // If the kicker is on the table, then that should be used.
-                    if hand_rank.len() < 5 {
-                        let mut current_cards_and_table_cards: Vec<Card> =
-                            table_cards.get_cards().clone();
+                if let Some((best_hand_rank, best_hand_cards)) = best_hand.last() {
+                    if hand_rank == *best_hand_rank {
+                        // If hand ranks are equal and are made up of less than 5 cards then check for a kicker (high card).
+                        // If the kicker is on the table, then that should be used.
+                        if hand_rank.len() < 5 {
+                            let mut current_cards_and_table_cards: Vec<Card> =
+                                table_cards.get_cards().clone();
 
-                        current_cards_and_table_cards.push(hand.cards[0]);
-                        current_cards_and_table_cards.push(hand.cards[1]);
+                            current_cards_and_table_cards.push(hand.cards[0]);
+                            current_cards_and_table_cards.push(hand.cards[1]);
 
-                        let mut cards_not_used_in_current_hand_rank: Vec<Card> = Vec::new();
-                        for card in current_cards_and_table_cards {
-                            // Check to see that the kicker is not part of the hand rank.
-                            if !hand_rank.contains(&card) {
-                                cards_not_used_in_current_hand_rank.push(card);
+                            let mut cards_not_used_in_current_hand_rank: Vec<Card> = Vec::new();
+                            for card in current_cards_and_table_cards {
+                                // Check to see that the kicker is not part of the hand rank.
+                                if !hand_rank.contains(&card) {
+                                    cards_not_used_in_current_hand_rank.push(card);
+                                }
                             }
-                        }
-                        let current_hand_kicker =
-                            get_high_card_value(&cards_not_used_in_current_hand_rank).unwrap();
+                            let current_hand_kicker =
+                                get_high_card_value(&cards_not_used_in_current_hand_rank).unwrap();
 
-                        let mut best_hand_cards_and_table_cards: Vec<Card> =
-                            table_cards.get_cards().clone();
+                            let mut best_hand_cards_and_table_cards: Vec<Card> =
+                                table_cards.get_cards().clone();
 
-                        best_hand_cards_and_table_cards.push(best_hand_cards.cards[0]);
-                        best_hand_cards_and_table_cards.push(best_hand_cards.cards[1]);
+                            best_hand_cards_and_table_cards.push(best_hand_cards.cards[0]);
+                            best_hand_cards_and_table_cards.push(best_hand_cards.cards[1]);
 
-                        let mut cards_not_used_in_best_hand_rank: Vec<Card> = Vec::new();
-                        for card in best_hand_cards_and_table_cards {
-                            // Check to see that the kicker is not part of the hand rank.
-                            if !best_hand_rank.contains(&card) {
-                                cards_not_used_in_best_hand_rank.push(card);
+                            let mut cards_not_used_in_best_hand_rank: Vec<Card> = Vec::new();
+                            for card in best_hand_cards_and_table_cards {
+                                // Check to see that the kicker is not part of the hand rank.
+                                if !best_hand_rank.contains(&card) {
+                                    cards_not_used_in_best_hand_rank.push(card);
+                                }
                             }
-                        }
-                        let best_hand_kicker =
-                            get_high_card_value(&cards_not_used_in_best_hand_rank).unwrap();
+                            let best_hand_kicker =
+                                get_high_card_value(&cards_not_used_in_best_hand_rank).unwrap();
 
-                        // If there is a tie, but the best hand has a higher kicker, add that kicker to the best hand, so that it is returned when the best hand is declared
-                        if let Some((leading_player, leading_hand_vec)) =
-                            leading_players.iter().next()
-                        {
-                            if leading_hand_vec.len() < 2 {
-                                leading_players
-                                    .entry(leading_player.clone())
-                                    .or_default()
-                                    .push(HandRank::HighCard(best_hand_kicker));
+                            // If there is a tie, but the best hand has a higher kicker, add that kicker to the best hand, so that it is returned when the best hand is declared
+                            if let Some((leading_player, leading_hand_vec)) =
+                                leading_players.iter().next()
+                            {
+                                if leading_hand_vec.len() < 2 {
+                                    leading_players
+                                        .entry(leading_player.clone())
+                                        .or_default()
+                                        .push(HandRank::HighCard(best_hand_kicker));
+                                }
                             }
-                        }
 
-                        // If the kicker is equal, then both hands are equal.
-                        // Otherwise, one of the hands must be greater and there will only be one leading player.
-                        if current_hand_kicker.rank == best_hand_kicker.rank {
+                            // If the kicker is equal, then both hands are equal.
+                            // Otherwise, one of the hands must be greater and there will only be one leading player.
+                            if current_hand_kicker.rank == best_hand_kicker.rank {
+                                best_hand.push((hand_rank, hand));
+                                hand_rank_vec.push(HandRank::HighCard(current_hand_kicker));
+                                leading_players.insert(player.clone(), hand_rank_vec);
+                            } else if current_hand_kicker.rank > best_hand_kicker.rank {
+                                best_hand.clear();
+                                best_hand.push((hand_rank, hand));
+                                leading_players.clear();
+                                hand_rank_vec.push(HandRank::HighCard(current_hand_kicker));
+                                leading_players.insert(player.clone(), hand_rank_vec);
+                            }
+                        } else {
+                            // If hands are still equal after considering the kicker, push the new hand.
                             best_hand.push((hand_rank, hand));
-                            hand_rank_vec.push(HandRank::HighCard(current_hand_kicker));
-                            leading_players.insert(player.clone(), hand_rank_vec);
-                        } else if current_hand_kicker.rank > best_hand_kicker.rank {
-                            best_hand.clear();
-                            best_hand.push((hand_rank, hand));
-                            leading_players.clear();
-                            hand_rank_vec.push(HandRank::HighCard(current_hand_kicker));
                             leading_players.insert(player.clone(), hand_rank_vec);
                         }
-                    } else {
-                        // If hands are still equal after considering the kicker, push the new hand.
+                    } else if hand_rank > *best_hand_rank {
+                        best_hand.clear();
                         best_hand.push((hand_rank, hand));
+                        leading_players.clear();
                         leading_players.insert(player.clone(), hand_rank_vec);
                     }
-                } else if hand_rank > *best_hand_rank {
-                    best_hand.clear();
-                    best_hand.push((hand_rank, hand));
-                    leading_players.clear();
-                    leading_players.insert(player.clone(), hand_rank_vec);
                 }
+            } else {
+                eprintln!(
+                    "Error: Unable to find player with the id {}",
+                    player_identifier
+                )
             }
         }
 
@@ -519,12 +583,11 @@ impl TexasHoldEm {
             }
 
             // Allocate winnings from the main pot to the winner.
-            if let Some(mut winning_player) = self.players.take(player) {
-                winning_player.update_chips(main_pot.amount);
+            if let Some(winning_player) = self.players.get_mut(&player.identifier) {
+                winning_player.add_chips(main_pot.amount);
                 println!("{} collects {} chips", winning_player.name, main_pot.amount);
                 // todo: remove after testing
                 println!("{} has {} chips", winning_player.name, winning_player.chips);
-                self.players.insert(winning_player);
             } else {
                 eprintln!("Error: Unable to add chips to winning player's stack.");
             }
@@ -546,15 +609,14 @@ impl TexasHoldEm {
                     );
 
                     // Allocate winnings from the main pot to the winner.
-                    if let Some(mut winning_player) = self.players.take(player) {
-                        winning_player.update_chips(divided_chips_amount);
+                    if let Some(winning_player) = self.players.get_mut(&player.identifier) {
+                        winning_player.add_chips(divided_chips_amount);
                         println!(
                             "{} collects {} chips",
                             winning_player.name, divided_chips_amount
                         );
                         // todo: remove after testing
                         println!("{} has {} chips", winning_player.name, winning_player.chips);
-                        self.players.insert(winning_player);
                     } else {
                         eprintln!("Error: Unable to add chips to winning player's stack.");
                     }
@@ -576,11 +638,11 @@ impl TexasHoldEm {
 #[derive(Clone)]
 struct Pot {
     amount: u32,
-    players: HashSet<Player>,
+    players: HashMap<Uuid, Player>,
 }
 
 impl Pot {
-    fn new(amount: u32, players: HashSet<Player>) -> Self {
+    fn new(amount: u32, players: HashMap<Uuid, Player>) -> Self {
         Self { amount, players }
     }
 }
@@ -631,33 +693,33 @@ mod tests {
             king_of_clubs,
         ];
 
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
         let player1_cards: Vec<Card> = vec![five_of_clubs, nine_of_clubs];
         let player1_hand = Hand::new_from_cards(player1_cards);
-        player_hands.insert(player1.clone(), player1_hand);
+        player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
         let player2_cards: Vec<Card> = vec![two_of_hearts, ten_of_spades];
         let player2_hand = Hand::new_from_cards(player2_cards);
-        player_hands.insert(player2.clone(), player2_hand);
+        player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
         let player3_cards: Vec<Card> = vec![four_of_diamonds, queen_of_hearts];
         let player3_hand = Hand::new_from_cards(player3_cards);
-        player_hands.insert(player3.clone(), player3_hand);
+        player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
         let player4_cards: Vec<Card> = vec![ace_of_hearts, ace_of_spades];
         let player4_hand = Hand::new_from_cards(player4_cards);
-        player_hands.insert(player4.clone(), player4_hand);
+        player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
         let player5_cards: Vec<Card> = vec![six_of_diamonds, nine_of_hearts];
         let player5_hand = Hand::new_from_cards(player5_cards);
-        player_hands.insert(player5.clone(), player5_hand);
+        player_hands.insert(player5.identifier, player5_hand);
 
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
@@ -699,18 +761,18 @@ mod tests {
             jack_of_clubs,
         ];
 
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
         let player1_cards: Vec<Card> = vec![nine_of_hearts, ace_of_spades];
         let player1_hand = Hand::new_from_cards(player1_cards);
-        player_hands.insert(player1.clone(), player1_hand);
+        player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
         let player2_cards: Vec<Card> = vec![nine_of_spades, six_of_diamonds];
         let player2_hand = Hand::new_from_cards(player2_cards);
-        player_hands.insert(player2.clone(), player2_hand);
+        player_hands.insert(player2.identifier, player2_hand);
 
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
@@ -752,18 +814,18 @@ mod tests {
             jack_of_clubs,
         ];
 
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
         let player1_cards: Vec<Card> = vec![ten_of_spades, ace_of_spades];
         let player1_hand = Hand::new_from_cards(player1_cards);
-        player_hands.insert(player1.clone(), player1_hand);
+        player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
         let player2_cards: Vec<Card> = vec![six_of_diamonds, ten_of_hearts];
         let player2_hand = Hand::new_from_cards(player2_cards);
-        player_hands.insert(player2.clone(), player2_hand);
+        player_hands.insert(player2.identifier, player2_hand);
 
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
@@ -811,33 +873,33 @@ mod tests {
             king_of_clubs,
         ];
 
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
         let player1_cards: Vec<Card> = vec![two_of_diamonds, eight_of_spades];
         let player1_hand = Hand::new_from_cards(player1_cards);
-        player_hands.insert(player1.clone(), player1_hand);
+        player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
         let player2_cards: Vec<Card> = vec![two_of_hearts, ten_of_spades];
         let player2_hand = Hand::new_from_cards(player2_cards);
-        player_hands.insert(player2.clone(), player2_hand);
+        player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
         let player3_cards: Vec<Card> = vec![four_of_diamonds, queen_of_hearts];
         let player3_hand = Hand::new_from_cards(player3_cards);
-        player_hands.insert(player3.clone(), player3_hand);
+        player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
         let player4_cards: Vec<Card> = vec![ace_of_hearts, ace_of_spades];
         let player4_hand = Hand::new_from_cards(player4_cards);
-        player_hands.insert(player4.clone(), player4_hand);
+        player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
         let player5_cards: Vec<Card> = vec![six_of_diamonds, nine_of_hearts];
         let player5_hand = Hand::new_from_cards(player5_cards);
-        player_hands.insert(player5.clone(), player5_hand);
+        player_hands.insert(player5.identifier, player5_hand);
 
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
@@ -896,33 +958,33 @@ mod tests {
             king_of_clubs,
         ];
 
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
         let player1_cards: Vec<Card> = vec![five_of_clubs, eight_of_spades];
         let player1_hand = Hand::new_from_cards(player1_cards);
-        player_hands.insert(player1.clone(), player1_hand);
+        player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
         let player2_cards: Vec<Card> = vec![two_of_hearts, seven_of_clubs];
         let player2_hand = Hand::new_from_cards(player2_cards);
-        player_hands.insert(player2.clone(), player2_hand);
+        player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
         let player3_cards: Vec<Card> = vec![four_of_diamonds, queen_of_hearts];
         let player3_hand = Hand::new_from_cards(player3_cards);
-        player_hands.insert(player3.clone(), player3_hand);
+        player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
         let player4_cards: Vec<Card> = vec![ace_of_hearts, ace_of_spades];
         let player4_hand = Hand::new_from_cards(player4_cards);
-        player_hands.insert(player4.clone(), player4_hand);
+        player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
         let player5_cards: Vec<Card> = vec![six_of_diamonds, nine_of_hearts];
         let player5_hand = Hand::new_from_cards(player5_cards);
-        player_hands.insert(player5.clone(), player5_hand);
+        player_hands.insert(player5.identifier, player5_hand);
 
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
@@ -976,33 +1038,33 @@ mod tests {
             ace_of_hearts,
         ];
 
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
         let player1_cards: Vec<Card> = vec![three_of_clubs, four_of_hearts];
         let player1_hand = Hand::new_from_cards(player1_cards);
-        player_hands.insert(player1.clone(), player1_hand);
+        player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
         let player2_cards: Vec<Card> = vec![five_of_diamonds, six_of_clubs];
         let player2_hand = Hand::new_from_cards(player2_cards);
-        player_hands.insert(player2.clone(), player2_hand);
+        player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
         let player3_cards: Vec<Card> = vec![seven_of_spades, nine_of_spades];
         let player3_hand = Hand::new_from_cards(player3_cards);
-        player_hands.insert(player3.clone(), player3_hand);
+        player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
         let player4_cards: Vec<Card> = vec![two_of_diamonds, five_of_clubs];
         let player4_hand = Hand::new_from_cards(player4_cards);
-        player_hands.insert(player4.clone(), player4_hand);
+        player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
         let player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
         let player5_hand = Hand::new_from_cards(player5_cards);
-        player_hands.insert(player5.clone(), player5_hand);
+        player_hands.insert(player5.identifier, player5_hand);
 
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
@@ -1061,33 +1123,33 @@ mod tests {
             ace_of_hearts,
         ];
 
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
         let player1_cards: Vec<Card> = vec![four_of_hearts, ten_of_diamonds];
         let player1_hand = Hand::new_from_cards(player1_cards);
-        player_hands.insert(player1.clone(), player1_hand);
+        player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
         let player2_cards: Vec<Card> = vec![five_of_diamonds, ten_of_hearts];
         let player2_hand = Hand::new_from_cards(player2_cards);
-        player_hands.insert(player2.clone(), player2_hand);
+        player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
         let player3_cards: Vec<Card> = vec![seven_of_spades, nine_of_spades];
         let player3_hand = Hand::new_from_cards(player3_cards);
-        player_hands.insert(player3.clone(), player3_hand);
+        player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
         let player4_cards: Vec<Card> = vec![two_of_diamonds, five_of_clubs];
         let player4_hand = Hand::new_from_cards(player4_cards);
-        player_hands.insert(player4.clone(), player4_hand);
+        player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
         let player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
         let player5_hand = Hand::new_from_cards(player5_cards);
-        player_hands.insert(player5.clone(), player5_hand);
+        player_hands.insert(player5.identifier, player5_hand);
 
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
@@ -1141,33 +1203,33 @@ mod tests {
             king_of_diamonds,
         ];
 
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
         let player1_cards: Vec<Card> = vec![ten_of_diamonds, ace_of_hearts];
         let player1_hand = Hand::new_from_cards(player1_cards);
-        player_hands.insert(player1.clone(), player1_hand);
+        player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
         let player2_cards: Vec<Card> = vec![six_of_spades, jack_of_clubs];
         let player2_hand = Hand::new_from_cards(player2_cards);
-        player_hands.insert(player2.clone(), player2_hand);
+        player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
         let player3_cards: Vec<Card> = vec![nine_of_spades, ten_of_hearts];
         let player3_hand = Hand::new_from_cards(player3_cards);
-        player_hands.insert(player3.clone(), player3_hand);
+        player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
         let player4_cards: Vec<Card> = vec![five_of_clubs, queen_of_spades];
         let player4_hand = Hand::new_from_cards(player4_cards);
-        player_hands.insert(player4.clone(), player4_hand);
+        player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
         let player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
         let player5_hand = Hand::new_from_cards(player5_cards);
-        player_hands.insert(player5.clone(), player5_hand);
+        player_hands.insert(player5.identifier, player5_hand);
 
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
@@ -1212,38 +1274,38 @@ mod tests {
             ace_of_spades,
         ];
 
-        let mut player_hands: HashMap<Player, Hand> = HashMap::new();
+        let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
         let player2_cards: Vec<Card> = vec![jack_of_spades, nine_of_spades];
         let player2_hand = Hand::new_from_cards(player2_cards);
-        player_hands.insert(player2.clone(), player2_hand);
+        player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
         let player3_cards: Vec<Card> = vec![nine_of_clubs, four_of_clubs];
         let player3_hand = Hand::new_from_cards(player3_cards);
-        player_hands.insert(player3.clone(), player3_hand);
+        player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
         let player4_cards: Vec<Card> = vec![six_of_clubs, ten_of_spades];
         let player4_hand = Hand::new_from_cards(player4_cards);
-        player_hands.insert(player4.clone(), player4_hand);
+        player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
         let player5_cards: Vec<Card> = vec![seven_of_hearts, queen_of_hearts];
         let player5_hand = Hand::new_from_cards(player5_cards);
-        player_hands.insert(player5.clone(), player5_hand);
+        player_hands.insert(player5.identifier, player5_hand);
 
         let player6 = game.new_player_with_chips("Player 6", 100);
         let player6_cards: Vec<Card> = vec![ten_of_diamonds, ten_of_clubs];
         let player6_hand = Hand::new_from_cards(player6_cards);
-        player_hands.insert(player6.clone(), player6_hand);
+        player_hands.insert(player6.identifier, player6_hand);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
         let player1_cards: Vec<Card> = vec![king_of_diamonds, ace_of_hearts];
         let player1_hand = Hand::new_from_cards(player1_cards);
-        player_hands.insert(player1.clone(), player1_hand);
+        player_hands.insert(player1.identifier, player1_hand);
 
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
@@ -1252,22 +1314,23 @@ mod tests {
         assert_eq!(leading_players.get(&player1).unwrap()[0], pair);
     }
 
+    // todo: remove after testing
     #[test]
     fn play_game() {
         let mut texas_hold_em_1_3_no_limit = TexasHoldEm::new(1, 3, false);
 
         let user_name = "Winston";
-        let mut player1 = texas_hold_em_1_3_no_limit.new_player(&user_name);
+        let player1 = texas_hold_em_1_3_no_limit.new_player(&user_name);
         texas_hold_em_1_3_no_limit.add_player(player1);
-        let mut player2 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 2", 100);
+        let player2 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 2", 100);
         texas_hold_em_1_3_no_limit.add_player(player2);
-        let mut player3 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 3", 100);
+        let player3 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 3", 100);
         texas_hold_em_1_3_no_limit.add_player(player3);
-        let mut player4 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 4", 100);
+        let player4 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 4", 100);
         texas_hold_em_1_3_no_limit.add_player(player4);
-        let mut player5 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 5", 100);
+        let player5 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 5", 100);
         texas_hold_em_1_3_no_limit.add_player(player5);
-        let mut player6 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 6", 100);
+        let player6 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 6", 100);
         texas_hold_em_1_3_no_limit.add_player(player6);
 
         texas_hold_em_1_3_no_limit.play_tournament();
