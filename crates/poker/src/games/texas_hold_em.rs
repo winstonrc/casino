@@ -24,7 +24,7 @@ pub struct TexasHoldEm {
     pub seats: Vec<Uuid>, // todo: make private after testing is complete
     small_blind_amount: u32,
     big_blind_amount: u32,
-    limit: bool,
+    limit: bool, // todo: implement
 }
 
 impl TexasHoldEm {
@@ -166,13 +166,13 @@ impl TexasHoldEm {
             if let Some(small_blind_player) = self.players.get_mut(small_blind_player_identifier) {
                 if small_blind_player.chips >= self.small_blind_amount {
                     println!("{} posted the small blind.", small_blind_player.name);
-                    small_blind_player.chips -= self.small_blind_amount;
-                    main_pot.amount = self.small_blind_amount;
+                    small_blind_player.subtract_chips(self.small_blind_amount);
+                    main_pot.amount += self.small_blind_amount;
                     main_pot.players = active_players.clone();
                 } else if small_blind_player.chips > 0 {
                     let partial_blind_amount = small_blind_player.chips;
                     small_blind_player.subtract_chips(partial_blind_amount);
-                    main_pot.amount = partial_blind_amount;
+                    main_pot.amount += partial_blind_amount;
                     main_pot.players = active_players.clone();
 
                     let side_pot_players: HashMap<Uuid, Player> = active_players
@@ -183,8 +183,8 @@ impl TexasHoldEm {
                         .map(|(&player_identifier, player)| (player_identifier, player.clone()))
                         .collect();
                     let side_pot_amount = self.small_blind_amount - partial_blind_amount;
-                    side_pot_0.amount = side_pot_amount;
-                    side_pot_0.players = side_pot_players;
+                    side_pot_0.amount += side_pot_amount;
+                    side_pot_0.players = side_pot_players; // todo
                     side_pots.push(side_pot_0.clone());
                     println!("{} posted {} to cover part of the small blind. The remaining {} has gone into a side pot.", small_blind_player.name, partial_blind_amount, side_pot_amount);
                 } else {
@@ -208,13 +208,13 @@ impl TexasHoldEm {
             if let Some(big_blind_player) = self.players.get_mut(big_blind_player_identifier) {
                 if big_blind_player.chips >= self.big_blind_amount {
                     println!("{} posted the big blind.", big_blind_player.name);
-                    big_blind_player.chips -= self.big_blind_amount;
-                    main_pot.amount = self.big_blind_amount;
+                    big_blind_player.subtract_chips(self.big_blind_amount);
+                    main_pot.amount += self.big_blind_amount;
                     main_pot.players = active_players.clone();
                 } else if big_blind_player.chips > 0 {
                     let partial_blind_amount = big_blind_player.chips;
                     big_blind_player.subtract_chips(partial_blind_amount);
-                    main_pot.amount = partial_blind_amount;
+                    main_pot.amount += partial_blind_amount;
                     main_pot.players = active_players.clone();
 
                     let side_pot_players: HashMap<Uuid, Player> = active_players
@@ -225,8 +225,8 @@ impl TexasHoldEm {
                         .map(|(&player_identifier, player)| (player_identifier, player.clone()))
                         .collect();
                     let side_pot_amount = self.big_blind_amount - partial_blind_amount;
-                    side_pot_0.amount = side_pot_amount;
-                    side_pot_0.players = side_pot_players;
+                    side_pot_0.amount += side_pot_amount;
+                    side_pot_0.players = side_pot_players; // todo
                     side_pots.push(side_pot_0.clone());
                     println!("{} posted {} to cover part of the big blind. The remaining {} has gone into a side pot.", big_blind_player.name, partial_blind_amount, side_pot_amount);
                 } else {
@@ -450,8 +450,8 @@ impl TexasHoldEm {
         &self,
         player_hands: &HashMap<Uuid, Hand>,
         table_cards: &Hand,
-    ) -> HashMap<Player, Vec<HandRank>> {
-        let mut leading_players: HashMap<Player, Vec<HandRank>> = HashMap::new();
+    ) -> HashMap<Uuid, Vec<HandRank>> {
+        let mut leading_players: HashMap<Uuid, Vec<HandRank>> = HashMap::new();
         let mut best_hand: Vec<(HandRank, &Hand)> = Vec::new();
 
         for (player_identifier, hand) in player_hands.iter() {
@@ -469,7 +469,7 @@ impl TexasHoldEm {
 
                 if best_hand.is_empty() {
                     best_hand.push((hand_rank, hand));
-                    leading_players.insert(player.clone(), hand_rank_vec);
+                    leading_players.insert(player.identifier.clone(), hand_rank_vec);
                     continue;
                 }
 
@@ -527,24 +527,24 @@ impl TexasHoldEm {
                             if current_hand_kicker.rank == best_hand_kicker.rank {
                                 best_hand.push((hand_rank, hand));
                                 hand_rank_vec.push(HandRank::HighCard(current_hand_kicker));
-                                leading_players.insert(player.clone(), hand_rank_vec);
+                                leading_players.insert(player.identifier.clone(), hand_rank_vec);
                             } else if current_hand_kicker.rank > best_hand_kicker.rank {
                                 best_hand.clear();
                                 best_hand.push((hand_rank, hand));
                                 leading_players.clear();
                                 hand_rank_vec.push(HandRank::HighCard(current_hand_kicker));
-                                leading_players.insert(player.clone(), hand_rank_vec);
+                                leading_players.insert(player.identifier.clone(), hand_rank_vec);
                             }
                         } else {
                             // If hands are still equal after considering the kicker, push the new hand.
                             best_hand.push((hand_rank, hand));
-                            leading_players.insert(player.clone(), hand_rank_vec);
+                            leading_players.insert(player.identifier.clone(), hand_rank_vec);
                         }
                     } else if hand_rank > *best_hand_rank {
                         best_hand.clear();
                         best_hand.push((hand_rank, hand));
                         leading_players.clear();
-                        leading_players.insert(player.clone(), hand_rank_vec);
+                        leading_players.insert(player.identifier.clone(), hand_rank_vec);
                     }
                 }
             } else {
@@ -561,70 +561,73 @@ impl TexasHoldEm {
     // todo: implement side pot logic
     fn determine_round_result(
         &mut self,
-        leading_players: &HashMap<Player, Vec<HandRank>>,
+        leading_players: &HashMap<Uuid, Vec<HandRank>>,
         main_pot: Pot,
         _side_pots: Vec<Pot>,
     ) {
         if leading_players.len() == 1 {
-            let (player, winning_hand_rank_vec): (&Player, &Vec<HandRank>) =
+            let (player_identifier, winning_hand_rank_vec): (&Uuid, &Vec<HandRank>) =
                 leading_players.iter().next().unwrap();
 
-            if winning_hand_rank_vec.len() > 1 {
-                println!(
-                    "{} wins with {} and {}",
-                    player.name, winning_hand_rank_vec[0], winning_hand_rank_vec[1]
-                );
-            } else {
-                println!(
-                    "{} wins with {}",
-                    player.name,
-                    winning_hand_rank_vec.last().unwrap()
-                );
-            }
+            if let Some(player) = self.players.get_mut(player_identifier) {
+                if winning_hand_rank_vec.len() > 1 {
+                    println!(
+                        "{} wins with {} and {}",
+                        player.name, winning_hand_rank_vec[0], winning_hand_rank_vec[1]
+                    );
+                } else {
+                    println!(
+                        "{} wins with {}",
+                        player.name,
+                        winning_hand_rank_vec.last().unwrap()
+                    );
+                }
 
-            // Allocate winnings from the main pot to the winner.
-            if let Some(winning_player) = self.players.get_mut(&player.identifier) {
-                winning_player.add_chips(main_pot.amount);
-                println!("{} collects {} chips", winning_player.name, main_pot.amount);
+                // Allocate winnings from the main pot to the winner.
+                player.add_chips(main_pot.amount);
+                println!("{} collects {} chips", player.name, main_pot.amount);
                 // todo: remove after testing
-                println!("{} has {} chips", winning_player.name, winning_player.chips);
+                println!("{} has {} chips", player.name, player.chips);
             } else {
-                eprintln!("Error: Unable to add chips to winning player's stack.");
+                eprintln!(
+                    "Error: Unable to get player with the id {}.",
+                    player_identifier
+                );
             }
         } else if leading_players.len() > 1 {
             // Divide the main pot equally for the multiple winners.
             // todo: Factor in how much stake in the main pot each winner has.
             // A player could have put in a lesser amount of chips and therefore a side pot would
             // be invoked.
-            // figure out what real poker does with uneven amounts to split
+            // todo: Figure out what real poker does with uneven amounts to split
             let divided_chips_amount = main_pot.amount / leading_players.len() as u32;
             // todo: remove after testing
             println!("divided chips amount: {}", divided_chips_amount);
 
-            for (player, tied_hand_rank) in leading_players.iter() {
-                if tied_hand_rank.len() > 1 {
-                    println!(
-                        "{} pushes with {} and {}",
-                        player.name, tied_hand_rank[0], tied_hand_rank[1]
-                    );
-
-                    // Allocate winnings from the main pot to the winner.
-                    if let Some(winning_player) = self.players.get_mut(&player.identifier) {
-                        winning_player.add_chips(divided_chips_amount);
+            for (player_identifier, tied_hand_rank) in leading_players.iter() {
+                if let Some(player) = self.players.get_mut(player_identifier) {
+                    if tied_hand_rank.len() > 1 {
                         println!(
-                            "{} collects {} chips",
-                            winning_player.name, divided_chips_amount
+                            "{} pushes with {} and {}",
+                            player.name, tied_hand_rank[0], tied_hand_rank[1]
                         );
+
+                        // Allocate winnings from the main pot to the winner.
+                        player.add_chips(divided_chips_amount);
+                        println!("{} collects {} chips", player.name, divided_chips_amount);
                         // todo: remove after testing
-                        println!("{} has {} chips", winning_player.name, winning_player.chips);
+                        println!("{} has {} chips", player.name, player.chips);
                     } else {
-                        eprintln!("Error: Unable to add chips to winning player's stack.");
+                        println!(
+                            "{} pushes with {}",
+                            player.name,
+                            tied_hand_rank.last().unwrap()
+                        );
                     }
                 } else {
-                    println!(
-                        "{} pushes with {}",
-                        player.name,
-                        tied_hand_rank.last().unwrap()
+                    eprintln!(
+                        "Error: Unable to get player with the id {}.",
+                        player_identifier
                     );
                 }
             }
@@ -697,26 +700,31 @@ mod tests {
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
+        game.add_player(player1.clone()).unwrap();
         let player1_cards: Vec<Card> = vec![five_of_clubs, nine_of_clubs];
         let player1_hand = Hand::new_from_cards(player1_cards);
         player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
+        game.add_player(player2.clone()).unwrap();
         let player2_cards: Vec<Card> = vec![two_of_hearts, ten_of_spades];
         let player2_hand = Hand::new_from_cards(player2_cards);
         player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
+        game.add_player(player3.clone()).unwrap();
         let player3_cards: Vec<Card> = vec![four_of_diamonds, queen_of_hearts];
         let player3_hand = Hand::new_from_cards(player3_cards);
         player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
+        game.add_player(player4.clone()).unwrap();
         let player4_cards: Vec<Card> = vec![ace_of_hearts, ace_of_spades];
         let player4_hand = Hand::new_from_cards(player4_cards);
         player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
+        game.add_player(player5.clone()).unwrap();
         let player5_cards: Vec<Card> = vec![six_of_diamonds, nine_of_hearts];
         let player5_hand = Hand::new_from_cards(player5_cards);
         player_hands.insert(player5.identifier, player5_hand);
@@ -724,8 +732,8 @@ mod tests {
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
         assert_eq!(leading_players.len(), 1);
-        assert!(leading_players.contains_key(&player1));
-        assert_eq!(leading_players.get(&player1).unwrap()[0], flush);
+        assert!(leading_players.contains_key(&player1.identifier));
+        assert_eq!(leading_players.get(&player1.identifier).unwrap()[0], flush);
     }
 
     /// Tests rank_all_hands().
@@ -765,11 +773,13 @@ mod tests {
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
+        game.add_player(player1.clone()).unwrap();
         let player1_cards: Vec<Card> = vec![nine_of_hearts, ace_of_spades];
         let player1_hand = Hand::new_from_cards(player1_cards);
         player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
+        game.add_player(player2.clone()).unwrap();
         let player2_cards: Vec<Card> = vec![nine_of_spades, six_of_diamonds];
         let player2_hand = Hand::new_from_cards(player2_cards);
         player_hands.insert(player2.identifier, player2_hand);
@@ -777,8 +787,11 @@ mod tests {
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
         assert_eq!(leading_players.len(), 1);
-        assert!(leading_players.contains_key(&player1));
-        assert_eq!(leading_players.get(&player1).unwrap()[0], two_pair1);
+        assert!(leading_players.contains_key(&player1.identifier));
+        assert_eq!(
+            leading_players.get(&player1.identifier).unwrap()[0],
+            two_pair1
+        );
     }
 
     /// Tests rank_all_hands().
@@ -818,11 +831,13 @@ mod tests {
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
+        game.add_player(player1.clone()).unwrap();
         let player1_cards: Vec<Card> = vec![ten_of_spades, ace_of_spades];
         let player1_hand = Hand::new_from_cards(player1_cards);
         player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
+        game.add_player(player2.clone()).unwrap();
         let player2_cards: Vec<Card> = vec![six_of_diamonds, ten_of_hearts];
         let player2_hand = Hand::new_from_cards(player2_cards);
         player_hands.insert(player2.identifier, player2_hand);
@@ -830,8 +845,11 @@ mod tests {
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
         assert_eq!(leading_players.len(), 1);
-        assert!(leading_players.contains_key(&player1));
-        assert_eq!(leading_players.get(&player1).unwrap()[0], two_pair1);
+        assert!(leading_players.contains_key(&player1.identifier));
+        assert_eq!(
+            leading_players.get(&player1.identifier).unwrap()[0],
+            two_pair1
+        );
     }
 
     /// Tests rank_all_hands().
@@ -877,26 +895,31 @@ mod tests {
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
+        game.add_player(player1.clone()).unwrap();
         let player1_cards: Vec<Card> = vec![two_of_diamonds, eight_of_spades];
         let player1_hand = Hand::new_from_cards(player1_cards);
         player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
+        game.add_player(player2.clone()).unwrap();
         let player2_cards: Vec<Card> = vec![two_of_hearts, ten_of_spades];
         let player2_hand = Hand::new_from_cards(player2_cards);
         player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
+        game.add_player(player3.clone()).unwrap();
         let player3_cards: Vec<Card> = vec![four_of_diamonds, queen_of_hearts];
         let player3_hand = Hand::new_from_cards(player3_cards);
         player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
+        game.add_player(player4.clone()).unwrap();
         let player4_cards: Vec<Card> = vec![ace_of_hearts, ace_of_spades];
         let player4_hand = Hand::new_from_cards(player4_cards);
         player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
+        game.add_player(player5.clone()).unwrap();
         let player5_cards: Vec<Card> = vec![six_of_diamonds, nine_of_hearts];
         let player5_hand = Hand::new_from_cards(player5_cards);
         player_hands.insert(player5.identifier, player5_hand);
@@ -904,11 +927,11 @@ mod tests {
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
         assert_eq!(leading_players.len(), 5);
-        assert_eq!(leading_players.get(&player1).unwrap()[0], flush);
-        assert_eq!(leading_players.get(&player2).unwrap()[0], flush);
-        assert_eq!(leading_players.get(&player3).unwrap()[0], flush);
-        assert_eq!(leading_players.get(&player4).unwrap()[0], flush);
-        assert_eq!(leading_players.get(&player5).unwrap()[0], flush);
+        assert_eq!(leading_players.get(&player1.identifier).unwrap()[0], flush);
+        assert_eq!(leading_players.get(&player2.identifier).unwrap()[0], flush);
+        assert_eq!(leading_players.get(&player3.identifier).unwrap()[0], flush);
+        assert_eq!(leading_players.get(&player4.identifier).unwrap()[0], flush);
+        assert_eq!(leading_players.get(&player5.identifier).unwrap()[0], flush);
     }
 
     /// Tests rank_all_hands().
@@ -962,26 +985,31 @@ mod tests {
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
+        game.add_player(player1.clone()).unwrap();
         let player1_cards: Vec<Card> = vec![five_of_clubs, eight_of_spades];
         let player1_hand = Hand::new_from_cards(player1_cards);
         player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
+        game.add_player(player2.clone()).unwrap();
         let player2_cards: Vec<Card> = vec![two_of_hearts, seven_of_clubs];
         let player2_hand = Hand::new_from_cards(player2_cards);
         player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
+        game.add_player(player3.clone()).unwrap();
         let player3_cards: Vec<Card> = vec![four_of_diamonds, queen_of_hearts];
         let player3_hand = Hand::new_from_cards(player3_cards);
         player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
+        game.add_player(player4.clone()).unwrap();
         let player4_cards: Vec<Card> = vec![ace_of_hearts, ace_of_spades];
         let player4_hand = Hand::new_from_cards(player4_cards);
         player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
+        game.add_player(player5.clone()).unwrap();
         let player5_cards: Vec<Card> = vec![six_of_diamonds, nine_of_hearts];
         let player5_hand = Hand::new_from_cards(player5_cards);
         player_hands.insert(player5.identifier, player5_hand);
@@ -989,13 +1017,13 @@ mod tests {
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
         assert_eq!(leading_players.len(), 2);
-        assert!(leading_players.contains_key(&player1));
-        assert!(leading_players.contains_key(&player2));
-        assert_eq!(leading_players.get(&player1).unwrap()[0], flush1);
-        assert_eq!(leading_players.get(&player2).unwrap()[0], flush2);
+        assert!(leading_players.contains_key(&player1.identifier));
+        assert!(leading_players.contains_key(&player2.identifier));
+        assert_eq!(leading_players.get(&player1.identifier).unwrap()[0], flush1);
+        assert_eq!(leading_players.get(&player2.identifier).unwrap()[0], flush2);
         assert_eq!(
-            *leading_players.get(&player1).unwrap(),
-            *leading_players.get(&player2).unwrap()
+            *leading_players.get(&player1.identifier).unwrap(),
+            *leading_players.get(&player2.identifier).unwrap()
         );
     }
 
@@ -1042,26 +1070,31 @@ mod tests {
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
+        game.add_player(player1.clone()).unwrap();
         let player1_cards: Vec<Card> = vec![three_of_clubs, four_of_hearts];
         let player1_hand = Hand::new_from_cards(player1_cards);
         player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
+        game.add_player(player2.clone()).unwrap();
         let player2_cards: Vec<Card> = vec![five_of_diamonds, six_of_clubs];
         let player2_hand = Hand::new_from_cards(player2_cards);
         player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
+        game.add_player(player3.clone()).unwrap();
         let player3_cards: Vec<Card> = vec![seven_of_spades, nine_of_spades];
         let player3_hand = Hand::new_from_cards(player3_cards);
         player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
+        game.add_player(player4.clone()).unwrap();
         let player4_cards: Vec<Card> = vec![two_of_diamonds, five_of_clubs];
         let player4_hand = Hand::new_from_cards(player4_cards);
         player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
+        game.add_player(player5.clone()).unwrap();
         let player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
         let player5_hand = Hand::new_from_cards(player5_cards);
         player_hands.insert(player5.identifier, player5_hand);
@@ -1069,11 +1102,26 @@ mod tests {
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
         assert_eq!(leading_players.len(), 5);
-        assert_eq!(leading_players.get(&player1).unwrap()[0], straight);
-        assert_eq!(leading_players.get(&player2).unwrap()[0], straight);
-        assert_eq!(leading_players.get(&player3).unwrap()[0], straight);
-        assert_eq!(leading_players.get(&player4).unwrap()[0], straight);
-        assert_eq!(leading_players.get(&player5).unwrap()[0], straight);
+        assert_eq!(
+            leading_players.get(&player1.identifier).unwrap()[0],
+            straight
+        );
+        assert_eq!(
+            leading_players.get(&player2.identifier).unwrap()[0],
+            straight
+        );
+        assert_eq!(
+            leading_players.get(&player3.identifier).unwrap()[0],
+            straight
+        );
+        assert_eq!(
+            leading_players.get(&player4.identifier).unwrap()[0],
+            straight
+        );
+        assert_eq!(
+            leading_players.get(&player5.identifier).unwrap()[0],
+            straight
+        );
     }
 
     /// Tests rank_all_hands().
@@ -1127,26 +1175,31 @@ mod tests {
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
+        game.add_player(player1.clone()).unwrap();
         let player1_cards: Vec<Card> = vec![four_of_hearts, ten_of_diamonds];
         let player1_hand = Hand::new_from_cards(player1_cards);
         player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
+        game.add_player(player2.clone()).unwrap();
         let player2_cards: Vec<Card> = vec![five_of_diamonds, ten_of_hearts];
         let player2_hand = Hand::new_from_cards(player2_cards);
         player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
+        game.add_player(player3.clone()).unwrap();
         let player3_cards: Vec<Card> = vec![seven_of_spades, nine_of_spades];
         let player3_hand = Hand::new_from_cards(player3_cards);
         player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
+        game.add_player(player4.clone()).unwrap();
         let player4_cards: Vec<Card> = vec![two_of_diamonds, five_of_clubs];
         let player4_hand = Hand::new_from_cards(player4_cards);
         player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
+        game.add_player(player5.clone()).unwrap();
         let player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
         let player5_hand = Hand::new_from_cards(player5_cards);
         player_hands.insert(player5.identifier, player5_hand);
@@ -1154,13 +1207,19 @@ mod tests {
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
         assert_eq!(leading_players.len(), 2);
-        assert!(leading_players.contains_key(&player1));
-        assert!(leading_players.contains_key(&player2));
-        assert_eq!(leading_players.get(&player1).unwrap()[0], straight1);
-        assert_eq!(leading_players.get(&player2).unwrap()[0], straight2);
+        assert!(leading_players.contains_key(&player1.identifier));
+        assert!(leading_players.contains_key(&player2.identifier));
         assert_eq!(
-            *leading_players.get(&player1).unwrap(),
-            *leading_players.get(&player2).unwrap()
+            leading_players.get(&player1.identifier).unwrap()[0],
+            straight1
+        );
+        assert_eq!(
+            leading_players.get(&player2.identifier).unwrap()[0],
+            straight2
+        );
+        assert_eq!(
+            *leading_players.get(&player1.identifier).unwrap(),
+            *leading_players.get(&player2.identifier).unwrap()
         );
     }
 
@@ -1207,26 +1266,31 @@ mod tests {
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
+        game.add_player(player1.clone()).unwrap();
         let player1_cards: Vec<Card> = vec![ten_of_diamonds, ace_of_hearts];
         let player1_hand = Hand::new_from_cards(player1_cards);
         player_hands.insert(player1.identifier, player1_hand);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
+        game.add_player(player2.clone()).unwrap();
         let player2_cards: Vec<Card> = vec![six_of_spades, jack_of_clubs];
         let player2_hand = Hand::new_from_cards(player2_cards);
         player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
+        game.add_player(player3.clone()).unwrap();
         let player3_cards: Vec<Card> = vec![nine_of_spades, ten_of_hearts];
         let player3_hand = Hand::new_from_cards(player3_cards);
         player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
+        game.add_player(player4.clone()).unwrap();
         let player4_cards: Vec<Card> = vec![five_of_clubs, queen_of_spades];
         let player4_hand = Hand::new_from_cards(player4_cards);
         player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
+        game.add_player(player5.clone()).unwrap();
         let player5_cards: Vec<Card> = vec![jack_of_hearts, jack_of_spades];
         let player5_hand = Hand::new_from_cards(player5_cards);
         player_hands.insert(player5.identifier, player5_hand);
@@ -1234,9 +1298,12 @@ mod tests {
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
         assert_eq!(leading_players.len(), 1);
-        assert!(!leading_players.contains_key(&player1));
-        assert!(leading_players.contains_key(&player2));
-        assert_eq!(leading_players.get(&player2).unwrap()[0], straight);
+        assert!(!leading_players.contains_key(&player1.identifier));
+        assert!(leading_players.contains_key(&player2.identifier));
+        assert_eq!(
+            leading_players.get(&player2.identifier).unwrap()[0],
+            straight
+        );
     }
 
     /// Tests rank_all_hands().
@@ -1278,31 +1345,37 @@ mod tests {
         let table_cards = Hand::new_from_cards(table_cards);
 
         let player2 = game.new_player_with_chips("Player 2", 100);
+        game.add_player(player2.clone()).unwrap();
         let player2_cards: Vec<Card> = vec![jack_of_spades, nine_of_spades];
         let player2_hand = Hand::new_from_cards(player2_cards);
         player_hands.insert(player2.identifier, player2_hand);
 
         let player3 = game.new_player_with_chips("Player 3", 100);
+        game.add_player(player3.clone()).unwrap();
         let player3_cards: Vec<Card> = vec![nine_of_clubs, four_of_clubs];
         let player3_hand = Hand::new_from_cards(player3_cards);
         player_hands.insert(player3.identifier, player3_hand);
 
         let player4 = game.new_player_with_chips("Player 4", 100);
+        game.add_player(player4.clone()).unwrap();
         let player4_cards: Vec<Card> = vec![six_of_clubs, ten_of_spades];
         let player4_hand = Hand::new_from_cards(player4_cards);
         player_hands.insert(player4.identifier, player4_hand);
 
         let player5 = game.new_player_with_chips("Player 5", 100);
+        game.add_player(player5.clone()).unwrap();
         let player5_cards: Vec<Card> = vec![seven_of_hearts, queen_of_hearts];
         let player5_hand = Hand::new_from_cards(player5_cards);
         player_hands.insert(player5.identifier, player5_hand);
 
         let player6 = game.new_player_with_chips("Player 6", 100);
+        game.add_player(player6.clone()).unwrap();
         let player6_cards: Vec<Card> = vec![ten_of_diamonds, ten_of_clubs];
         let player6_hand = Hand::new_from_cards(player6_cards);
         player_hands.insert(player6.identifier, player6_hand);
 
         let player1 = game.new_player_with_chips("Player 1", 100);
+        game.add_player(player1.clone()).unwrap();
         let player1_cards: Vec<Card> = vec![king_of_diamonds, ace_of_hearts];
         let player1_hand = Hand::new_from_cards(player1_cards);
         player_hands.insert(player1.identifier, player1_hand);
@@ -1310,29 +1383,7 @@ mod tests {
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
         assert_eq!(leading_players.len(), 1);
-        assert!(leading_players.contains_key(&player1));
-        assert_eq!(leading_players.get(&player1).unwrap()[0], pair);
-    }
-
-    // todo: remove after testing
-    #[test]
-    fn play_game() {
-        let mut texas_hold_em_1_3_no_limit = TexasHoldEm::new(1, 3, false);
-
-        let user_name = "Winston";
-        let player1 = texas_hold_em_1_3_no_limit.new_player(&user_name);
-        texas_hold_em_1_3_no_limit.add_player(player1);
-        let player2 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 2", 100);
-        texas_hold_em_1_3_no_limit.add_player(player2);
-        let player3 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 3", 100);
-        texas_hold_em_1_3_no_limit.add_player(player3);
-        let player4 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 4", 100);
-        texas_hold_em_1_3_no_limit.add_player(player4);
-        let player5 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 5", 100);
-        texas_hold_em_1_3_no_limit.add_player(player5);
-        let player6 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 6", 100);
-        texas_hold_em_1_3_no_limit.add_player(player6);
-
-        texas_hold_em_1_3_no_limit.play_tournament();
+        assert!(leading_players.contains_key(&player1.identifier));
+        assert_eq!(leading_players.get(&player1.identifier).unwrap()[0], pair);
     }
 }
