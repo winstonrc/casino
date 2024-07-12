@@ -29,7 +29,11 @@ impl Player {
         }
     }
 
-    pub fn update_chips(&mut self, chips: u32) {
+    pub fn add_chips(&mut self, chips: u32) {
         self.chips += chips;
+    }
+
+    pub fn subtract_chips(&mut self, chips: u32) {
+        self.chips -= chips;
     }
 }
