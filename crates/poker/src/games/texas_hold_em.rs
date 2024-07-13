@@ -25,6 +25,8 @@ pub struct TexasHoldEm {
     small_blind_amount: u32,
     big_blind_amount: u32,
     limit: bool, // todo: implement
+    main_pot: Pot,
+    side_pots: Vec<Pot>,
 }
 
 impl TexasHoldEm {
@@ -38,6 +40,8 @@ impl TexasHoldEm {
             small_blind_amount,
             big_blind_amount,
             limit,
+            main_pot: Pot::new(0, HashMap::new()),
+            side_pots: Vec::new(),
         }
     }
 
@@ -149,7 +153,7 @@ impl TexasHoldEm {
 
     // todo: implement betting system
     // todo: implement folding
-    // todo: implement side pot
+    // todo: implement side pot correctly
     // todo: implement hand timer
     /// Play a single round.
     pub fn play_round(&mut self, dealer_seat_index: usize) {
@@ -157,132 +161,17 @@ impl TexasHoldEm {
 
         self.print_player_stats();
 
-        let active_players: HashMap<Uuid, Player> = self.players.clone();
-        let mut side_pots: Vec<Pot> = Vec::new();
-        let mut main_pot: Pot = Pot::new(0, active_players.clone());
-        let mut side_pot_0: Pot = Pot::new(0, HashMap::new());
+        self.add_players_to_main_pot();
 
-        // Dealer
-        if let Some(dealer_identifier) = self.seats.get(dealer_seat_index) {
-            if let Some(dealer) = self.players.get_mut(dealer_identifier) {
-                println!("{} is the dealer.", dealer.name);
-            } else {
-                eprintln!(
-                    "Error: Unable to find the dealer with the id {}",
-                    dealer_identifier
-                );
-            }
-        } else {
-            eprintln!(
-                "Error: Unable to find the dealer at the seat {}",
-                dealer_seat_index
-            );
-        }
+        self.print_dealer(dealer_seat_index);
 
-        // todo: refactor small blind into separate function
-        // Small Blind
         let small_blind_seat_index = (dealer_seat_index + 1) % self.seats.len();
-        if let Some(small_blind_player_identifier) = self.seats.get(small_blind_seat_index) {
-            if let Some(small_blind_player) = self.players.get_mut(small_blind_player_identifier) {
-                if small_blind_player.chips >= self.small_blind_amount {
-                    println!(
-                        "{} posted the small blind with {} chip{}.",
-                        small_blind_player.name,
-                        self.small_blind_amount,
-                        if self.small_blind_amount == 1 {
-                            ""
-                        } else {
-                            "s"
-                        }
-                    );
+        self.post_blind(small_blind_seat_index, true);
 
-                    small_blind_player.subtract_chips(self.small_blind_amount);
-                    main_pot.amount += self.small_blind_amount;
-                    main_pot.players = active_players.clone();
-                } else if small_blind_player.chips > 0 {
-                    let partial_blind_amount = small_blind_player.chips;
-                    small_blind_player.subtract_chips(partial_blind_amount);
-                    main_pot.amount += partial_blind_amount;
-                    main_pot.players = active_players.clone();
-
-                    let side_pot_players: HashMap<Uuid, Player> = active_players
-                        .iter()
-                        .filter(|(player_identifier, _)| {
-                            *player_identifier != small_blind_player_identifier
-                        })
-                        .map(|(&player_identifier, player)| (player_identifier, player.clone()))
-                        .collect();
-                    let side_pot_amount = self.small_blind_amount - partial_blind_amount;
-                    side_pot_0.amount += side_pot_amount;
-                    side_pot_0.players = side_pot_players; // todo
-                    side_pots.push(side_pot_0.clone());
-                    println!("{} posted {} to cover part of the small blind. The remaining {} has gone into a side pot.", small_blind_player.name, partial_blind_amount, side_pot_amount);
-                } else {
-                    eprintln!("Error: The small blind player has no chips and should not be playing this hand.");
-                }
-            } else {
-                eprintln!(
-                    "Error: Unable to find player with the id {}",
-                    small_blind_player_identifier
-                );
-            }
-        } else {
-            eprintln!(
-                "Error: Unable to find player at the seat {}",
-                small_blind_seat_index
-            );
-        }
-
-        // todo: refactor small blind into separate function
-        // Big Blind
         let big_blind_seat_index = (dealer_seat_index + 2) % self.seats.len();
-        if let Some(big_blind_player_identifier) = self.seats.get(big_blind_seat_index) {
-            if let Some(big_blind_player) = self.players.get_mut(big_blind_player_identifier) {
-                if big_blind_player.chips >= self.big_blind_amount {
-                    println!(
-                        "{} posted the big blind with {} chip{}.",
-                        big_blind_player.name,
-                        self.big_blind_amount,
-                        if self.big_blind_amount == 1 { "" } else { "s" }
-                    );
+        self.post_blind(big_blind_seat_index, false);
 
-                    big_blind_player.subtract_chips(self.big_blind_amount);
-                    main_pot.amount += self.big_blind_amount;
-                    main_pot.players = active_players.clone();
-                } else if big_blind_player.chips > 0 {
-                    let partial_blind_amount = big_blind_player.chips;
-                    big_blind_player.subtract_chips(partial_blind_amount);
-                    main_pot.amount += partial_blind_amount;
-                    main_pot.players = active_players.clone();
-
-                    let side_pot_players: HashMap<Uuid, Player> = active_players
-                        .iter()
-                        .filter(|(player_identifier, _)| {
-                            *player_identifier != big_blind_player_identifier
-                        })
-                        .map(|(&player_identifier, player)| (player_identifier, player.clone()))
-                        .collect();
-                    let side_pot_amount = self.big_blind_amount - partial_blind_amount;
-                    side_pot_0.amount += side_pot_amount;
-                    side_pot_0.players = side_pot_players; // todo
-                    side_pots.push(side_pot_0.clone());
-                    println!("{} posted {} to cover part of the big blind. The remaining {} has gone into a side pot.", big_blind_player.name, partial_blind_amount, side_pot_amount);
-                } else {
-                    eprintln!("Error: The small blind player has no chips and should not be playing this hand.");
-                }
-            } else {
-                eprintln!(
-                    "Error: Unable to find player with the id {}",
-                    big_blind_player_identifier
-                );
-            }
-        } else {
-            eprintln!(
-                "Error: Unable to find player at the seat {}",
-                big_blind_seat_index
-            );
-        }
-
+        // Initializing these as Hand because it is a Vec<Card> that can print as symbols if needed
         let mut table_cards = Hand::new();
         let mut burned_cards = Hand::new();
 
@@ -366,25 +255,11 @@ impl TexasHoldEm {
 
         // Post-round
         let winning_players = self.rank_all_hands(&player_hands, &table_cards);
-        self.determine_round_result(&winning_players, dealer_seat_index, main_pot, side_pots);
+        self.determine_round_result(&winning_players, dealer_seat_index);
 
-        // Return cards from hands to the deck
-        for (_player, hand) in player_hands.iter() {
-            if let (Some(card1), Some(card2)) = (hand.cards.first(), hand.cards.last()) {
-                self.deck.insert_at_top(*card1).unwrap();
-                self.deck.insert_at_top(*card2).unwrap();
-            }
-        }
+        self.reset_deck(player_hands, table_cards, burned_cards);
 
-        // Return cards from the table to the deck
-        for card in table_cards.get_cards() {
-            self.deck.insert_at_top(*card).unwrap();
-        }
-
-        // Return cards from the burned pile to the deck
-        for card in burned_cards.get_cards() {
-            self.deck.insert_at_top(*card).unwrap();
-        }
+        self.reset_pots();
     }
 
     /// Print statistics about the players currently seated at the table.
@@ -400,6 +275,94 @@ impl TexasHoldEm {
             }
         }
         println!();
+    }
+
+    fn add_players_to_main_pot(&mut self) {
+        for (identifier, player) in self.players.clone() {
+            self.main_pot.add_player(identifier, player);
+        }
+    }
+
+    fn print_dealer(&self, dealer_seat_index: usize) {
+        if let Some(dealer_identifier) = self.seats.get(dealer_seat_index) {
+            if let Some(dealer) = self.players.get(dealer_identifier) {
+                println!("{} is the dealer.", dealer.name);
+            } else {
+                eprintln!(
+                    "Error: Unable to find the dealer with the id {}",
+                    dealer_identifier
+                );
+            }
+        } else {
+            eprintln!(
+                "Error: Unable to find the dealer at the seat {}",
+                dealer_seat_index
+            );
+        }
+    }
+
+    pub fn post_blind(&mut self, seat_index: usize, is_small_blind: bool) {
+        if let Some(player_identifier) = self.seats.get(seat_index) {
+            if let Some(player) = self.players.get_mut(player_identifier) {
+                let blind_amount = if is_small_blind {
+                    self.small_blind_amount
+                } else {
+                    self.big_blind_amount
+                };
+
+                if player.chips >= blind_amount {
+                    println!(
+                        "{} posted the {} blind with {} chip{}.",
+                        player.name,
+                        if is_small_blind { "small" } else { "big" },
+                        blind_amount,
+                        if blind_amount == 1 { "" } else { "s" }
+                    );
+
+                    player.subtract_chips(blind_amount);
+                    self.main_pot.add_chips(blind_amount);
+                } else if player.chips > 0 {
+                    let partial_blind_amount = player.chips;
+                    player.subtract_chips(partial_blind_amount);
+                    self.main_pot.add_chips(partial_blind_amount);
+
+                    // todo: Should this be cloning the main pot's players?
+                    // What if the small blind didn't have enough chips to cover.
+                    // They probably shouldn't be included if this were triggered again for the big blind.
+                    // Handling side pot creation
+                    let side_pot_players: HashMap<Uuid, Player> = self
+                        .main_pot
+                        .players
+                        .clone()
+                        .iter()
+                        .filter(|(&id, _)| id != *player_identifier)
+                        .map(|(&id, player)| (id, player.clone()))
+                        .collect();
+                    let side_pot_amount = blind_amount - partial_blind_amount;
+                    let side_pot = Pot::new(side_pot_amount, side_pot_players);
+                    self.side_pots.push(side_pot);
+
+                    println!(
+                        "{} posted {} to cover part of the {} blind. The remaining {} has gone into a side pot.",
+                        player.name,
+                        partial_blind_amount,
+                        if is_small_blind { "small" } else { "big" },
+                        side_pot_amount
+                    );
+                } else {
+                    eprintln!(
+                        "Error: The player has no chips and should not be playing this hand."
+                    );
+                }
+            } else {
+                eprintln!(
+                    "Error: Unable to find player with the id {}",
+                    player_identifier
+                );
+            }
+        } else {
+            eprintln!("Error: Unable to find player at seat {}", seat_index);
+        }
     }
 
     /// Deal hands of two cards to every player starting with the player to the left of the dealer.
@@ -629,8 +592,6 @@ impl TexasHoldEm {
         &mut self,
         winning_players: &HashMap<Uuid, Vec<HandRank>>,
         dealer_seat_index: usize,
-        main_pot: Pot,
-        _side_pots: Vec<Pot>,
     ) {
         match winning_players.len() {
             1 => {
@@ -652,12 +613,14 @@ impl TexasHoldEm {
                         }
 
                         // Allocate winnings from the main pot to the winner.
-                        player.add_chips(main_pot.amount);
+                        let main_pot_chips: u32 = self.main_pot.distribute_all_chips();
+                        player.add_chips(main_pot_chips);
+
                         println!(
                             "{} wins {} chip{}.",
                             player.name,
-                            main_pot.amount,
-                            if main_pot.amount == 1 { "" } else { "s" }
+                            main_pot_chips,
+                            if main_pot_chips == 1 { "" } else { "s" }
                         );
                     } else {
                         eprintln!(
@@ -681,8 +644,9 @@ impl TexasHoldEm {
                     }
                 };
 
-                let divided_chips_amount = main_pot.amount / player_count;
-                let remainder_chips_amount = main_pot.amount % player_count;
+                let main_pot_chips: u32 = self.main_pot.distribute_all_chips();
+                let divided_chips_amount = main_pot_chips / player_count;
+                let remainder_chips_amount = main_pot_chips % player_count;
                 // Create a vector to store the total chips each player will receive.
                 let mut total_chips = vec![divided_chips_amount; winning_players.len()];
 
@@ -744,6 +708,37 @@ impl TexasHoldEm {
             }
         }
     }
+
+    /// Returns all the cards to the deck.
+    fn reset_deck(
+        &mut self,
+        player_hands: HashMap<Uuid, Hand>,
+        table_cards: Hand,
+        burned_cards: Hand,
+    ) {
+        for (_player, hand) in player_hands.iter() {
+            if let (Some(card1), Some(card2)) = (hand.cards.first(), hand.cards.last()) {
+                self.deck.insert_at_top(*card1).unwrap();
+                self.deck.insert_at_top(*card2).unwrap();
+            }
+        }
+
+        // Return cards from the table to the deck
+        for card in table_cards.get_cards() {
+            self.deck.insert_at_top(*card).unwrap();
+        }
+
+        // Return cards from the burned pile to the deck
+        for card in burned_cards.get_cards() {
+            self.deck.insert_at_top(*card).unwrap();
+        }
+    }
+
+    /// Resets the main pot and all side pots to be empty.
+    fn reset_pots(&mut self) {
+        self.main_pot = Pot::new(0, HashMap::new());
+        self.side_pots = Vec::new();
+    }
 }
 
 /// The Pot manages how many chips have been bet and who the winnings should be allocated to.
@@ -756,6 +751,20 @@ struct Pot {
 impl Pot {
     fn new(amount: u32, players: HashMap<Uuid, Player>) -> Self {
         Self { amount, players }
+    }
+
+    fn add_player(&mut self, identifier: Uuid, player: Player) {
+        self.players.insert(identifier, player);
+    }
+
+    fn add_chips(&mut self, chips: u32) {
+        self.amount += chips;
+    }
+
+    fn distribute_all_chips(&mut self) -> u32 {
+        let chips = self.amount;
+        self.amount = 0;
+        chips
     }
 }
 
