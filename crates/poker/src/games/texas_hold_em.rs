@@ -105,14 +105,14 @@ impl TexasHoldEm {
 
     /// Play a tournament consisting of multiple rounds.
     pub fn play_tournament(&mut self) {
-        let mut dealer: usize = 0;
+        let mut dealer_seat_index: usize = 0;
 
         while !self.game_over {
-            self.play_round(dealer);
+            self.play_round(dealer_seat_index);
             self.remove_losers();
             self.check_for_game_over();
 
-            dealer = (dealer + 1) % self.seats.len();
+            dealer_seat_index = (dealer_seat_index + 1) % self.seats.len();
         }
 
         println!("Game over. Thanks for playing!");
@@ -152,7 +152,7 @@ impl TexasHoldEm {
     // todo: implement side pot
     // todo: implement hand timer
     /// Play a single round.
-    pub fn play_round(&mut self, dealer: usize) {
+    pub fn play_round(&mut self, dealer_seat_index: usize) {
         self.deck.shuffle();
 
         self.print_player_stats();
@@ -162,8 +162,26 @@ impl TexasHoldEm {
         let mut main_pot: Pot = Pot::new(0, active_players.clone());
         let mut side_pot_0: Pot = Pot::new(0, HashMap::new());
 
+        // Dealer
+        if let Some(dealer_identifier) = self.seats.get(dealer_seat_index) {
+            if let Some(dealer) = self.players.get_mut(dealer_identifier) {
+                println!("{} is the dealer.", dealer.name);
+            } else {
+                eprintln!(
+                    "Error: Unable to find the dealer with the id {}",
+                    dealer_identifier
+                );
+            }
+        } else {
+            eprintln!(
+                "Error: Unable to find the dealer at the seat {}",
+                dealer_seat_index
+            );
+        }
+
         // todo: refactor small blind into separate function
-        let small_blind_seat_index = (dealer + 1) % self.seats.len();
+        // Small Blind
+        let small_blind_seat_index = (dealer_seat_index + 1) % self.seats.len();
         if let Some(small_blind_player_identifier) = self.seats.get(small_blind_seat_index) {
             if let Some(small_blind_player) = self.players.get_mut(small_blind_player_identifier) {
                 if small_blind_player.chips >= self.small_blind_amount {
@@ -216,7 +234,8 @@ impl TexasHoldEm {
         }
 
         // todo: refactor small blind into separate function
-        let big_blind_seat_index = (dealer + 2) % self.seats.len();
+        // Big Blind
+        let big_blind_seat_index = (dealer_seat_index + 2) % self.seats.len();
         if let Some(big_blind_player_identifier) = self.seats.get(big_blind_seat_index) {
             if let Some(big_blind_player) = self.players.get_mut(big_blind_player_identifier) {
                 if big_blind_player.chips >= self.big_blind_amount {
@@ -267,7 +286,7 @@ impl TexasHoldEm {
         let mut table_cards = Hand::new();
         let mut burned_cards = Hand::new();
 
-        let player_hands = self.deal_hands_to_all_players(dealer);
+        let player_hands = self.deal_hands_to_all_players(dealer_seat_index);
 
         let mut round_over = false;
         while !round_over {
@@ -347,7 +366,7 @@ impl TexasHoldEm {
 
         // Post-round
         let winning_players = self.rank_all_hands(&player_hands, &table_cards);
-        self.determine_round_result(&winning_players, main_pot, side_pots);
+        self.determine_round_result(&winning_players, dealer_seat_index, main_pot, side_pots);
 
         // Return cards from hands to the deck
         for (_player, hand) in player_hands.iter() {
@@ -609,6 +628,7 @@ impl TexasHoldEm {
     fn determine_round_result(
         &mut self,
         winning_players: &HashMap<Uuid, Vec<HandRank>>,
+        dealer_seat_index: usize,
         main_pot: Pot,
         _side_pots: Vec<Pot>,
     ) {
@@ -649,15 +669,45 @@ impl TexasHoldEm {
             }
             n if n > 1 => {
                 // Divide the main pot equally for the multiple winners.
-                let divided_chips_amount = main_pot.amount
-                    / match u32::try_from(winning_players.len()) {
-                        Ok(number) => number,
-                        Err(error) => {
-                            panic!("Couldn't convert {} to u32: {error}", winning_players.len())
-                        }
-                    };
+                // In the event of a pot that cannot be split equally, the additional chips are allocated
+                // to each player starting with the first winning player to the left of the dealer.
+                // The winning players are already ordered starting from the left of the dealer,
+                // which helps when allocating uneven winnings.
 
-                for (player_identifier, tied_hand_rank) in winning_players.iter() {
+                let player_count = match u32::try_from(winning_players.len()) {
+                    Ok(number) => number,
+                    Err(error) => {
+                        panic!("Couldn't convert {} to u32: {error}", winning_players.len())
+                    }
+                };
+
+                let divided_chips_amount = main_pot.amount / player_count;
+                let remainder_chips_amount = main_pot.amount % player_count;
+                // Create a vector to store the total chips each player will receive.
+                let mut total_chips = vec![divided_chips_amount; winning_players.len()];
+
+                // Distribute the remainder starting from the first winning player to the left of the dealer.
+                for i in 0..remainder_chips_amount {
+                    total_chips[i as usize] += 1;
+                }
+
+                // Create a map to store the position of each player
+                let mut player_positions = HashMap::new();
+                for (index, &seat) in self.seats.iter().enumerate() {
+                    player_positions.insert(seat, index);
+                }
+
+                // Sort the winning players based on their positions relative to the dealer
+                let mut sorted_winning_players: Vec<_> = winning_players.iter().collect();
+                sorted_winning_players.sort_by_key(|(player_id, _)| {
+                    let pos = player_positions.get(player_id).unwrap();
+                    (*pos + self.seats.len() - (dealer_seat_index + 1)) % self.seats.len()
+                });
+
+                // Allocate the calculated total amount of chips to each player and print the result.
+                for (i, (player_identifier, tied_hand_rank)) in
+                    sorted_winning_players.iter().enumerate()
+                {
                     if let Some(player) = self.players.get_mut(player_identifier) {
                         if tied_hand_rank.len() > 1 {
                             println!(
@@ -673,12 +723,13 @@ impl TexasHoldEm {
                         }
 
                         // Allocate winnings from the main pot to the winner.
-                        player.add_chips(divided_chips_amount);
+                        let chips_won = total_chips[i];
+                        player.add_chips(chips_won);
                         println!(
                             "{} wins {} chip{}.",
                             player.name,
-                            divided_chips_amount,
-                            if divided_chips_amount == 1 { "" } else { "s" }
+                            chips_won,
+                            if chips_won == 1 { "" } else { "s" }
                         );
                     } else {
                         eprintln!(
