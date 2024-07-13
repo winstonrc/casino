@@ -167,17 +167,16 @@ impl TexasHoldEm {
         if let Some(small_blind_player_identifier) = self.seats.get(small_blind_seat_index) {
             if let Some(small_blind_player) = self.players.get_mut(small_blind_player_identifier) {
                 if small_blind_player.chips >= self.small_blind_amount {
-                    if self.small_blind_amount == 1 {
-                        println!(
-                            "{} posted the small blind with {} chip.",
-                            small_blind_player.name, self.small_blind_amount
-                        );
-                    } else {
-                        println!(
-                            "{} posted the small blind with {} chips.",
-                            small_blind_player.name, self.small_blind_amount
-                        );
-                    }
+                    println!(
+                        "{} posted the small blind with {} chip{}.",
+                        small_blind_player.name,
+                        self.small_blind_amount,
+                        if self.small_blind_amount == 1 {
+                            ""
+                        } else {
+                            "s"
+                        }
+                    );
 
                     small_blind_player.subtract_chips(self.small_blind_amount);
                     main_pot.amount += self.small_blind_amount;
@@ -221,17 +220,12 @@ impl TexasHoldEm {
         if let Some(big_blind_player_identifier) = self.seats.get(big_blind_seat_index) {
             if let Some(big_blind_player) = self.players.get_mut(big_blind_player_identifier) {
                 if big_blind_player.chips >= self.big_blind_amount {
-                    if self.big_blind_amount == 1 {
-                        println!(
-                            "{} posted the big blind with {} chip.",
-                            big_blind_player.name, self.big_blind_amount
-                        );
-                    } else {
-                        println!(
-                            "{} posted the big blind with {} chips.",
-                            big_blind_player.name, self.big_blind_amount
-                        );
-                    }
+                    println!(
+                        "{} posted the big blind with {} chip{}.",
+                        big_blind_player.name,
+                        self.big_blind_amount,
+                        if self.big_blind_amount == 1 { "" } else { "s" }
+                    );
 
                     big_blind_player.subtract_chips(self.big_blind_amount);
                     main_pot.amount += self.big_blind_amount;
@@ -378,11 +372,12 @@ impl TexasHoldEm {
     fn print_player_stats(&self) {
         for player_identifier in &self.seats {
             if let Some(player) = self.players.get(player_identifier) {
-                if player.chips == 1 {
-                    println!("{}: {} chip", player.name, player.chips);
-                } else {
-                    println!("{}: {} chips", player.name, player.chips);
-                }
+                println!(
+                    "{}: {} chip{}",
+                    player.name,
+                    player.chips,
+                    if player.chips == 1 { "" } else { "s" }
+                );
             }
         }
         println!();
@@ -639,7 +634,7 @@ impl TexasHoldEm {
                         // Allocate winnings from the main pot to the winner.
                         player.add_chips(main_pot.amount);
                         println!(
-                            "{} won {} chip{}.",
+                            "{} wins {} chip{}.",
                             player.name,
                             main_pot.amount,
                             if main_pot.amount == 1 { "" } else { "s" }
@@ -654,7 +649,13 @@ impl TexasHoldEm {
             }
             n if n > 1 => {
                 // Divide the main pot equally for the multiple winners.
-                let divided_chips_amount = main_pot.amount / winning_players.len() as u32;
+                let divided_chips_amount = main_pot.amount
+                    / match u32::try_from(winning_players.len()) {
+                        Ok(number) => number,
+                        Err(error) => {
+                            panic!("Couldn't convert {} to u32: {error}", winning_players.len())
+                        }
+                    };
 
                 for (player_identifier, tied_hand_rank) in winning_players.iter() {
                     if let Some(player) = self.players.get_mut(player_identifier) {
@@ -674,7 +675,7 @@ impl TexasHoldEm {
                         // Allocate winnings from the main pot to the winner.
                         player.add_chips(divided_chips_amount);
                         println!(
-                            "{} won {} chip{}.",
+                            "{} wins {} chip{}.",
                             player.name,
                             divided_chips_amount,
                             if divided_chips_amount == 1 { "" } else { "s" }
