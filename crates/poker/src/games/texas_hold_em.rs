@@ -155,12 +155,14 @@ impl TexasHoldEm {
     pub fn play_round(&mut self, dealer: usize) {
         self.deck.shuffle();
 
+        self.print_player_stats();
+
         let active_players: HashMap<Uuid, Player> = self.players.clone();
         let mut side_pots: Vec<Pot> = Vec::new();
         let mut main_pot: Pot = Pot::new(0, active_players.clone());
         let mut side_pot_0: Pot = Pot::new(0, HashMap::new());
 
-        // todo: implement small blind & big blind
+        // todo: refactor small blind into separate function
         let small_blind_seat_index = (dealer + 1) % self.seats.len();
         if let Some(small_blind_player_identifier) = self.seats.get(small_blind_seat_index) {
             if let Some(small_blind_player) = self.players.get_mut(small_blind_player_identifier) {
@@ -214,6 +216,7 @@ impl TexasHoldEm {
             );
         }
 
+        // todo: refactor small blind into separate function
         let big_blind_seat_index = (dealer + 2) % self.seats.len();
         if let Some(big_blind_player_identifier) = self.seats.get(big_blind_seat_index) {
             if let Some(big_blind_player) = self.players.get_mut(big_blind_player_identifier) {
@@ -349,8 +352,8 @@ impl TexasHoldEm {
         }
 
         // Post-round
-        let leading_players = self.rank_all_hands(&player_hands, &table_cards);
-        self.determine_round_result(&leading_players, main_pot, side_pots);
+        let winning_players = self.rank_all_hands(&player_hands, &table_cards);
+        self.determine_round_result(&winning_players, main_pot, side_pots);
 
         // Return cards from hands to the deck
         for (_player, hand) in player_hands.iter() {
@@ -371,33 +374,18 @@ impl TexasHoldEm {
         }
     }
 
-    /// Deals a single card.
-    fn deal_card(&mut self) -> Option<Card> {
-        // todo: change to deck.deal_face_down for all other players after testing is completed.
-        if let Some(card) = self.deck.deal_face_up() {
-            return Some(card);
+    /// Print statistics about the players currently seated at the table.
+    fn print_player_stats(&self) {
+        for player_identifier in &self.seats {
+            if let Some(player) = self.players.get(player_identifier) {
+                if player.chips == 1 {
+                    println!("{}: {} chip", player.name, player.chips);
+                } else {
+                    println!("{}: {} chips", player.name, player.chips);
+                }
+            }
         }
-
-        None
-    }
-
-    /// Deal a hand of two cards.
-    fn deal_hand(&mut self) -> Option<Hand> {
-        let mut hand = Hand::new();
-
-        if let Some(card1) = self.deal_card() {
-            hand.push(card1);
-        } else {
-            return None;
-        }
-
-        if let Some(card2) = self.deal_card() {
-            hand.push(card2);
-        } else {
-            return None;
-        }
-
-        Some(hand)
+        println!();
     }
 
     /// Deal hands of two cards to every player starting with the player to the left of the dealer.
@@ -413,6 +401,7 @@ impl TexasHoldEm {
             if let Some(current_player_identifier) = self.seats.get(current_player_seat_index) {
                 if let Some(current_player) = self.players.get(current_player_identifier).cloned() {
                     if let Some(hand) = self.deal_hand() {
+                        // todo: Update to only show hand of user after testing is complete.
                         println!(
                             "Hand dealt to {}: {}",
                             current_player.name,
@@ -467,13 +456,42 @@ impl TexasHoldEm {
         player_hands
     }
 
+    /// Deal a hand of two cards.
+    fn deal_hand(&mut self) -> Option<Hand> {
+        let mut hand = Hand::new();
+
+        if let Some(card1) = self.deal_card() {
+            hand.push(card1);
+        } else {
+            return None;
+        }
+
+        if let Some(card2) = self.deal_card() {
+            hand.push(card2);
+        } else {
+            return None;
+        }
+
+        Some(hand)
+    }
+
+    /// Deals a single card.
+    fn deal_card(&mut self) -> Option<Card> {
+        // todo: change to deck.deal_face_down for all other players after testing is completed.
+        if let Some(card) = self.deck.deal_face_up() {
+            return Some(card);
+        }
+
+        None
+    }
+
     /// Rank the provided hands to determine which hands are the best.
     fn rank_all_hands(
         &self,
         player_hands: &HashMap<Uuid, Hand>,
         table_cards: &Hand,
     ) -> HashMap<Uuid, Vec<HandRank>> {
-        let mut leading_players: HashMap<Uuid, Vec<HandRank>> = HashMap::new();
+        let mut winning_players: HashMap<Uuid, Vec<HandRank>> = HashMap::new();
         let mut best_hand: Vec<(HandRank, &Hand)> = Vec::new();
 
         for (player_identifier, hand) in player_hands.iter() {
@@ -491,82 +509,93 @@ impl TexasHoldEm {
 
                 if best_hand.is_empty() {
                     best_hand.push((hand_rank, hand));
-                    leading_players.insert(player.identifier.clone(), hand_rank_vec);
+                    winning_players.insert(player.identifier, hand_rank_vec);
                     continue;
                 }
 
                 if let Some((best_hand_rank, best_hand_cards)) = best_hand.last() {
-                    if hand_rank == *best_hand_rank {
-                        // If hand ranks are equal and are made up of less than 5 cards then check for a kicker (high card).
-                        // If the kicker is on the table, then that should be used.
-                        if hand_rank.len() < 5 {
-                            let mut current_cards_and_table_cards: Vec<Card> =
-                                table_cards.get_cards().clone();
+                    match hand_rank.cmp(best_hand_rank) {
+                        std::cmp::Ordering::Equal => {
+                            // If hand ranks are equal and are made up of less than 5 cards then check for a kicker (high card).
+                            if hand_rank.len() < 5 {
+                                let mut current_cards_and_table_cards =
+                                    table_cards.get_cards().clone();
+                                current_cards_and_table_cards.push(hand.cards[0]);
+                                current_cards_and_table_cards.push(hand.cards[1]);
 
-                            current_cards_and_table_cards.push(hand.cards[0]);
-                            current_cards_and_table_cards.push(hand.cards[1]);
-
-                            let mut cards_not_used_in_current_hand_rank: Vec<Card> = Vec::new();
-                            for card in current_cards_and_table_cards {
-                                // Check to see that the kicker is not part of the hand rank.
-                                if !hand_rank.contains(&card) {
-                                    cards_not_used_in_current_hand_rank.push(card);
+                                // Get the kicker for current hand rank
+                                let mut cards_not_used_in_current_hand_rank = Vec::new();
+                                for card in current_cards_and_table_cards {
+                                    // Check to see that the kicker is not part of the current hand rank.
+                                    if !hand_rank.contains(&card) {
+                                        cards_not_used_in_current_hand_rank.push(card);
+                                    }
                                 }
-                            }
-                            let current_hand_kicker =
-                                get_high_card_value(&cards_not_used_in_current_hand_rank).unwrap();
+                                let current_hand_kicker =
+                                    get_high_card_value(&cards_not_used_in_current_hand_rank)
+                                        .unwrap();
 
-                            let mut best_hand_cards_and_table_cards: Vec<Card> =
-                                table_cards.get_cards().clone();
+                                // Get the kicker for the best hand rank
+                                let mut best_hand_cards_and_table_cards =
+                                    table_cards.get_cards().clone();
+                                best_hand_cards_and_table_cards.push(best_hand_cards.cards[0]);
+                                best_hand_cards_and_table_cards.push(best_hand_cards.cards[1]);
 
-                            best_hand_cards_and_table_cards.push(best_hand_cards.cards[0]);
-                            best_hand_cards_and_table_cards.push(best_hand_cards.cards[1]);
-
-                            let mut cards_not_used_in_best_hand_rank: Vec<Card> = Vec::new();
-                            for card in best_hand_cards_and_table_cards {
-                                // Check to see that the kicker is not part of the hand rank.
-                                if !best_hand_rank.contains(&card) {
-                                    cards_not_used_in_best_hand_rank.push(card);
+                                let mut cards_not_used_in_best_hand_rank = Vec::new();
+                                for card in best_hand_cards_and_table_cards {
+                                    // Check to see that the kicker is not part of the best hand rank.
+                                    if !best_hand_rank.contains(&card) {
+                                        cards_not_used_in_best_hand_rank.push(card);
+                                    }
                                 }
-                            }
-                            let best_hand_kicker =
-                                get_high_card_value(&cards_not_used_in_best_hand_rank).unwrap();
+                                let best_hand_kicker =
+                                    get_high_card_value(&cards_not_used_in_best_hand_rank).unwrap();
 
-                            // If there is a tie, but the best hand has a higher kicker, add that kicker to the best hand, so that it is returned when the best hand is declared
-                            if let Some((leading_player, leading_hand_vec)) =
-                                leading_players.iter().next()
-                            {
-                                if leading_hand_vec.len() < 2 {
-                                    leading_players
-                                        .entry(leading_player.clone())
-                                        .or_default()
-                                        .push(HandRank::HighCard(best_hand_kicker));
+                                // If there is a tie, but the best hand has a higher kicker, add that kicker to the best hand.
+                                if let Some((leading_player, leading_hand_vec)) =
+                                    winning_players.iter().next()
+                                {
+                                    if leading_hand_vec.len() < 2 {
+                                        winning_players
+                                            .entry(*leading_player)
+                                            .or_default()
+                                            .push(HandRank::HighCard(best_hand_kicker));
+                                    }
                                 }
-                            }
 
-                            // If the kicker is equal, then both hands are equal.
-                            // Otherwise, one of the hands must be greater and there will only be one leading player.
-                            if current_hand_kicker.rank == best_hand_kicker.rank {
+                                // Compare the kickers to determine the best hand.
+                                match current_hand_kicker.rank.cmp(&best_hand_kicker.rank) {
+                                    std::cmp::Ordering::Equal => {
+                                        best_hand.push((hand_rank, hand));
+                                        hand_rank_vec.push(HandRank::HighCard(current_hand_kicker));
+                                        winning_players.insert(player.identifier, hand_rank_vec);
+                                    }
+                                    std::cmp::Ordering::Greater => {
+                                        best_hand.clear();
+                                        best_hand.push((hand_rank, hand));
+                                        winning_players.clear();
+                                        hand_rank_vec.push(HandRank::HighCard(current_hand_kicker));
+                                        winning_players.insert(player.identifier, hand_rank_vec);
+                                    }
+                                    std::cmp::Ordering::Less => {
+                                        // Do nothing, as the best hand remains unchanged.
+                                    }
+                                }
+                            } else {
+                                // If the hand uses too many cards to consider a kicker, push the new hand.
                                 best_hand.push((hand_rank, hand));
-                                hand_rank_vec.push(HandRank::HighCard(current_hand_kicker));
-                                leading_players.insert(player.identifier.clone(), hand_rank_vec);
-                            } else if current_hand_kicker.rank > best_hand_kicker.rank {
-                                best_hand.clear();
-                                best_hand.push((hand_rank, hand));
-                                leading_players.clear();
-                                hand_rank_vec.push(HandRank::HighCard(current_hand_kicker));
-                                leading_players.insert(player.identifier.clone(), hand_rank_vec);
+                                winning_players.insert(player.identifier, hand_rank_vec);
                             }
-                        } else {
-                            // If hands are still equal after considering the kicker, push the new hand.
-                            best_hand.push((hand_rank, hand));
-                            leading_players.insert(player.identifier.clone(), hand_rank_vec);
                         }
-                    } else if hand_rank > *best_hand_rank {
-                        best_hand.clear();
-                        best_hand.push((hand_rank, hand));
-                        leading_players.clear();
-                        leading_players.insert(player.identifier.clone(), hand_rank_vec);
+                        std::cmp::Ordering::Greater => {
+                            best_hand.clear();
+                            best_hand.push((hand_rank, hand));
+                            winning_players.clear();
+                            winning_players.insert(player.identifier, hand_rank_vec);
+                        }
+                        std::cmp::Ordering::Less => {
+                            // Do nothing, as the best hand remains unchanged.
+                        }
                     }
                 }
             } else {
@@ -577,86 +606,90 @@ impl TexasHoldEm {
             }
         }
 
-        leading_players
+        winning_players
     }
 
     // todo: implement side pot logic
+    /// Determine which player or players won the round and how the pot(s) should be divided.
     fn determine_round_result(
         &mut self,
-        leading_players: &HashMap<Uuid, Vec<HandRank>>,
+        winning_players: &HashMap<Uuid, Vec<HandRank>>,
         main_pot: Pot,
         _side_pots: Vec<Pot>,
     ) {
-        if leading_players.len() == 1 {
-            let (player_identifier, winning_hand_rank_vec): (&Uuid, &Vec<HandRank>) =
-                leading_players.iter().next().unwrap();
+        match winning_players.len() {
+            1 => {
+                if let Some((player_identifier, winning_hand_rank_vec)) =
+                    winning_players.iter().next()
+                {
+                    if let Some(player) = self.players.get_mut(player_identifier) {
+                        if winning_hand_rank_vec.len() > 1 {
+                            println!(
+                                "\n{} wins with {} and {}",
+                                player.name, winning_hand_rank_vec[0], winning_hand_rank_vec[1]
+                            );
+                        } else {
+                            println!(
+                                "\n{} wins with {}",
+                                player.name,
+                                winning_hand_rank_vec.last().unwrap()
+                            );
+                        }
 
-            if let Some(player) = self.players.get_mut(player_identifier) {
-                if winning_hand_rank_vec.len() > 1 {
-                    println!(
-                        "{} wins with {} and {}",
-                        player.name, winning_hand_rank_vec[0], winning_hand_rank_vec[1]
-                    );
-                } else {
-                    println!(
-                        "{} wins with {}",
-                        player.name,
-                        winning_hand_rank_vec.last().unwrap()
-                    );
-                }
-
-                // Allocate winnings from the main pot to the winner.
-                player.add_chips(main_pot.amount);
-                if main_pot.amount == 1 {
-                    println!("{} won {} chip.", player.name, main_pot.amount);
-                } else {
-                    println!("{} won {} chips.", player.name, main_pot.amount);
-                }
-            } else {
-                eprintln!(
-                    "Error: Unable to get player with the id {}.",
-                    player_identifier
-                );
-            }
-        } else if leading_players.len() > 1 {
-            // Divide the main pot equally for the multiple winners.
-            // todo: Factor in how much stake in the main pot each winner has.
-            // A player could have put in a lesser amount of chips and therefore a side pot would
-            // be invoked.
-            // todo: Figure out what real poker does with uneven amounts to split
-            let divided_chips_amount = main_pot.amount / leading_players.len() as u32;
-
-            for (player_identifier, tied_hand_rank) in leading_players.iter() {
-                if let Some(player) = self.players.get_mut(player_identifier) {
-                    if tied_hand_rank.len() > 1 {
+                        // Allocate winnings from the main pot to the winner.
+                        player.add_chips(main_pot.amount);
                         println!(
-                            "{} pushes with {} and {}",
-                            player.name, tied_hand_rank[0], tied_hand_rank[1]
+                            "{} won {} chip{}.",
+                            player.name,
+                            main_pot.amount,
+                            if main_pot.amount == 1 { "" } else { "s" }
                         );
+                    } else {
+                        eprintln!(
+                            "Error: Unable to get player with the id {}.",
+                            player_identifier
+                        );
+                    }
+                }
+            }
+            n if n > 1 => {
+                // Divide the main pot equally for the multiple winners.
+                let divided_chips_amount = main_pot.amount / winning_players.len() as u32;
+
+                for (player_identifier, tied_hand_rank) in winning_players.iter() {
+                    if let Some(player) = self.players.get_mut(player_identifier) {
+                        if tied_hand_rank.len() > 1 {
+                            println!(
+                                "\n{} pushes with {} and {}",
+                                player.name, tied_hand_rank[0], tied_hand_rank[1]
+                            );
+                        } else {
+                            println!(
+                                "\n{} pushes with {}",
+                                player.name,
+                                tied_hand_rank.last().unwrap()
+                            );
+                        }
 
                         // Allocate winnings from the main pot to the winner.
                         player.add_chips(divided_chips_amount);
-                        if main_pot.amount == 1 {
-                            println!("{} won {} chip.", player.name, divided_chips_amount);
-                        } else {
-                            println!("{} won {} chips.", player.name, divided_chips_amount);
-                        }
-                    } else {
                         println!(
-                            "{} pushes with {}",
+                            "{} won {} chip{}.",
                             player.name,
-                            tied_hand_rank.last().unwrap()
+                            divided_chips_amount,
+                            if divided_chips_amount == 1 { "" } else { "s" }
+                        );
+                    } else {
+                        eprintln!(
+                            "Error: Unable to get player with the id {}.",
+                            player_identifier
                         );
                     }
-                } else {
-                    eprintln!(
-                        "Error: Unable to get player with the id {}.",
-                        player_identifier
-                    );
                 }
             }
-        } else {
-            panic!("Error: No winning player was determined.");
+            _ => {
+                panic!("Error: No winning player was determined.");
+            }
         }
     }
 }
