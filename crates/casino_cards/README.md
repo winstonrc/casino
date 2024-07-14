@@ -1,5 +1,4 @@
-[![crates.io](https://img.shields.io/crates/v/casino_cards.svg)](https://crates.io/crates/casino_cards) [![Casino Cards Test](https://github.com/winstonrc/casino/actions/workflows/casino_cards.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions/workflows/casino_cards.yml?query=workflow%3Acasino_cards)
-
+[![crates.io](https://img.shields.io/crates/v/casino_cards.svg)](https://crates.io/crates/casino_cards) [![Casino Cards Test](https://github.com/winstonrc/casino/actions/workflows/casino_cards.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions/workflows/casino_cards.yml)
 
 # Casino Cards
 
@@ -19,19 +18,19 @@ fn main() {
     let card1 = deck.deal();
     // A card can be inserted at a specified position in the deck.
     deck.insert(12, card);
-    
+
     let card2 = deck.deal();
     // A card can be inserted at the bottom of the deck.
     deck.insert_at_bottom(card2);
-    
+
     let card3 = deck.deal();
     // A card can be inserted at the middle of the deck.
     deck.insert_at_middle(card3);
-    
+
     let card4 = deck.deal();
     // A card can be inserted at the top of the deck.
     deck.insert_at_top(card4);
-    
+
     deck.shuffle();
 }
 ```
@@ -52,6 +51,7 @@ fn main() {
 ```
 
 ### Hand creation
+
 ```rust
 use casino_cards::card::Card;
 use casino_cards::deck::Deck;
@@ -77,4 +77,3 @@ fn main() {
     let mut hand2 = Hand::new_from_cards(cards);
 }
 ```
-
