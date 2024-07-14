@@ -1,3 +1,5 @@
+![crates.io](https://img.shields.io/crates/v/casino_cards.svg)
+
 # Casino Cards
 
 A library that provides a deck of playing cards that can be used for various card games.
