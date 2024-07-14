@@ -9,15 +9,14 @@ use casino_cards::hand::Hand;
 use crate::hand_rankings::{get_high_card_value, rank_hand, HandRank};
 use crate::player::Player;
 
-pub const MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT: u32 = 100;
-const MAXIMUM_PLAYERS_COUNT: usize = 10;
-
 /// The core of the Texas hold 'em game.
 ///
 /// Only a single table is implemented currently.
 ///
 /// A maximum of 10 players are allowed at a table.
 pub struct TexasHoldEm {
+    minimum_table_buy_in_chips_amount: u32,
+    maximum_players_count: usize,
     pub game_over: bool,
     deck: Deck,
     players: HashMap<Uuid, Player>,
@@ -31,8 +30,16 @@ pub struct TexasHoldEm {
 
 impl TexasHoldEm {
     /// Create a new game that internally contains a deck and players.
-    pub fn new(small_blind_amount: u32, big_blind_amount: u32, limit: bool) -> Self {
+    pub fn new(
+        minimum_table_buy_in_chips_amount: u32,
+        maximum_players_count: usize,
+        small_blind_amount: u32,
+        big_blind_amount: u32,
+        limit: bool,
+    ) -> Self {
         Self {
+            minimum_table_buy_in_chips_amount,
+            maximum_players_count,
             game_over: false,
             deck: Deck::new(),
             players: HashMap::new(),
@@ -57,20 +64,20 @@ impl TexasHoldEm {
 
     /// Add a player into the game.
     pub fn add_player(&mut self, player: Player) -> Result<(), &'static str> {
-        if self.players.len() > MAXIMUM_PLAYERS_COUNT {
+        if self.players.len() > self.maximum_players_count {
             return Err("Unable to join the table. It is already at max capacity.");
         }
 
-        if player.chips < MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT {
+        if player.chips < self.minimum_table_buy_in_chips_amount {
             println!("You do not have enough chips to play at this table.");
             println!("Current chips amount: {}", player.chips);
             println!(
                 "Required chips amount: {}",
-                MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT
+                self.minimum_table_buy_in_chips_amount
             );
             println!(
                 "Additional chips needed: {}",
-                MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT - player.chips
+                self.minimum_table_buy_in_chips_amount - player.chips
             );
             return Err("You do not have enough chips to play at this table.");
         }
@@ -741,6 +748,24 @@ impl TexasHoldEm {
     }
 }
 
+impl Default for TexasHoldEm {
+    fn default() -> Self {
+        Self {
+            minimum_table_buy_in_chips_amount: 100,
+            maximum_players_count: 10,
+            game_over: false,
+            deck: Deck::new(),
+            players: HashMap::new(),
+            seats: Vec::new(),
+            small_blind_amount: 2,
+            big_blind_amount: 5,
+            limit: false,
+            main_pot: Pot::new(0, HashMap::new()),
+            side_pots: Vec::new(),
+        }
+    }
+}
+
 /// The Pot manages how many chips have been bet and who the winnings should be allocated to.
 #[derive(Clone)]
 struct Pot {
@@ -780,7 +805,7 @@ mod tests {
     /// Tests that a single winner is correctly chosen.
     #[test]
     fn rank_all_hands_identifies_winner() {
-        let mut game = TexasHoldEm::new(1, 3, false);
+        let mut game = TexasHoldEm::new(100, 10, 1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let two_of_hearts = card!(Two, Heart);
@@ -860,7 +885,7 @@ mod tests {
     /// but one player has a higher kicker (high card) than the other.
     #[test]
     fn rank_all_hands_identifies_winner_based_on_kicker_with_hand_winner() {
-        let mut game = TexasHoldEm::new(1, 3, false);
+        let mut game = TexasHoldEm::new(100, 10, 1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let two_of_hearts = card!(Two, Heart);
@@ -918,7 +943,7 @@ mod tests {
     /// but one player has a higher kicker (high card) than the other.
     #[test]
     fn rank_all_hands_identifies_winner_based_on_kicker_with_table_winner() {
-        let mut game = TexasHoldEm::new(1, 3, false);
+        let mut game = TexasHoldEm::new(100, 10, 1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let two_of_hearts = card!(Two, Heart);
@@ -975,7 +1000,7 @@ mod tests {
     /// Tests that a single winner is correctly chosen.
     #[test]
     fn rank_all_hands_identifies_push_with_winning_table_flush() {
-        let mut game = TexasHoldEm::new(1, 3, false);
+        let mut game = TexasHoldEm::new(100, 10, 1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let two_of_hearts = card!(Two, Heart);
@@ -1057,7 +1082,7 @@ mod tests {
     /// Tests that a single winner is correctly chosen.
     #[test]
     fn rank_all_hands_identifies_push_with_equal_winning_hand_flushes() {
-        let mut game = TexasHoldEm::new(1, 3, false);
+        let mut game = TexasHoldEm::new(100, 10, 1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let two_of_hearts = card!(Two, Heart);
@@ -1150,7 +1175,7 @@ mod tests {
     /// Tests that all players push when the winning hand is on the table.
     #[test]
     fn rank_all_hands_identifies_push_with_winning_table_straight() {
-        let mut game = TexasHoldEm::new(1, 3, false);
+        let mut game = TexasHoldEm::new(100, 10, 1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let three_of_clubs = card!(Three, Club);
@@ -1247,7 +1272,7 @@ mod tests {
     /// Tests that multiple equal hands result in a push for all involved players.
     #[test]
     fn rank_all_hands_identifies_push_with_equal_winning_hand_straights() {
-        let mut game = TexasHoldEm::new(1, 3, false);
+        let mut game = TexasHoldEm::new(100, 10, 1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let three_of_clubs = card!(Three, Club);
@@ -1346,7 +1371,7 @@ mod tests {
     /// Tests that multiple equal hands result in a push for all involved players.
     #[test]
     fn rank_all_hands_identifies_higher_straight_beats_ace_low_straight() {
-        let mut game = TexasHoldEm::new(1, 3, false);
+        let mut game = TexasHoldEm::new(100, 10, 1, 3, false);
 
         let two_of_diamonds = card!(Two, Diamond);
         let three_of_clubs = card!(Three, Club);
@@ -1429,7 +1454,7 @@ mod tests {
     /// Tests that hand ranking correctly updates the leader for a pair that is higher than the previously set high pair.
     #[test]
     fn rank_all_hands_identifies_higher_pair_as_winner_over_previous_high_pair() {
-        let mut game = TexasHoldEm::new(1, 3, false);
+        let mut game = TexasHoldEm::new(100, 10, 1, 3, false);
 
         let two_of_spades = card!(Two, Spade);
         let four_of_clubs = card!(Four, Club);
