@@ -5,6 +5,7 @@ authors = ["Winston Cooke <contact@winstoncooke.com>"]
 edition = "2021"
 description = "A library that provides a deck of playing cards that can be used for various card games."
 license = "MPL-2.0"
+repository = "https://github.com/winstonrc/casino/tree/main/crates/cards"
 keywords = ["cards", "deck", "poker", "playing", "games"]
 categories = ["game-development"]
 
