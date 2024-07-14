@@ -11,6 +11,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "casino_cards"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cc23de4b30ed20170631c5e87813fb307cdaae23b1e6aaf00c0f05dd4e7bde7"
+dependencies = [
+ "rand",
+ "strum",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -43,7 +53,7 @@ checksum = "9c198f91728a82281a64e1f4f9eeb25d82cb32a5de251c6bd1b5154d63a8e7bd"
 name = "poker"
 version = "0.1.0"
 dependencies = [
- "casino_cards",
+ "casino_cards 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "strum",
  "uuid",
 ]
