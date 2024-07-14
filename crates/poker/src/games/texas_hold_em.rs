@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use uuid::Uuid;
 
-use cards::card::Card;
-use cards::deck::Deck;
-use cards::hand::Hand;
+use casino_cards::card::Card;
+use casino_cards::deck::Deck;
+use casino_cards::hand::Hand;
 
 use crate::hand_rankings::{get_high_card_value, rank_hand, HandRank};
 use crate::player::Player;
@@ -772,8 +772,8 @@ impl Pot {
 mod tests {
     use super::*;
 
-    use cards::card;
-    use cards::card::{Card, Rank, Suit};
+    use casino_cards::card;
+    use casino_cards::card::{Card, Rank, Suit};
 
     /// Tests rank_all_hands().
     ///

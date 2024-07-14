@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 
-use cards::card::{Card, Rank, Suit};
+use casino_cards::card::{Card, Rank, Suit};
 
 #[derive(Clone, Copy, Debug, Eq)]
 pub enum HandRank {
@@ -736,8 +736,8 @@ mod tests {
 
     use strum::IntoEnumIterator;
 
-    use cards::card;
-    use cards::card::{Card, Rank, Suit};
+    use casino_cards::card;
+    use casino_cards::card::{Card, Rank, Suit};
 
     /// Tests that High Cards of the same Rank are equal, regardless of Suit.
     #[test]
