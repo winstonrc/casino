@@ -1,4 +1,4 @@
-[![Build status](https://github.com/winstonrc/casino/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions)
+[![Build status](https://github.com/winstonrc/casino/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions/workflows/rust.yml?query=workflow%3ARust)
 
 # Casino
 
