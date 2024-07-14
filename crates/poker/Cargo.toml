@@ -10,6 +10,6 @@ keywords = ["poker", "casino", "texas-hold-em", "cards", "game"]
 categories = ["game-development"]
 
 [dependencies]
-cards = { path = "../cards" }
+casino_cards = { path = "../casino_cards" }
 strum = { version = "0.26.2", features = ["derive"] }
 uuid = { version = "1.8.0", features = ["v4"] }
