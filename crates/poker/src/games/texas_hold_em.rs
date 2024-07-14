@@ -69,7 +69,7 @@ impl TexasHoldEm {
         }
 
         if player.chips < self.minimum_table_buy_in_chips_amount {
-            println!("You do not have enough chips to play at this table.");
+            println!("The player does not have enough chips to play at this table.");
             println!("Current chips amount: {}", player.chips);
             println!(
                 "Required chips amount: {}",
@@ -79,7 +79,7 @@ impl TexasHoldEm {
                 "Additional chips needed: {}",
                 self.minimum_table_buy_in_chips_amount - player.chips
             );
-            return Err("You do not have enough chips to play at this table.");
+            return Err("The player does not have enough chips to play at this table.");
         }
 
         println!(
