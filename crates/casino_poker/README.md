@@ -1,4 +1,4 @@
-[![Poker Test](https://github.com/winstonrc/casino/actions/workflows/poker.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions/workflows/poker.yml)
+[![Poker Test](https://github.com/winstonrc/casino/actions/workflows/casino_poker.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions/workflows/casino_poker.yml)
 
 # Poker
 
