@@ -5,7 +5,7 @@ Casino is a library that provides the backend for playing various card games inc
 ## Crates
 
 - [casino_cards](https://github.com/winstonrc/casino/tree/main/crates/casino_cards): A library that provides a deck of playing cards that can be used for various card games.
-- [poker](https://github.com/winstonrc/casino/tree/main/crates/poker): A library that implements the backend for playing poker games including Texas hold 'em.
+- [casino_poker](https://github.com/winstonrc/casino/tree/main/crates/casino_poker): A library that implements the backend for playing poker games including Texas hold 'em.
 
 ## Games
 
