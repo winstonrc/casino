@@ -1,4 +1,5 @@
-![crates.io](https://img.shields.io/crates/v/casino_cards.svg)
+[![crates.io](https://img.shields.io/crates/v/casino_cards.svg)](https://crates.io/crates/casino_cards)
+
 
 # Casino Cards
 
