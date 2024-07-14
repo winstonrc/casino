@@ -1,4 +1,4 @@
-name: poker
+name: casino_poker
 
 on:
   push:
