@@ -11,12 +11,19 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+
     - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      run: |
+        cargo build --verbose
+        cargo build --verbose --manifest-path crates/casino_cards/Cargo.toml
+        cargo build --verbose --manifest-path crates/poker/Cargo.toml
+
+    - name: Run tests for casino_cards
+      run: cargo test --verbose --manifest-path crates/casino_cards/Cargo.toml
+
+    - name: Run tests for poker
+      run: cargo test --verbose --manifest-path crates/poker/Cargo.toml
