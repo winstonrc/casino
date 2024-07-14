@@ -2,7 +2,7 @@
 
 members = [
     "crates/casino_cards",
-    "crates/poker",
+    "crates/casino_poker",
 ]
 
 resolver = "2"
