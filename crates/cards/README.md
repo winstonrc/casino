@@ -15,18 +15,18 @@ fn main() {
 
     let card1 = deck.deal();
     // A card can be inserted at a specified position in the deck.
-    deck.insert_at_top(12, card);
+    deck.insert(12, card);
     
     let card2 = deck.deal();
-    // A card can also be inserted at the bottom.
+    // A card can be inserted at the bottom of the deck.
     deck.insert_at_bottom(card2);
     
     let card3 = deck.deal();
-    // A card can also be inserted at the middle.
+    // A card can be inserted at the middle of the deck.
     deck.insert_at_middle(card3);
     
     let card4 = deck.deal();
-    // A card can also be inserted at the top.
+    // A card can be inserted at the top of the deck.
     deck.insert_at_top(card4);
     
     deck.shuffle();
