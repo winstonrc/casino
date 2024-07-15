@@ -1,7 +1,7 @@
 [workspace]
 
 members = [
-    "crates/casino_cards",
+    "crates/casino_cards", "crates/casino_games",
     "crates/casino_poker",
 ]
 
