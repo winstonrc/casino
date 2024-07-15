@@ -8,7 +8,13 @@ Play casino games in your terminal.
 
 ## Games
 
+#### Current Games:
+
 - Texas hold 'em
+
+#### Planned Games:
+
+- Blackjack
 
 ## Usage
 
