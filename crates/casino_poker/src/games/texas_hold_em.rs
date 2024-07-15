@@ -13,16 +13,16 @@ use crate::player::Player;
 ///
 /// The game currently defaults to no-limit.
 pub struct TexasHoldEm {
-    minimum_table_buy_in_chips_amount: u32,
-    maximum_players_count: usize,
     pub game_over: bool,
     deck: Deck,
     players: HashMap<Uuid, Player>,
     pub seats: Vec<Uuid>, // todo: make private after testing is complete
-    small_blind_amount: u32,
-    big_blind_amount: u32,
     main_pot: Pot,
     side_pots: Vec<Pot>,
+    minimum_table_buy_in_chips_amount: u32,
+    maximum_players_count: usize,
+    small_blind_amount: u32,
+    big_blind_amount: u32,
 }
 
 impl TexasHoldEm {
@@ -34,16 +34,16 @@ impl TexasHoldEm {
         big_blind_amount: u32,
     ) -> Self {
         Self {
-            minimum_table_buy_in_chips_amount,
-            maximum_players_count,
             game_over: false,
             deck: Deck::new(),
             players: HashMap::new(),
             seats: Vec::new(),
-            small_blind_amount,
-            big_blind_amount,
             main_pot: Pot::new(0, HashMap::new()),
             side_pots: Vec::new(),
+            minimum_table_buy_in_chips_amount,
+            maximum_players_count,
+            small_blind_amount,
+            big_blind_amount,
         }
     }
 
@@ -88,25 +88,25 @@ impl TexasHoldEm {
     }
 
     /// Remove a player from the game.
-    pub fn remove_player(&mut self, player: &mut Player) -> Option<Player> {
+    pub fn remove_player(&mut self, player_identifier: &Uuid) -> Option<Player> {
         if self.players.is_empty() {
             eprintln!("Unable to remove player. The table is empty.");
             return None;
         }
 
-        if self.players.get(&player.identifier).is_none() {
+        if self.players.get(&player_identifier).is_none() {
             eprintln!(
-                "Unable to remove player. {} is not at the table.",
-                player.name
+                "Unable to remove player. The identifier {} is not at the table.",
+                player_identifier
             );
             return None;
         } else {
             // Remove player from seat
-            self.seats.retain(|x| *x != player.identifier);
+            self.seats.retain(|x| x != player_identifier);
         }
 
         // Remove and return player
-        self.players.remove(&player.identifier)
+        self.players.remove(&player_identifier)
     }
 
     /// Play a tournament consisting of multiple rounds.
@@ -125,13 +125,13 @@ impl TexasHoldEm {
     }
 
     pub fn remove_losers(&mut self) {
-        for (_, mut player) in self.players.clone() {
+        for (identifier, player) in self.players.clone() {
             if player.chips == 0 {
                 println!(
                     "{} is out of chips and was removed from the game.",
                     player.name
                 );
-                self.remove_player(&mut player);
+                self.remove_player(&identifier);
             }
         }
     }
