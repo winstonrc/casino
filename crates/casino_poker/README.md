@@ -1,17 +1,10 @@
 [![crates.io](https://img.shields.io/crates/v/casino_poker.svg)](https://crates.io/crates/casino_poker) [![Poker Test](https://github.com/winstonrc/casino/actions/workflows/casino_poker.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions/workflows/casino_poker.yml)
 
-# Poker
+# casino_poker
 
 A library that implements the backend for playing poker games including Texas hold 'em. This includes tested hand ranking functions.
 
 **Note:** This library is still a work-in-process. Following the usage code below will result in a full game being simulated without user interaction. This includes a lack of betting or folding hands, which are currently being worked on.
-
-## Todo
-
-- Implement betting & folding
-- Add computer opponent ai
-- Implement [limit](https://en.wikipedia.org/wiki/Betting_in_poker#Fixed_limit)/[no-limit](https://en.wikipedia.org/wiki/Betting_in_poker#No_limit) logic
-- Add training tools like calculating [pot odds](https://en.wikipedia.org/wiki/Pot_odds)
 
 ## Usage
 
@@ -67,3 +60,10 @@ fn main() {
     texas_hold_em_1_3_no_limit.play_round(dealer_seat_index);
 }
 ```
+
+## Todo
+
+- Implement betting & folding
+- Add computer opponent ai
+- Implement [limit](https://en.wikipedia.org/wiki/Betting_in_poker#Fixed_limit)/[no-limit](https://en.wikipedia.org/wiki/Betting_in_poker#No_limit) logic
+- Add training tools like calculating [pot odds](https://en.wikipedia.org/wiki/Pot_odds)
