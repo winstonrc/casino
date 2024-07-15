@@ -1,0 +1,13 @@
+[package]
+name = "casino_games"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Play casino games in your terminal."
+authors = ["Winston Cooke <contact@winstoncooke.com>"]
+repository = "https://github.com/winstonrc/casino/tree/main/crates/casino_games"
+keywords = ["casino", "game", "poker", "texas-hold-em", "cards", "game"]
+categories = ["games"]
+
+[dependencies]
+casino_poker = { version = "0.1.0", path = "../casino_poker" }
