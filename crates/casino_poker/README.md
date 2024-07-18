@@ -4,7 +4,7 @@
 
 A library that implements the backend for playing poker games including Texas hold 'em. This includes tested hand ranking functions.
 
-**Note:** This library is still a work-in-process. Following the usage code below will result in a full game being simulated without user interaction. This includes a lack of betting or folding hands, which are currently being worked on.
+**Note:** This library is still a work-in-progress. Following the usage code below will result in a full game being simulated without user interaction. This includes a lack of betting or folding hands, which are currently being worked on.
 
 ## Usage
 
