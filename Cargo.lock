@@ -12,14 +12,14 @@ dependencies = [
 
 [[package]]
 name = "casino_games"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "casino_poker",
 ]
 
 [[package]]
 name = "casino_poker"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "casino_cards",
  "strum",
