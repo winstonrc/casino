@@ -8,6 +8,39 @@ A library that implements the backend for playing poker games including Texas ho
 
 ## Usage
 
+### Hand Ranking & High Cards
+
+```rust
+fn main() {
+    use casino_cards::card;
+    use casino_cards::card::{Card, Rank, Suit};
+    use casino_poker::hand_rankings::{get_high_card_value, rank_hand, HandRank};
+    let ace_of_diamonds = card!(Ace, Diamond);
+    let two_of_diamonds = card!(Two, Diamond);
+    let three_of_diamonds = card!(Three, Diamond);
+    let four_of_diamonds = card!(Four, Diamond);
+    let five_of_diamonds = card!(Five, Diamond);
+    let seven_of_diamonds = card!(Seven, Diamond);
+    let eight_of_diamonds = card!(Eight, Diamond);
+
+    let cards_to_rank: Vec<Card> = vec![
+        ace_of_diamonds,
+        two_of_diamonds,
+        three_of_diamonds,
+        four_of_diamonds,
+        five_of_diamonds,
+        seven_of_diamonds,
+        eight_of_diamonds,
+    ];
+
+    // high_card == Card { rank: Ace, suit: Diamond, face_up: true }
+    let high_card = get_high_card_value(&cards_to_rank);
+
+    // hand_rank == StraightFlush([Card { rank: Ace, suit: Diamond, face_up: true }, Card { rank: Two, suit: Diamond, face_up: true }, Card { rank: Three, suit: Diamond, face_up: true }, Card { rank: Four, suit: Diamond, face_up: true }, Card { rank: Five, suit: Diamond, face_up: true }])
+    let hand_rank: HandRank = rank_hand(cards_to_rank);
+}
+```
+
 ### Texas hold 'em
 
 ```rust
@@ -61,9 +94,3 @@ fn main() {
 }
 ```
 
-## Todo
-
-- Implement betting & folding
-- Add computer opponent ai
-- Implement [limit](https://en.wikipedia.org/wiki/Betting_in_poker#Fixed_limit)/[no-limit](https://en.wikipedia.org/wiki/Betting_in_poker#No_limit) logic
-- Add training tools like calculating [pot odds](https://en.wikipedia.org/wiki/Pot_odds)
