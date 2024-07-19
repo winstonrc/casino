@@ -1,6 +1,6 @@
 [package]
 name = "casino_games"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "MPL-2.0"
 description = "Play casino games in your terminal."
@@ -10,4 +10,5 @@ keywords = ["casino", "game", "poker", "texas-hold-em", "cards"]
 categories = ["games"]
 
 [dependencies]
-casino_poker = { version = "0.1.0", path = "../casino_poker" }
+casino_poker = { version = "0.1.2", path = "../casino_poker" }
+casino_cards = { version = "0.1.1", path = "../casino_cards" }
