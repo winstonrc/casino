@@ -4,8 +4,8 @@ use std::process;
 use casino_poker::games::texas_hold_em::TexasHoldEm;
 use casino_poker::player::Player;
 
-const MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT: u32 = 100;
-const MAXIMUM_TABLE_PLAYERS: usize = 10;
+const MINIMUM_CHIPS_BUY_IN_AMOUNT: u32 = 100;
+const MAXIMUM_PLAYERS_COUNT: usize = 10;
 const CURRENCY: &str = "USD";
 
 pub fn play_game() {
@@ -16,8 +16,8 @@ pub fn play_game() {
     let (small_blind_amount, big_blind_amount) = choose_table();
 
     let mut texas_hold_em_1_3_no_limit = TexasHoldEm::new(
-        MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT,
-        MAXIMUM_TABLE_PLAYERS,
+        MINIMUM_CHIPS_BUY_IN_AMOUNT,
+        MAXIMUM_PLAYERS_COUNT,
         small_blind_amount,
         big_blind_amount,
     );
@@ -36,7 +36,7 @@ pub fn play_game() {
     let mut player6 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 6", 100);
     add_player_prompt(&mut texas_hold_em_1_3_no_limit, &mut player6);
 
-    play_texas_hold_em(&mut texas_hold_em_1_3_no_limit);
+    play_tournament(&mut texas_hold_em_1_3_no_limit);
 }
 
 fn choose_table() -> (u32, u32) {
@@ -180,17 +180,17 @@ fn get_player_name_prompt() -> String {
 }
 
 fn add_player_prompt(game: &mut TexasHoldEm, player: &mut Player) {
-    if player.chips < MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT {
-        while player.chips < MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT {
+    if player.chips < MINIMUM_CHIPS_BUY_IN_AMOUNT {
+        while player.chips < MINIMUM_CHIPS_BUY_IN_AMOUNT {
             println!("You do not have enough chips to play at this table.");
             println!("Current chips amount: {}", player.chips);
             println!(
                 "Required chips amount: {}",
-                MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT
+                MINIMUM_CHIPS_BUY_IN_AMOUNT
             );
             println!(
                 "Additional chips needed: {}",
-                MINIMUM_TABLE_BUY_IN_CHIPS_AMOUNT - player.chips
+                MINIMUM_CHIPS_BUY_IN_AMOUNT - player.chips
             );
 
             buy_chips_prompt(player);
@@ -238,17 +238,14 @@ fn buy_chips_prompt(player: &mut Player) {
     }
 }
 
-fn play_texas_hold_em(game: &mut TexasHoldEm) {
-    let mut dealer: usize = 0;
-
-    while !game.game_over {
-        game.play_round(dealer);
+fn play_tournament(game: &mut TexasHoldEm) {
+    while !game.check_for_game_over() {
+        game.play_round();
         game.remove_losers();
         game.check_for_game_over();
-        if game.game_over {
+        if game.check_for_game_over() {
             process::exit(0);
         }
-        dealer = (dealer + 1) % game.seats.len();
 
         loop {
             println!("\nPlay another hand?");
@@ -296,6 +293,7 @@ fn play_texas_hold_em(game: &mut TexasHoldEm) {
                     "Invalid input. Please enter 'y' or 'n' or enter 'q' to quit the game."
                 ),
             }
+        
         }
 
         game.check_for_game_over();

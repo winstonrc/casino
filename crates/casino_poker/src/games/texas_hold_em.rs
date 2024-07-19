@@ -13,13 +13,14 @@ use crate::player::Player;
 ///
 /// The game currently defaults to no-limit.
 pub struct TexasHoldEm {
-    pub game_over: bool,
+    game_over: bool,
     deck: Deck,
     players: HashMap<Uuid, Player>,
-    pub seats: Vec<Uuid>, // todo: make private after testing is complete
+    seats: Vec<Uuid>,
+    dealer_seat_index: usize,
     main_pot: Pot,
     side_pots: Vec<Pot>,
-    minimum_table_buy_in_chips_amount: u32,
+    minimum_chips_buy_in_amount: u32,
     maximum_players_count: usize,
     small_blind_amount: u32,
     big_blind_amount: u32,
@@ -28,7 +29,7 @@ pub struct TexasHoldEm {
 impl TexasHoldEm {
     /// Create a new game that internally contains a deck and players.
     pub fn new(
-        minimum_table_buy_in_chips_amount: u32,
+        minimum_chips_buy_in_amount: u32,
         maximum_players_count: usize,
         small_blind_amount: u32,
         big_blind_amount: u32,
@@ -38,9 +39,10 @@ impl TexasHoldEm {
             deck: Deck::new(),
             players: HashMap::new(),
             seats: Vec::new(),
+            dealer_seat_index: 0,
             main_pot: Pot::new(0, HashMap::new()),
             side_pots: Vec::new(),
-            minimum_table_buy_in_chips_amount,
+            minimum_chips_buy_in_amount,
             maximum_players_count,
             small_blind_amount,
             big_blind_amount,
@@ -63,16 +65,16 @@ impl TexasHoldEm {
             return Err("Unable to join the table. It is already at max capacity.");
         }
 
-        if player.chips < self.minimum_table_buy_in_chips_amount {
+        if player.chips < self.minimum_chips_buy_in_amount {
             println!("The player does not have enough chips to play at this table.");
             println!("Current chips amount: {}", player.chips);
             println!(
                 "Required chips amount: {}",
-                self.minimum_table_buy_in_chips_amount
+                self.minimum_chips_buy_in_amount
             );
             println!(
                 "Additional chips needed: {}",
-                self.minimum_table_buy_in_chips_amount - player.chips
+                self.minimum_chips_buy_in_amount - player.chips
             );
             return Err("The player does not have enough chips to play at this table.");
         }
@@ -111,17 +113,11 @@ impl TexasHoldEm {
 
     /// Play a tournament consisting of multiple rounds.
     pub fn play_tournament(&mut self) {
-        let mut dealer_seat_index: usize = 0;
-
         while !self.game_over {
-            self.play_round(dealer_seat_index);
+            self.play_round();
             self.remove_losers();
             self.check_for_game_over();
-
-            dealer_seat_index = (dealer_seat_index + 1) % self.seats.len();
         }
-
-        println!("Game over. Thanks for playing!");
     }
 
     pub fn remove_losers(&mut self) {
@@ -136,7 +132,7 @@ impl TexasHoldEm {
         }
     }
 
-    pub fn check_for_game_over(&mut self) {
+    pub fn check_for_game_over(&mut self) -> bool {
         if self.players.is_empty() {
             println!("No players remaining. Game over!");
             self.end_game();
@@ -146,6 +142,8 @@ impl TexasHoldEm {
             println!("One player remaining. Game over!");
             self.end_game();
         }
+
+        self.game_over
     }
 
     /// End the game.
@@ -158,27 +156,22 @@ impl TexasHoldEm {
     // todo: implement side pot correctly
     // todo: implement hand timer
     /// Play a single round.
-    pub fn play_round(&mut self, dealer_seat_index: usize) {
+    pub fn play_round(&mut self) {
+        // Pre-round
+        self.rotate_dealer();
         self.deck.shuffle();
-
-        self.print_player_stats();
-
         self.add_players_to_main_pot();
-
-        self.print_dealer(dealer_seat_index);
-
-        let small_blind_seat_index = (dealer_seat_index + 1) % self.seats.len();
-        self.post_blind(small_blind_seat_index, true);
-
-        let big_blind_seat_index = (dealer_seat_index + 2) % self.seats.len();
-        self.post_blind(big_blind_seat_index, false);
+        self.print_player_stats();
+        self.print_dealer(self.dealer_seat_index);
+        self.post_blind(true);
+        self.post_blind(false);
 
         // Initializing these as Hand because it is a Vec<Card> that can print as symbols if needed
         let mut table_cards = Hand::new();
         let mut burned_cards = Hand::new();
+        let player_hands = self.deal_hands_to_all_players();
 
-        let player_hands = self.deal_hands_to_all_players(dealer_seat_index);
-
+        // Play the round
         let mut round_over = false;
         while !round_over {
             // Pre-flop betting round
@@ -255,13 +248,46 @@ impl TexasHoldEm {
             round_over = true;
         }
 
-        // Post-round
+        // Determine winners
         let winning_players = self.rank_all_hands(&player_hands, &table_cards);
-        self.determine_round_result(&winning_players, dealer_seat_index);
+        self.determine_round_result(&winning_players);
 
+        // Post-round
         self.reset_deck(player_hands, table_cards, burned_cards);
-
         self.reset_pots();
+    }
+
+    /// Rotate the dealer button clockwise to the next player.
+    /// This must happen before the start of the next round.
+    /// This will also update the small blind and big blind players.
+    fn rotate_dealer(&mut self) {
+        self.dealer_seat_index = (self.dealer_seat_index + 1) % self.seats.len();
+    }
+
+    /// Print the name of the player that has the dealer button for the round.
+    fn print_dealer(&self, dealer_seat_index: usize) {
+        if let Some(dealer_identifier) = self.seats.get(dealer_seat_index) {
+            if let Some(dealer) = self.players.get(dealer_identifier) {
+                println!("{} is the dealer.", dealer.name);
+            } else {
+                eprintln!(
+                    "Error: Unable to find the dealer with the id {}",
+                    dealer_identifier
+                );
+            }
+        } else {
+            eprintln!(
+                "Error: Unable to find the dealer at seat {}",
+                dealer_seat_index
+            );
+        }
+    }
+
+    /// Add all players at the table to the main betting pot.
+    fn add_players_to_main_pot(&mut self) {
+        for (identifier, player) in self.players.clone() {
+            self.main_pot.add_player(identifier, player);
+        }
     }
 
     /// Print statistics about the players currently seated at the table.
@@ -279,31 +305,30 @@ impl TexasHoldEm {
         println!();
     }
 
-    fn add_players_to_main_pot(&mut self) {
-        for (identifier, player) in self.players.clone() {
-            self.main_pot.add_player(identifier, player);
-        }
+    /// Get the seat index of the small blind player.
+    /// This must happen before the start of the next round.
+    /// This must happen after rotate_dealer() is executed.
+    fn get_small_blind_seat_index(&self) -> usize {
+        (self.dealer_seat_index + 1) % self.seats.len()
     }
 
-    fn print_dealer(&self, dealer_seat_index: usize) {
-        if let Some(dealer_identifier) = self.seats.get(dealer_seat_index) {
-            if let Some(dealer) = self.players.get(dealer_identifier) {
-                println!("{} is the dealer.", dealer.name);
-            } else {
-                eprintln!(
-                    "Error: Unable to find the dealer with the id {}",
-                    dealer_identifier
-                );
-            }
+    /// Get the seat index of the small blind player.
+    /// This must happen before the start of the next round.
+    /// This must happen after rotate_dealer() is executed.
+    fn get_big_blind_seat_index(&self) -> usize {
+        (self.dealer_seat_index + 2) % self.seats.len()
+    }
+
+    /// Post the blind amount for either the small blind or the big blind.
+    /// Create a side pot if the player could not post the full blind amount.
+    fn post_blind(&mut self, is_small_blind: bool) {
+        let mut seat_index: usize = 0;
+        if is_small_blind {
+            seat_index = self.get_small_blind_seat_index();
         } else {
-            eprintln!(
-                "Error: Unable to find the dealer at the seat {}",
-                dealer_seat_index
-            );
+            seat_index = self.get_big_blind_seat_index();
         }
-    }
 
-    pub fn post_blind(&mut self, seat_index: usize, is_small_blind: bool) {
         if let Some(player_identifier) = self.seats.get(seat_index) {
             if let Some(player) = self.players.get_mut(player_identifier) {
                 let blind_amount = if is_small_blind {
@@ -368,15 +393,15 @@ impl TexasHoldEm {
     }
 
     /// Deal hands of two cards to every player starting with the player to the left of the dealer.
-    fn deal_hands_to_all_players(&mut self, dealer_seat_index: usize) -> HashMap<Uuid, Hand> {
+    fn deal_hands_to_all_players(&mut self) -> HashMap<Uuid, Hand> {
         let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
         let player_count = self.seats.len();
-        let mut current_player_seat_index = (dealer_seat_index + 1) % player_count;
+        let mut current_player_seat_index = (self.dealer_seat_index + 1) % player_count;
 
         println!();
 
         // Deal cards to player starting to the left of the dealer
-        while current_player_seat_index != dealer_seat_index {
+        while current_player_seat_index != self.dealer_seat_index {
             if let Some(current_player_identifier) = self.seats.get(current_player_seat_index) {
                 if let Some(current_player) = self.players.get(current_player_identifier).cloned() {
                     if let Some(hand) = self.deal_hand() {
@@ -408,7 +433,7 @@ impl TexasHoldEm {
         }
 
         // Deal cards to the dealer
-        if let Some(dealer_identifier) = self.seats.get(dealer_seat_index) {
+        if let Some(dealer_identifier) = self.seats.get(self.dealer_seat_index) {
             if let Some(dealer) = self.players.get(dealer_identifier).cloned() {
                 if let Some(hand) = self.deal_hand() {
                     // todo: Update to only show hand of user after testing is complete.
@@ -426,7 +451,7 @@ impl TexasHoldEm {
         } else {
             eprintln!(
                 "Error: Unable to find player at the seat {}",
-                dealer_seat_index
+                self.dealer_seat_index
             )
         }
 
@@ -590,11 +615,7 @@ impl TexasHoldEm {
 
     // todo: implement side pot logic
     /// Determine which player or players won the round and how the pot(s) should be divided.
-    fn determine_round_result(
-        &mut self,
-        winning_players: &HashMap<Uuid, Vec<HandRank>>,
-        dealer_seat_index: usize,
-    ) {
+    fn determine_round_result(&mut self, winning_players: &HashMap<Uuid, Vec<HandRank>>) {
         match winning_players.len() {
             1 => {
                 if let Some((player_identifier, winning_hand_rank_vec)) =
@@ -667,7 +688,7 @@ impl TexasHoldEm {
                 let mut sorted_winning_players: Vec<_> = winning_players.iter().collect();
                 sorted_winning_players.sort_by_key(|(player_id, _)| {
                     let pos = player_positions.get(player_id).unwrap();
-                    (*pos + self.seats.len() - (dealer_seat_index + 1)) % self.seats.len()
+                    (*pos + self.seats.len() - (self.dealer_seat_index + 1)) % self.seats.len()
                 });
 
                 // Allocate the calculated total amount of chips to each player and print the result.
@@ -718,6 +739,7 @@ impl TexasHoldEm {
         table_cards: Hand,
         burned_cards: Hand,
     ) {
+        // Return cards from the players' hands to the deck
         for (_player, hand) in player_hands.iter() {
             if let (Some(card1), Some(card2)) = (hand.cards.first(), hand.cards.last()) {
                 self.deck.insert_at_top(*card1).unwrap();
@@ -746,16 +768,17 @@ impl TexasHoldEm {
 impl Default for TexasHoldEm {
     fn default() -> Self {
         Self {
-            minimum_table_buy_in_chips_amount: 100,
-            maximum_players_count: 10,
             game_over: false,
             deck: Deck::new(),
             players: HashMap::new(),
             seats: Vec::new(),
-            small_blind_amount: 2,
-            big_blind_amount: 5,
+            dealer_seat_index: 0,
             main_pot: Pot::new(0, HashMap::new()),
             side_pots: Vec::new(),
+            minimum_chips_buy_in_amount: 100,
+            maximum_players_count: 10,
+            small_blind_amount: 2,
+            big_blind_amount: 5,
         }
     }
 }
