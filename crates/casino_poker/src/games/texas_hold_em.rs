@@ -322,12 +322,11 @@ impl TexasHoldEm {
     /// Post the blind amount for either the small blind or the big blind.
     /// Create a side pot if the player could not post the full blind amount.
     fn post_blind(&mut self, is_small_blind: bool) {
-        let mut seat_index: usize = 0;
-        if is_small_blind {
-            seat_index = self.get_small_blind_seat_index();
+        let seat_index = if is_small_blind {
+            self.get_small_blind_seat_index()
         } else {
-            seat_index = self.get_big_blind_seat_index();
-        }
+            self.get_big_blind_seat_index()
+        };
 
         if let Some(player_identifier) = self.seats.get(seat_index) {
             if let Some(player) = self.players.get_mut(player_identifier) {
