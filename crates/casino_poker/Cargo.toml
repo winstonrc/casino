@@ -1,6 +1,6 @@
 [package]
 name = "casino_poker"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "MPL-2.0"
 description = "A library that provides the backend for playing poker games such as Texas hold 'em."
