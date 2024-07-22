@@ -5,6 +5,7 @@ use casino_poker::games::texas_hold_em::TexasHoldEm;
 use casino_poker::player::Player;
 
 const MINIMUM_CHIPS_BUY_IN_AMOUNT: u32 = 100;
+// 10 is the recommended maximum number of players at a table, so it is the default.
 const MAXIMUM_PLAYERS_COUNT: usize = 10;
 const CURRENCY: &str = "USD";
 
@@ -35,6 +36,8 @@ pub fn play_game() {
     add_player_prompt(&mut texas_hold_em_1_3_no_limit, &mut player5);
     let mut player6 = texas_hold_em_1_3_no_limit.new_player_with_chips("Player 6", 100);
     add_player_prompt(&mut texas_hold_em_1_3_no_limit, &mut player6);
+
+    println!();
 
     play_tournament(&mut texas_hold_em_1_3_no_limit);
 }
@@ -240,6 +243,7 @@ fn buy_chips_prompt(player: &mut Player) {
 
 fn play_tournament(game: &mut TexasHoldEm) {
     while !game.check_for_game_over() {
+        game.print_leaderboard();
         game.play_round();
         game.remove_losers();
         game.check_for_game_over();

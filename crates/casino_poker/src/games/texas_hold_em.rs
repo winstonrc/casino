@@ -114,6 +114,8 @@ impl TexasHoldEm {
     /// Play a tournament consisting of multiple rounds.
     pub fn play_tournament(&mut self) {
         while !self.game_over {
+            self.print_leaderboard();
+            println!();
             self.play_round();
             self.remove_losers();
             self.check_for_game_over();
@@ -151,6 +153,38 @@ impl TexasHoldEm {
         self.game_over = true;
     }
 
+    /// Print statistics about the players currently seated at the table.
+    /// Players are printed from the highest to lowest amount of chips.
+    pub fn print_leaderboard(&self) {
+        // Step 1: Create a vector of (player_identifier, chips) tuples
+        let mut player_stats: Vec<(&Uuid, &Player)> = self
+            .seats
+            .iter()
+            .filter_map(|player_identifier| {
+                self.players
+                    .get(player_identifier)
+                    .map(|player| (player_identifier, player))
+            })
+            .collect();
+
+        // Step 2: Sort players by the number of chips (descending order)
+        player_stats.sort_by(|(_, player1), (_, player2)| player2.chips.cmp(&player1.chips));
+
+        println!("***************");
+        println!("* LEADERBOARD *");
+        println!("***************");
+
+        // Step 3: Print the sorted list
+        for &(_player_identifier, player) in &player_stats {
+            println!(
+                "{}: {} chip{}",
+                player.name,
+                player.chips,
+                if player.chips == 1 { "" } else { "s" }
+            );
+        }
+    }
+
     // todo: implement betting system
     // todo: implement folding
     // todo: implement side pot correctly
@@ -161,7 +195,8 @@ impl TexasHoldEm {
         self.rotate_dealer();
         self.deck.shuffle();
         self.add_players_to_main_pot();
-        self.print_player_stats();
+        println!();
+
         self.print_dealer(self.dealer_seat_index);
         self.post_blind(true);
         self.post_blind(false);
@@ -169,6 +204,9 @@ impl TexasHoldEm {
         // Initializing these as Hand because it is a Vec<Card> that can print as symbols if needed
         let mut table_cards = Hand::new();
         let mut burned_cards = Hand::new();
+
+        println!();
+
         let player_hands = self.deal_hands_to_all_players();
 
         // Play the round
@@ -193,7 +231,9 @@ impl TexasHoldEm {
                 }
             }
 
-            println!("Table cards: {}", table_cards.to_symbols());
+            println!("** FLOP **");
+            println!("Table cards:");
+            println!("{}", table_cards.to_symbols());
             println!();
 
             // Flop betting round
@@ -213,7 +253,9 @@ impl TexasHoldEm {
                 table_cards.push(card);
             }
 
-            println!("Table cards: {}", table_cards.to_symbols());
+            println!("** TURN **");
+            println!("Table cards:");
+            println!("{}", table_cards.to_symbols());
             println!();
 
             // Turn betting round
@@ -233,7 +275,9 @@ impl TexasHoldEm {
                 table_cards.push(card);
             }
 
-            println!("Table cards: {}", table_cards.to_symbols());
+            println!("** RIVER **");
+            println!("Table cards:");
+            println!("{}", table_cards.to_symbols());
             println!();
 
             // River betting round
@@ -288,21 +332,6 @@ impl TexasHoldEm {
         for (identifier, player) in self.players.clone() {
             self.main_pot.add_player(identifier, player);
         }
-    }
-
-    /// Print statistics about the players currently seated at the table.
-    fn print_player_stats(&self) {
-        for player_identifier in &self.seats {
-            if let Some(player) = self.players.get(player_identifier) {
-                println!(
-                    "{}: {} chip{}",
-                    player.name,
-                    player.chips,
-                    if player.chips == 1 { "" } else { "s" }
-                );
-            }
-        }
-        println!();
     }
 
     /// Get the seat index of the small blind player.
@@ -394,10 +423,7 @@ impl TexasHoldEm {
     /// Deal hands of two cards to every player starting with the player to the left of the dealer.
     fn deal_hands_to_all_players(&mut self) -> HashMap<Uuid, Hand> {
         let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
-        let player_count = self.seats.len();
-        let mut current_player_seat_index = (self.dealer_seat_index + 1) % player_count;
-
-        println!();
+        let mut current_player_seat_index = self.get_small_blind_seat_index();
 
         // Deal cards to player starting to the left of the dealer
         while current_player_seat_index != self.dealer_seat_index {
@@ -428,7 +454,7 @@ impl TexasHoldEm {
             }
 
             // Move to the next player
-            current_player_seat_index = (current_player_seat_index + 1) % player_count;
+            current_player_seat_index = (current_player_seat_index + 1) % self.seats.len();
         }
 
         // Deal cards to the dealer
