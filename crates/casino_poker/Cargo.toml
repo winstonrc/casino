@@ -1,9 +1,9 @@
 [package]
 name = "casino_poker"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 license = "MPL-2.0"
-description = "A library that provides the backend for playing poker games such as Texas hold 'em."
+description = "A library that provides hand ranking & the backend for poker games."
 authors = ["Winston Cooke <contact@winstoncooke.com>"]
 repository = "https://github.com/winstonrc/casino/tree/main/crates/casino_poker"
 keywords = ["poker", "casino", "texas-hold-em", "cards", "game"]

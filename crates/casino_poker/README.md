@@ -2,9 +2,9 @@
 
 # casino_poker
 
-A library that implements the backend for playing poker games including Texas hold 'em. This includes tested hand ranking functions.
+A library that provides hand ranking & the backend for poker games. 
 
-**Note:** This library is still a work-in-progress. Following the usage code below will result in a full game being simulated without user interaction. This includes a lack of betting or folding hands, which are currently being worked on.
+**Note:** This library is still a work-in-progress. While stability during updates is a goal, expect occasional breaking changes for the time being.
 
 ## Usage
 
