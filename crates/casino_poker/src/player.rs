@@ -5,6 +5,7 @@ pub struct Player {
     pub identifier: Uuid,
     pub name: String,
     pub chips: u32,
+    pub active: bool,
 }
 
 impl Player {
@@ -16,6 +17,7 @@ impl Player {
             identifier,
             name: name.to_string(),
             chips,
+            active: true,
         }
     }
 
@@ -26,6 +28,7 @@ impl Player {
             identifier,
             name: name.to_string(),
             chips,
+            active: true,
         }
     }
 

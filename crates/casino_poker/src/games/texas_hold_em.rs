@@ -9,6 +9,19 @@ use casino_cards::hand::Hand;
 use crate::hand_rankings::{get_high_card_value, rank_hand, HandRank};
 use crate::player::Player;
 
+/// The actions a Player can choose from on their turn.
+pub enum PlayerAction {
+    /// Match the current bet.
+    Call(u32),
+    /// Make a bet of zero.
+    /// Must be invoked by the first player betting before subsequent players are allowed to perform the action.
+    Check(),
+    /// Discard current hand and remove self from the current round.
+    Fold(),
+    /// Raise the current bet to a higher amount.
+    Raise(u32),
+}
+
 /// The core of the Texas hold 'em game.
 ///
 /// The game currently defaults to no-limit.
