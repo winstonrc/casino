@@ -204,18 +204,15 @@ impl TexasHoldEm {
         self.rotate_dealer();
         self.shuffle_deck();
         self.add_players_to_main_pot();
-        println!();
-
         self.print_dealer();
         self.post_blind(true);
         self.post_blind(false);
 
+        println!();
+
         // Initializing these as Hand because it is a Vec<Card> that can print as symbols if needed
         let mut table_cards = Hand::new();
         let mut burned_cards = Hand::new();
-
-        println!();
-
         let player_hands = self.deal_hands_to_all_players();
 
         // Flop
