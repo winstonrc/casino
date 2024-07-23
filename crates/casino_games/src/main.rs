@@ -14,8 +14,8 @@ fn main() {
 
 fn select_game() {
     println!("Games");
-    println!("1. Texas hold 'em");
-    println!("Enter the number of the game you would like to play.");
+    println!("Texas hold 'em");
+    println!("Which game would you like to play?");
     print!("Game: ");
     io::stdout().flush().expect("Failed to flush stdout.");
 
@@ -23,14 +23,13 @@ fn select_game() {
     io::stdin()
         .read_line(&mut input)
         .expect("Failed to read line");
-    let trimmed_input = input.trim();
+    let trimmed_input = input
+        .trim()
+        .to_lowercase()
+        .replace("'", "")
+        .replace(" ", "");
 
-    if trimmed_input.to_lowercase() == "q" || trimmed_input.to_lowercase() == "quit" {
-        println!("Quitting game.");
-        process::exit(0);
-    }
-
-    match trimmed_input.to_lowercase().as_str() {
+    match trimmed_input.as_str() {
         "q" => {
             println!("Quitting game.");
             process::exit(0);
@@ -39,10 +38,12 @@ fn select_game() {
             println!("Quitting game.");
             process::exit(0);
         }
-        "1" => {
+        "texasholdem" | "holdem" => {
             println!();
             texas_hold_em_game::play_game();
         }
-        _ => println!("Invalid input. Please enter the number of a game listed above or enter 'q' to quit the game.\n"),
+        _ => println!(
+            "Invalid input. Please enter the name of a game listed above or enter 'q' to quit.\n"
+        ),
     }
 }
