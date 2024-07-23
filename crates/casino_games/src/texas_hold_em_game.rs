@@ -1,6 +1,7 @@
 use std::io::{self, Write};
 use std::process;
 
+use casino_cards::hand::Hand;
 use casino_poker::games::texas_hold_em::TexasHoldEm;
 use casino_poker::player::Player;
 
@@ -244,9 +245,10 @@ fn buy_chips_prompt(player: &mut Player) {
 fn play_tournament(game: &mut TexasHoldEm) {
     while !game.check_for_game_over() {
         game.print_leaderboard();
-        game.play_round();
+        play_round(game);
         game.remove_losers();
         game.check_for_game_over();
+
         if game.check_for_game_over() {
             process::exit(0);
         }
@@ -303,3 +305,118 @@ fn play_tournament(game: &mut TexasHoldEm) {
         game.check_for_game_over();
     }
 }
+
+// todo: implement betting system
+    // todo: implement folding
+    // todo: implement side pot correctly
+    // todo: implement hand timer
+    /// Play a single round.
+    pub fn play_round(game: &mut TexasHoldEm) {
+        // Pre-round
+        game.rotate_dealer();
+        game.shuffle_deck();
+        game.add_players_to_main_pot();
+        game.print_dealer();
+        game.post_blind(true);
+        game.post_blind(false);
+
+        println!();
+
+
+        // Initializing these as Hand because it is a Vec<Card> that can print as symbols if needed
+        let mut table_cards = Hand::new();
+        let mut burned_cards = Hand::new();
+
+        let player_hands = game.deal_hands_to_all_players();
+
+        // Play the round
+        let mut round_over = false;
+        while !round_over {
+            // Pre-flop betting round
+            let mut pre_flop_betting_round_over = false;
+            while !pre_flop_betting_round_over {
+                // bet
+                // todo: remove after implementing pre_flop_betting_round_over trigger
+                pre_flop_betting_round_over = true;
+            }
+
+            // Flop
+            if let Some(card) = game.deal_card() {
+                burned_cards.push(card);
+            }
+
+            for _ in 0..3 {
+                if let Some(card) = game.deal_card() {
+                    table_cards.push(card);
+                }
+            }
+
+            println!("** FLOP **");
+            println!("Table cards:");
+            println!("{}", table_cards.to_symbols());
+            println!();
+
+            // Flop betting round
+            let mut flop_betting_round_over = false;
+            while !flop_betting_round_over {
+                // bet
+                // todo: remove after implementing flop_betting_round_over trigger
+                flop_betting_round_over = true;
+            }
+
+            // Turn
+            if let Some(card) = game.deal_card() {
+                burned_cards.push(card);
+            }
+
+            if let Some(card) = game.deal_card() {
+                table_cards.push(card);
+            }
+
+            println!("** TURN **");
+            println!("Table cards:");
+            println!("{}", table_cards.to_symbols());
+            println!();
+
+            // Turn betting round
+            let mut turn_betting_round_over = false;
+            while !turn_betting_round_over {
+                // bet
+                // todo: remove after implementing turn_betting_round_over trigger
+                turn_betting_round_over = true;
+            }
+
+            // River
+            if let Some(card) = game.deal_card() {
+                burned_cards.push(card);
+            }
+
+            if let Some(card) = game.deal_card() {
+                table_cards.push(card);
+            }
+
+            println!("** RIVER **");
+            println!("Table cards:");
+            println!("{}", table_cards.to_symbols());
+            println!();
+
+            // River betting round
+            let mut river_betting_round_over = false;
+            while !river_betting_round_over {
+                // bet
+                // todo: remove after implementing river_betting_round_over trigger
+                river_betting_round_over = true;
+            }
+
+            // todo: remove after implementing round_over trigger
+            round_over = true;
+        }
+
+        // Determine winners
+        let winning_players = game.rank_all_hands(&player_hands, &table_cards);
+        game.determine_round_result(&winning_players);
+
+        // Post-round
+        game.reset_deck(player_hands, table_cards, burned_cards);
+        game.reset_pots();
+    }

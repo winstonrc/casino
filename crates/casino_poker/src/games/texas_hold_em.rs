@@ -124,12 +124,11 @@ impl TexasHoldEm {
         self.players.remove(&player_identifier)
     }
 
-    /// Play a tournament consisting of multiple rounds.
+    /// Simulates a tournament consisting of multiple rounds without betting or folding.
     pub fn play_tournament(&mut self) {
         while !self.game_over {
             self.print_leaderboard();
-            println!();
-            self.play_round();
+            self.simulate_round();
             self.remove_losers();
             self.check_for_game_over();
         }
@@ -196,21 +195,18 @@ impl TexasHoldEm {
                 if player.chips == 1 { "" } else { "s" }
             );
         }
+        println!();
     }
 
-    // todo: implement betting system
-    // todo: implement folding
-    // todo: implement side pot correctly
-    // todo: implement hand timer
-    /// Play a single round.
-    pub fn play_round(&mut self) {
+    /// Simulates a single round with no betting or folding.
+    pub fn simulate_round(&mut self) {
         // Pre-round
         self.rotate_dealer();
-        self.deck.shuffle();
+        self.shuffle_deck();
         self.add_players_to_main_pot();
         println!();
 
-        self.print_dealer(self.dealer_seat_index);
+        self.print_dealer();
         self.post_blind(true);
         self.post_blind(false);
 
@@ -222,88 +218,38 @@ impl TexasHoldEm {
 
         let player_hands = self.deal_hands_to_all_players();
 
-        // Play the round
-        let mut round_over = false;
-        while !round_over {
-            // Pre-flop betting round
-            let mut pre_flop_betting_round_over = false;
-            while !pre_flop_betting_round_over {
-                // bet
-                // todo: remove after implementing pre_flop_betting_round_over trigger
-                pre_flop_betting_round_over = true;
-            }
-
-            // Flop
-            if let Some(card) = self.deal_card() {
-                burned_cards.push(card);
-            }
-
-            for _ in 0..3 {
-                if let Some(card) = self.deal_card() {
-                    table_cards.push(card);
-                }
-            }
-
-            println!("** FLOP **");
-            println!("Table cards:");
-            println!("{}", table_cards.to_symbols());
-            println!();
-
-            // Flop betting round
-            let mut flop_betting_round_over = false;
-            while !flop_betting_round_over {
-                // bet
-                // todo: remove after implementing flop_betting_round_over trigger
-                flop_betting_round_over = true;
-            }
-
-            // Turn
-            if let Some(card) = self.deal_card() {
-                burned_cards.push(card);
-            }
-
-            if let Some(card) = self.deal_card() {
-                table_cards.push(card);
-            }
-
-            println!("** TURN **");
-            println!("Table cards:");
-            println!("{}", table_cards.to_symbols());
-            println!();
-
-            // Turn betting round
-            let mut turn_betting_round_over = false;
-            while !turn_betting_round_over {
-                // bet
-                // todo: remove after implementing turn_betting_round_over trigger
-                turn_betting_round_over = true;
-            }
-
-            // River
-            if let Some(card) = self.deal_card() {
-                burned_cards.push(card);
-            }
-
-            if let Some(card) = self.deal_card() {
-                table_cards.push(card);
-            }
-
-            println!("** RIVER **");
-            println!("Table cards:");
-            println!("{}", table_cards.to_symbols());
-            println!();
-
-            // River betting round
-            let mut river_betting_round_over = false;
-            while !river_betting_round_over {
-                // bet
-                // todo: remove after implementing river_betting_round_over trigger
-                river_betting_round_over = true;
-            }
-
-            // todo: remove after implementing round_over trigger
-            round_over = true;
+        // Flop
+        if let Some(card) = self.deal_card() {
+            burned_cards.push(card);
         }
+
+        for _ in 0..3 {
+            if let Some(card) = self.deal_card() {
+                table_cards.push(card);
+            }
+        }
+
+        // Turn
+        if let Some(card) = self.deal_card() {
+            burned_cards.push(card);
+        }
+
+        if let Some(card) = self.deal_card() {
+            table_cards.push(card);
+        }
+
+        // River
+        if let Some(card) = self.deal_card() {
+            burned_cards.push(card);
+        }
+
+        if let Some(card) = self.deal_card() {
+            table_cards.push(card);
+        }
+
+        println!("Table cards:");
+        println!("{}", table_cards.to_symbols());
+        println!();
 
         // Determine winners
         let winning_players = self.rank_all_hands(&player_hands, &table_cards);
@@ -314,16 +260,22 @@ impl TexasHoldEm {
         self.reset_pots();
     }
 
+    /// Shuffle the game's deck.
+    /// This is required at the start of every round.
+    pub fn shuffle_deck(&mut self) {
+        self.deck.shuffle();
+    }
+
     /// Rotate the dealer button clockwise to the next player.
     /// This must happen before the start of the next round.
     /// This will also update the small blind and big blind players.
-    fn rotate_dealer(&mut self) {
+    pub fn rotate_dealer(&mut self) {
         self.dealer_seat_index = (self.dealer_seat_index + 1) % self.seats.len();
     }
 
     /// Print the name of the player that has the dealer button for the round.
-    fn print_dealer(&self, dealer_seat_index: usize) {
-        if let Some(dealer_identifier) = self.seats.get(dealer_seat_index) {
+    pub fn print_dealer(&self) {
+        if let Some(dealer_identifier) = self.seats.get(self.dealer_seat_index) {
             if let Some(dealer) = self.players.get(dealer_identifier) {
                 println!("{} is the dealer.", dealer.name);
             } else {
@@ -335,13 +287,13 @@ impl TexasHoldEm {
         } else {
             eprintln!(
                 "Error: Unable to find the dealer at seat {}",
-                dealer_seat_index
+                self.dealer_seat_index
             );
         }
     }
 
     /// Add all players at the table to the main betting pot.
-    fn add_players_to_main_pot(&mut self) {
+    pub fn add_players_to_main_pot(&mut self) {
         for (identifier, player) in self.players.clone() {
             self.main_pot.add_player(identifier, player);
         }
@@ -363,7 +315,7 @@ impl TexasHoldEm {
 
     /// Post the blind amount for either the small blind or the big blind.
     /// Create a side pot if the player could not post the full blind amount.
-    fn post_blind(&mut self, is_small_blind: bool) {
+    pub fn post_blind(&mut self, is_small_blind: bool) {
         let seat_index = if is_small_blind {
             self.get_small_blind_seat_index()
         } else {
@@ -434,7 +386,7 @@ impl TexasHoldEm {
     }
 
     /// Deal hands of two cards to every player starting with the player to the left of the dealer.
-    fn deal_hands_to_all_players(&mut self) -> HashMap<Uuid, Hand> {
+    pub fn deal_hands_to_all_players(&mut self) -> HashMap<Uuid, Hand> {
         let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
         let mut current_player_seat_index = self.get_small_blind_seat_index();
 
@@ -518,7 +470,7 @@ impl TexasHoldEm {
     }
 
     /// Deals a single card.
-    fn deal_card(&mut self) -> Option<Card> {
+    pub fn deal_card(&mut self) -> Option<Card> {
         // todo: change to deck.deal_face_down for all other players after testing is completed.
         if let Some(card) = self.deck.deal_face_up() {
             return Some(card);
@@ -528,7 +480,7 @@ impl TexasHoldEm {
     }
 
     /// Rank the provided hands to determine which hands are the best.
-    fn rank_all_hands(
+    pub fn rank_all_hands(
         &self,
         player_hands: &HashMap<Uuid, Hand>,
         table_cards: &Hand,
@@ -653,7 +605,7 @@ impl TexasHoldEm {
 
     // todo: implement side pot logic
     /// Determine which player or players won the round and how the pot(s) should be divided.
-    fn determine_round_result(&mut self, winning_players: &HashMap<Uuid, Vec<HandRank>>) {
+    pub fn determine_round_result(&mut self, winning_players: &HashMap<Uuid, Vec<HandRank>>) {
         match winning_players.len() {
             1 => {
                 if let Some((player_identifier, winning_hand_rank_vec)) =
@@ -771,7 +723,7 @@ impl TexasHoldEm {
     }
 
     /// Returns all the cards to the deck.
-    fn reset_deck(
+    pub fn reset_deck(
         &mut self,
         player_hands: HashMap<Uuid, Hand>,
         table_cards: Hand,
@@ -797,7 +749,7 @@ impl TexasHoldEm {
     }
 
     /// Resets the main pot and all side pots to be empty.
-    fn reset_pots(&mut self) {
+    pub fn reset_pots(&mut self) {
         self.main_pot = Pot::new(0, HashMap::new());
         self.side_pots = Vec::new();
     }
