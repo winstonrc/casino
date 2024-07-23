@@ -163,6 +163,13 @@ impl TexasHoldEmGame {
         let mut burned_cards = Hand::new();
         let player_hands = self.game.deal_hands_to_all_players();
 
+        // Print the user's hand
+        if let Some(user_hand) = player_hands.get(&self.user.identifier) {
+            println!("Your hand: {}\n", user_hand.to_symbols());
+        } else {
+            eprintln!("Unable to get user's hand with the identifier: {}", self.user.identifier);
+        }
+
         // Play the round
         let mut round_over = false;
         while !round_over {

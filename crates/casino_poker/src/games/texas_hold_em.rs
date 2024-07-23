@@ -392,12 +392,7 @@ impl TexasHoldEm {
             if let Some(current_player_identifier) = self.seats.get(current_player_seat_index) {
                 if let Some(current_player) = self.players.get(current_player_identifier).cloned() {
                     if let Some(hand) = self.deal_hand() {
-                        // todo: Update to only show hand of user after testing is complete.
-                        println!(
-                            "Hand dealt to {}: {}",
-                            current_player.name,
-                            hand.to_symbols()
-                        );
+                        println!("Hand dealt to {}.", current_player.name);
                         player_hands.insert(current_player.identifier, hand);
                     } else {
                         eprintln!("Error: Unable to deal hand.");
@@ -423,8 +418,7 @@ impl TexasHoldEm {
         if let Some(dealer_identifier) = self.seats.get(self.dealer_seat_index) {
             if let Some(dealer) = self.players.get(dealer_identifier).cloned() {
                 if let Some(hand) = self.deal_hand() {
-                    // todo: Update to only show hand of user after testing is complete.
-                    println!("Hand dealt to {}: {}", dealer.name, hand.to_symbols());
+                    println!("Hand dealt to {}.", dealer.name);
                     player_hands.insert(dealer.identifier, hand);
                 } else {
                     eprintln!("Error: Unable to deal hand.")
