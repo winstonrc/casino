@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::process;
 
-use casino_cards::hand::Hand;
+use casino_poker::casino_cards::hand::Hand;
 use casino_poker::games::texas_hold_em::TexasHoldEm;
 use casino_poker::player::Player;
 
