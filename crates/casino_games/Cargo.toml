@@ -11,4 +11,3 @@ categories = ["games"]
 
 [dependencies]
 casino_poker = { version = "0.1.3", path = "../casino_poker" }
-casino_cards = { version = "0.1.1", path = "../casino_cards" }
