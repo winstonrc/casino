@@ -54,5 +54,5 @@ How many chips would you like to buy?
 
 ## todo
 
-- implement betting & folding
+- improve computer ai
 - add a terminal user interface (tui)
