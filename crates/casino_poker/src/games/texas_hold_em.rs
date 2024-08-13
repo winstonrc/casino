@@ -307,7 +307,7 @@ impl TexasHoldEm {
     /// Get the seat index of the small blind player.
     /// This must happen before the start of the next round.
     /// This must happen after rotate_dealer() is executed.
-    fn get_big_blind_seat_index(&self) -> usize {
+    pub fn get_big_blind_seat_index(&self) -> usize {
         (self.dealer_seat_index + 2) % self.seats.len()
     }
 
