@@ -177,7 +177,9 @@ impl TexasHoldEmGame {
         let mut round_over = false;
         while !round_over {
             // Pre-flop betting round
-            (round_over, player_hands) = self.run_betting_round(player_hands, &table_cards);
+            let big_blind_seat_index = self.game.get_big_blind_seat_index();
+            let first_better = self.game.rotate_current_player(big_blind_seat_index);
+            (round_over, player_hands) = self.run_betting_round(first_better, player_hands, &table_cards);
             if round_over {
                 break;
             }
@@ -198,8 +200,10 @@ impl TexasHoldEmGame {
             println!("{}", table_cards.to_symbols());
             println!();
 
+            let starting_better_seat_index = self.game.get_small_blind_seat_index();
+
             // Flop betting round
-            (round_over, player_hands) = self.run_betting_round(player_hands, &table_cards);
+            (round_over, player_hands) = self.run_betting_round(starting_better_seat_index, player_hands, &table_cards);
             if round_over {
                 break;
             }
@@ -219,7 +223,7 @@ impl TexasHoldEmGame {
             println!();
 
             // Turn betting round
-            (round_over, player_hands) = self.run_betting_round(player_hands, &table_cards);
+            (round_over, player_hands) = self.run_betting_round(starting_better_seat_index, player_hands, &table_cards);
             if round_over {
                 break;
             }
@@ -239,7 +243,7 @@ impl TexasHoldEmGame {
             println!();
 
             // River betting round
-            (round_over, player_hands) = self.run_betting_round(player_hands, &table_cards);
+            (round_over, player_hands) = self.run_betting_round(starting_better_seat_index, player_hands, &table_cards);
             if round_over {
                 break;
             }
@@ -262,9 +266,9 @@ impl TexasHoldEmGame {
     ///
     /// The round is over if only one player remains.
     /// The round continues if more than one player remains.
-    fn run_betting_round(&mut self, mut player_hands: HashMap<Uuid, Hand>, table_cards: &Hand) -> (bool, HashMap<Uuid, Hand>) {
+    fn run_betting_round(&mut self, starting_better_seat_index: usize, mut player_hands: HashMap<Uuid, Hand>, table_cards: &Hand) -> (bool, HashMap<Uuid, Hand>) {
         // Betting begins with the first player to the left of the dealer, aka the small blind
-        let mut current_player_seat_index = self.game.get_small_blind_seat_index();
+        let mut current_player_seat_index = starting_better_seat_index;
         let mut current_table_bet: u32 = 0;
         let mut active_players: HashSet<Uuid> = player_hands.keys().cloned().collect();
         let mut last_player_to_raise: Option<Uuid> = None;
