@@ -3,3 +3,6 @@ pub mod games {
 }
 pub mod hand_rankings;
 pub mod player;
+
+pub use casino_cards;
+pub use uuid;
