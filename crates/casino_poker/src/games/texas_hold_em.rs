@@ -10,9 +10,10 @@ use crate::hand_rankings::{get_high_card_value, rank_hand, HandRank};
 use crate::player::Player;
 
 /// The actions a Player can choose from on their turn.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PlayerAction {
     /// Match the current bet.
-    Call(u32),
+    Call(),
     /// Make a bet of zero.
     /// Must be invoked by the first player betting before subsequent players are allowed to perform the action.
     Check(),
@@ -299,7 +300,7 @@ impl TexasHoldEm {
     /// Get the seat index of the small blind player.
     /// This must happen before the start of the next round.
     /// This must happen after rotate_dealer() is executed.
-    fn get_small_blind_seat_index(&self) -> usize {
+    pub fn get_small_blind_seat_index(&self) -> usize {
         (self.dealer_seat_index + 1) % self.seats.len()
     }
 
@@ -308,6 +309,16 @@ impl TexasHoldEm {
     /// This must happen after rotate_dealer() is executed.
     fn get_big_blind_seat_index(&self) -> usize {
         (self.dealer_seat_index + 2) % self.seats.len()
+    }
+
+    pub fn subtract_chips_from_player(&mut self, player_identifier: &Uuid, amount: u32) {
+        if let Some(player) = self.players.get_mut(player_identifier) {
+            player.subtract_chips(amount);
+        }
+    }
+
+    pub fn add_chips_to_main_pot(&mut self, amount: u32) {
+        self.main_pot.add_chips(amount);
     }
 
     /// Post the blind amount for either the small blind or the big blind.
@@ -439,6 +450,22 @@ impl TexasHoldEm {
         println!();
 
         player_hands
+    }
+
+    /// Get a mutable reference to a Player via their seat index.
+    pub fn get_player_at_seat(&mut self, seat_index: usize) -> Option<&mut Player> {
+        if let Some(player_identifier) = self.seats.get(seat_index) {
+            if let Some(player) = self.players.get_mut(player_identifier) {
+                return Some(player);
+            }
+        }
+
+        None
+    }
+
+    /// Rotate the current player's seat index.
+    pub fn rotate_current_player(&self, current_player_seat_index: usize) -> usize {
+        (current_player_seat_index + 1) % self.seats.len()
     }
 
     /// Deal a hand of two cards.

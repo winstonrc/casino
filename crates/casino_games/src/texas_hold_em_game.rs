@@ -1,9 +1,12 @@
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 use std::process;
+use rand::prelude::*;
 
 use casino_poker::casino_cards::hand::Hand;
-use casino_poker::games::texas_hold_em::TexasHoldEm;
+use casino_poker::games::texas_hold_em::{PlayerAction, TexasHoldEm};
 use casino_poker::player::Player;
+use casino_poker::uuid::Uuid;
 
 const MINIMUM_CHIPS_BUY_IN_AMOUNT: u32 = 100;
 // 10 is the recommended maximum number of players at a table, so it is the default.
@@ -161,7 +164,7 @@ impl TexasHoldEmGame {
         // Initializing these as Hand because it is a Vec<Card> that can print as symbols if needed
         let mut table_cards = Hand::new();
         let mut burned_cards = Hand::new();
-        let player_hands = self.game.deal_hands_to_all_players();
+        let mut player_hands = self.game.deal_hands_to_all_players();
 
         // Print the user's hand
         if let Some(user_hand) = player_hands.get(&self.user.identifier) {
@@ -174,11 +177,9 @@ impl TexasHoldEmGame {
         let mut round_over = false;
         while !round_over {
             // Pre-flop betting round
-            let mut pre_flop_betting_round_over = false;
-            while !pre_flop_betting_round_over {
-                // bet
-                // todo: remove after implementing pre_flop_betting_round_over trigger
-                pre_flop_betting_round_over = true;
+            (round_over, player_hands) = self.run_betting_round(player_hands, &table_cards);
+            if round_over {
+                break;
             }
 
             // Flop
@@ -198,11 +199,9 @@ impl TexasHoldEmGame {
             println!();
 
             // Flop betting round
-            let mut flop_betting_round_over = false;
-            while !flop_betting_round_over {
-                // bet
-                // todo: remove after implementing flop_betting_round_over trigger
-                flop_betting_round_over = true;
+            (round_over, player_hands) = self.run_betting_round(player_hands, &table_cards);
+            if round_over {
+                break;
             }
 
             // Turn
@@ -220,11 +219,9 @@ impl TexasHoldEmGame {
             println!();
 
             // Turn betting round
-            let mut turn_betting_round_over = false;
-            while !turn_betting_round_over {
-                // bet
-                // todo: remove after implementing turn_betting_round_over trigger
-                turn_betting_round_over = true;
+            (round_over, player_hands) = self.run_betting_round(player_hands, &table_cards);
+            if round_over {
+                break;
             }
 
             // River
@@ -242,14 +239,11 @@ impl TexasHoldEmGame {
             println!();
 
             // River betting round
-            let mut river_betting_round_over = false;
-            while !river_betting_round_over {
-                // bet
-                // todo: remove after implementing river_betting_round_over trigger
-                river_betting_round_over = true;
+            (round_over, player_hands) = self.run_betting_round(player_hands, &table_cards);
+            if round_over {
+                break;
             }
 
-            // todo: remove after implementing round_over trigger
             round_over = true;
         }
 
@@ -261,6 +255,99 @@ impl TexasHoldEmGame {
         self.game
             .reset_deck(player_hands, table_cards, burned_cards);
         self.game.reset_pots();
+    }
+
+    /// Runs a betting round for all players currently playing.
+    /// Returns a tuple indicating whether the round is over and the remaining players' hands.
+    ///
+    /// The round is over if only one player remains.
+    /// The round continues if more than one player remains.
+    fn run_betting_round(&mut self, mut player_hands: HashMap<Uuid, Hand>, table_cards: &Hand) -> (bool, HashMap<Uuid, Hand>) {
+        // Betting begins with the first player to the left of the dealer, aka the small blind
+        let mut current_player_seat_index = self.game.get_small_blind_seat_index();
+        let mut current_table_bet: u32 = 0;
+        let mut active_players: HashSet<Uuid> = player_hands.keys().cloned().collect();
+        let mut last_player_to_raise: Option<Uuid> = None;
+        let mut last_action: Option<PlayerAction> = None;
+        let mut can_player_check_as_action: bool = true;
+        let mut first_player_who_checked: Option<Uuid> = None;
+
+        while active_players.len() > 1 {
+            if let Some(current_player) = self.game.get_player_at_seat(current_player_seat_index) {
+                if let Some(last_player_to_raise_identifier) = last_player_to_raise {
+                    if current_player.identifier == last_player_to_raise_identifier {
+                        break;
+                    }
+                }
+
+                if let Some(first_player_to_check_identifier) = first_player_who_checked {
+                    if current_player.identifier == first_player_to_check_identifier {
+                        break;
+                    }
+                }
+
+                if active_players.contains(&current_player.identifier) {
+                    let action: PlayerAction = if current_player.identifier == self.user.identifier {
+                        println!("It's your turn.");
+                        user_bet_prompt(current_table_bet, current_player.chips)
+                    } else {
+                        println!("It's {}'s turn.", current_player.name);
+                        computer_action(current_table_bet, current_player.chips, last_action.clone(), can_player_check_as_action, table_cards)
+                    };
+
+                    if action != PlayerAction::Fold() && action != PlayerAction::Check() {
+                        can_player_check_as_action = false;
+                    }
+
+                    last_action = Some(action.clone());
+
+                    match action {
+                        PlayerAction::Call() => {
+                            println!("{} calls.", current_player.name);
+                            current_player.subtract_chips(current_table_bet);
+                            self.game.add_chips_to_main_pot(current_table_bet);
+                        },
+                        PlayerAction::Check() => {
+                            println!("{} checks.", current_player.name);
+                            if first_player_who_checked.is_none() {
+                                first_player_who_checked = Some(current_player.identifier);
+                            }
+                        },
+                        PlayerAction::Fold() => {
+                            println!("{} folds.", current_player.name);
+                            player_hands.remove(&current_player.identifier);
+                            active_players.remove(&current_player.identifier);
+                        },
+                        PlayerAction::Raise(bet) => {
+                            let total_bet = current_table_bet + bet;
+                            if total_bet > current_player.chips {
+                                panic!("Player does not have enough chips")
+                            }
+    
+                            println!("{} raises by {} chips.", current_player.name, bet);
+                            if total_bet == current_player.chips {
+                                println!("{} is all in.", current_player.name);
+                            }
+    
+                            last_player_to_raise = Some(current_player.identifier);
+                            current_player.subtract_chips(total_bet);
+                            self.game.add_chips_to_main_pot(total_bet);
+                            current_table_bet += bet;
+                        },
+                    }
+                } else {
+                    current_player_seat_index = self.game.rotate_current_player(current_player_seat_index);
+                    continue;
+                }
+    
+                // Move to the next player
+                current_player_seat_index = self.game.rotate_current_player(current_player_seat_index);
+            }
+        }
+        
+        let round_over = player_hands.len() == 1;
+
+        (round_over, player_hands)
     }
 }
 
@@ -436,6 +523,218 @@ fn choose_table() -> (u32, u32) {
                 };
             }
             _ => println!("Invalid input. Please enter the number of a table listed above or enter 'q' to quit the game.\n"),            
+        }
+    }
+}
+
+/// 
+// Replace with better AI logic
+fn computer_action(current_table_bet: u32, player_chips: u32, last_action: Option<PlayerAction>, can_player_check_as_action: bool, _table_cards: &Hand) -> PlayerAction {
+    if player_chips >= current_table_bet {
+        if current_table_bet <= player_chips / 10 {
+            let mut rng = rand::thread_rng();
+            let random_num: f64 = rng.gen();
+
+            match last_action {
+                None => {
+                    if random_num >= 0.66 {
+                        return PlayerAction::Check();
+                    } else if random_num >= 0.33 {
+                        let raise_amount: u32 = player_chips / 10;
+                        return PlayerAction::Raise(raise_amount);
+                    } else {
+                        return PlayerAction::Fold();
+                    }
+                },
+                Some(action) => match action {
+                    PlayerAction::Check() => {
+                        if random_num >= 0.66 {
+                            return PlayerAction::Check();
+                        } else if random_num >= 0.33 {
+                            let raise_amount: u32 = player_chips / 10;
+                            return PlayerAction::Raise(raise_amount);
+                        } else {
+                            return PlayerAction::Fold();
+                        }
+                    }
+                    PlayerAction::Call() => {
+                        if random_num >= 0.66 {
+                            return PlayerAction::Call();
+                        } else if random_num >= 0.33 {
+                            let raise_amount: u32 = player_chips / 10;
+                            return PlayerAction::Raise(raise_amount);
+                        } else {
+                            return PlayerAction::Fold();
+                        }
+                    }
+                    PlayerAction::Raise(_) => {
+                        if random_num >= 0.66 {
+                            return PlayerAction::Call();
+                        } else if random_num >= 0.33 {
+                            let raise_amount: u32 = player_chips / 10;
+                            return PlayerAction::Raise(raise_amount);
+                        } else {
+                            return PlayerAction::Fold();
+                        }
+                    }
+                    // It's possible that the previous and first player to bet folded,
+                    // in which case, you could theoretically still check.
+                    // Normally however, you wouldn't be able to check if bets have already been made.
+                    // In normal play, the first player is likely not going to fold if they can check.
+                    // But it has been done before (*cough cough* Thien).
+                    PlayerAction::Fold() => {
+                        if can_player_check_as_action {
+                            if random_num >= 0.66 {
+                                return PlayerAction::Check();
+                            } else if random_num >= 0.33 {
+                                let raise_amount: u32 = player_chips / 10;
+                                return PlayerAction::Raise(raise_amount);
+                            } else {
+                                return PlayerAction::Fold();
+                            }
+                        } else {
+                            if random_num >= 0.66 {
+                                return PlayerAction::Call();
+                            } else if random_num >= 0.33 {
+                                let raise_amount: u32 = player_chips / 10;
+                                return PlayerAction::Raise(raise_amount);
+                            } else {
+                                return PlayerAction::Fold();
+                            }
+                        }
+                    }
+                }
+            }            
+        } else {
+            PlayerAction::Fold()
+        }
+    } else {
+        PlayerAction::Fold()
+    }
+}
+
+/// Prompt the user for their desired action when it's their turn in the betting round.
+fn user_bet_prompt(current_table_bet: u32, player_chips: u32) -> PlayerAction {
+    loop {
+        let mut actions: Vec<&str> = Vec::new();
+        actions.push("Fold");
+        if current_table_bet == 0 {
+            actions.push("Check");
+        }
+        if player_chips >= current_table_bet {
+            actions.push("Call");
+        }
+
+        if player_chips > current_table_bet {
+            actions.push("Raise");
+        }
+
+        println!("Select an action: ");
+        if !actions.is_empty() {
+            let actions_string = actions.join(", ") + ".";
+            println!("{}", actions_string);
+        } else {
+            eprintln!("No valid actions available.");
+        }
+        
+        print!("Action: ");
+        io::stdout().flush().expect("Failed to flush stdout.");
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read line");
+        let trimmed_input = input
+            .trim()
+            .to_lowercase()
+            .replace("'", "")
+            .replace(" ", "");
+
+        match trimmed_input.as_str() {
+            "q" => {
+                println!("Quitting game.");
+                process::exit(0);
+            }
+            "quit" => {
+                println!("Quitting game.");
+                process::exit(0);
+            }
+            "call" => {
+                if player_chips < current_table_bet {
+                    println!("You do not have enough chips to call.");
+                    continue;
+                }
+
+                return PlayerAction::Call();
+            }
+            "check" => {
+                if current_table_bet > 0 {
+                    println!("You cannot check. A bet has already been made.");
+                    continue;
+                }
+
+                return PlayerAction::Check();
+            }
+            "fold" => {
+                return PlayerAction::Fold();
+            }
+            "raise" => {
+                loop {
+                    if player_chips < current_table_bet {
+                        println!("You do not have enough chips to raise.");
+                        continue;
+                    }
+
+                    println!("How much would you like to raise by?");
+                    let mut raise_string = String::new();
+                    io::stdin()
+                        .read_line(&mut raise_string)
+                        .expect("Failed to read line");
+
+                    let raise: u32 = match raise_string.trim().parse() {
+                        Ok(num) => num,
+                        Err(_) => {
+                            eprintln!("Invalid input. Please enter a valid number.");
+                            continue;
+                        }
+                    };
+                    
+                    println!("Are you happy raising by {}?", raise);
+                    print!("yes/no [Y/n]: ");
+                    let mut input = String::new();
+                    io::stdin()
+                        .read_line(&mut input)
+                        .expect("Failed to read line");
+                    let trimmed_input = input.trim();
+
+                    match trimmed_input.to_lowercase().as_str() {
+                        "q" => {
+                            println!("Quitting game.");
+                            process::exit(0);
+                        }
+                        "quit" => {
+                            println!("Quitting game.");
+                            process::exit(0);
+                        }
+                        "n" => {
+                            continue;
+                        }
+                        "no" => {
+                            continue;
+                        }
+                        "y" => {
+                            return PlayerAction::Raise(raise);
+                        }
+                        "yes" => {
+                            return PlayerAction::Raise(raise);
+                        }
+                        _ => println!("Invalid input. Please enter 'y' or 'n' or enter 'q' to quit the game."),
+                    }
+                }
+            }
+            _ => println!(
+                "Invalid input. Please enter a valid option or enter 'q' to quit.\n"
+            ),
         }
     }
 }
