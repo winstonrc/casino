@@ -293,10 +293,10 @@ impl TexasHoldEmGame {
                 if active_players.contains(&current_player.identifier) {
                     let action: PlayerAction = if current_player.identifier == self.user.identifier {
                         println!("It's your turn.");
-                        user_bet_prompt(current_table_bet, current_player.chips)
+                        user_bet_prompt(current_table_bet, current_player.chips, last_action, can_player_check_as_action)
                     } else {
                         println!("It's {}'s turn.", current_player.name);
-                        computer_action(current_table_bet, current_player.chips, last_action.clone(), can_player_check_as_action, table_cards)
+                        computer_action(current_table_bet, current_player.chips, last_action, can_player_check_as_action, table_cards)
                     };
 
                     if action != PlayerAction::Fold() && action != PlayerAction::Check() {
@@ -618,19 +618,60 @@ fn computer_action(current_table_bet: u32, player_chips: u32, last_action: Optio
 }
 
 /// Prompt the user for their desired action when it's their turn in the betting round.
-fn user_bet_prompt(current_table_bet: u32, player_chips: u32) -> PlayerAction {
+fn user_bet_prompt(current_table_bet: u32, player_chips: u32, last_action: Option<PlayerAction>, can_player_check_as_action: bool) -> PlayerAction {
     loop {
         let mut actions: Vec<&str> = Vec::new();
         actions.push("Fold");
-        if current_table_bet == 0 {
-            actions.push("Check");
-        }
-        if player_chips >= current_table_bet {
-            actions.push("Call");
-        }
 
-        if player_chips > current_table_bet {
-            actions.push("Raise");
+        match last_action.clone() {
+            None => {
+                actions.push("Check");
+                
+                if player_chips > current_table_bet {
+                    actions.push("Raise");
+                }
+            },
+            Some(action) => match action {
+                PlayerAction::Check() => {
+                    actions.push("Check");
+                    actions.push("Raise");
+                }
+                PlayerAction::Call() => {
+                    if player_chips >= current_table_bet {
+                        actions.push("Call");
+                    }
+
+                    if player_chips > current_table_bet {
+                        actions.push("Raise");
+                    }
+                }
+                PlayerAction::Raise(_) => {
+                    if player_chips >= current_table_bet {
+                        actions.push("Call");
+                    }
+
+                    if player_chips > current_table_bet {
+                        actions.push("Raise");
+                    }
+                }
+                PlayerAction::Fold() => {
+                    if can_player_check_as_action {
+                        actions.push("Check");
+                        
+                        if player_chips > current_table_bet {
+                            actions.push("Raise");
+                        }
+                    } else {
+                        if player_chips >= current_table_bet {
+                            actions.push("Call");
+                        }
+    
+                        if player_chips > current_table_bet {
+                            actions.push("Raise");
+                        }
+                    }
+                }
+            }
         }
 
         println!("Select an action: ");
