@@ -311,6 +311,12 @@ impl TexasHoldEm {
         (self.dealer_seat_index + 2) % self.seats.len()
     }
 
+    /// Get the seat index of the player to the left of the big blind.
+    /// Aka under the gun.
+    pub fn get_under_the_gun_seat_index(&self) -> usize {
+        self.rotate_current_player(self.get_big_blind_seat_index())
+    }
+
     pub fn subtract_chips_from_player(&mut self, player_identifier: &Uuid, amount: u32) {
         if let Some(player) = self.players.get_mut(player_identifier) {
             player.subtract_chips(amount);
@@ -391,6 +397,14 @@ impl TexasHoldEm {
         } else {
             eprintln!("Error: Unable to find player at seat {}", seat_index);
         }
+    }
+
+    pub fn get_small_blind_amount(&self) -> u32 {
+        self.small_blind_amount
+    }
+
+    pub fn get_big_blind_amount(&self) -> u32 {
+        self.big_blind_amount
     }
 
     /// Deal hands of two cards to every player starting with the player to the left of the dealer.
