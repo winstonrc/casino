@@ -23,18 +23,10 @@ fn select_game() {
     io::stdin()
         .read_line(&mut input)
         .expect("Failed to read line");
-    let trimmed_input = input
-        .trim()
-        .to_lowercase()
-        .replace("'", "")
-        .replace(" ", "");
+    let trimmed_input = input.trim().to_lowercase().replace(['\'', ' '], "");
 
     match trimmed_input.as_str() {
-        "q" => {
-            println!("Quitting game.");
-            process::exit(0);
-        }
-        "quit" => {
+        "q" | "quit" => {
             println!("Quitting game.");
             process::exit(0);
         }
