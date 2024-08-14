@@ -624,11 +624,11 @@ fn user_bet_prompt(
         );
 
         println!("Select an action: ");
-        if !actions.is_empty() {
-            let actions_string = actions.join(", ") + ".";
-            println!("{}", actions_string);
-        } else {
+        if actions.is_empty() {
             eprintln!("No valid actions available.");
+        } else {
+            let actions_string = actions.join(", ") + ".";
+            println!("{actions_string}");
         }
 
         print!("Action: ");
@@ -642,114 +642,71 @@ fn user_bet_prompt(
 
         let words: Vec<&str> = trimmed_input.split_whitespace().collect();
 
-        match words.get(0).map(|&s| s) {
+        match words.first().copied() {
             Some("q" | "quit") => {
                 println!("Quitting game.");
                 process::exit(0);
             }
             Some("call") => {
-                if player_chips < current_table_bet {
-                    println!("You do not have enough chips to call.");
-                    continue;
-                }
-
                 return PlayerAction::Call();
             }
             Some("check") => {
-                if current_table_bet > 0 {
-                    println!("You cannot check. A bet has already been made.");
-                    continue;
-                }
-
                 return PlayerAction::Check();
             }
             Some("fold") => {
                 return PlayerAction::Fold();
             }
             Some("raise") => {
-                let raise_amount = words.get(1).and_then(|s| s.parse::<u32>().ok());
+                let raise_arg = words.get(1).and_then(|s| s.parse::<u32>().ok());
 
-                match raise_amount {
-                    Some(raise) => {
-                        if player_chips < raise {
-                            println!("You do not have enough chips to raise by {}.", raise);
-                            continue;
-                        }
+                let raise_amount: u32;
 
-                        println!("Raise {} chips?", raise);
-                        print!("yes/no [Y/n]: ");
-                        io::stdout().flush().expect("Failed to flush stdout.");
-
-                        let mut confirm = String::new();
-                        io::stdin()
-                            .read_line(&mut confirm)
-                            .expect("Failed to read line");
-                        let trimmed_confirm = confirm.trim();
-
-                        match trimmed_confirm.to_lowercase().as_str() {
-                            "q" | "quit" => {
-                                println!("Quitting game.");
-                                process::exit(0);
-                            }
-                            "n" | "no" => {
-                                continue;
-                            }
-                            "y" | "yes" | "" => {
-                                return PlayerAction::Raise(raise);
-                            }
-                            _ => println!(
-                                "Invalid input. Please enter 'y' or 'n' or enter 'q' to quit the game."
-                            ),
-                        }
+                if let Some(amount) = raise_arg {
+                    if player_chips < amount {
+                        println!("You do not have enough chips to raise by {amount}.");
+                        continue;
                     }
-                    None => {
-                        if player_chips < current_table_bet {
-                            println!("You do not have enough chips to raise.");
-                            continue;
-                        }
+                    raise_amount = amount;
+                } else {
+                    print!("Amount: ");
+                    io::stdout().flush().expect("Failed to flush stdout.");
+                    let mut raise_string = String::new();
+                    io::stdin()
+                        .read_line(&mut raise_string)
+                        .expect("Failed to read line");
 
-                        print!("Amount: ");
-                        io::stdout().flush().expect("Failed to flush stdout.");
+                    raise_amount = if let Ok(num) = raise_string.trim().parse() {
+                        num
+                    } else {
+                        eprintln!("Invalid input. Please enter a valid number.");
+                        continue;
+                    };
+                }
 
-                        let mut raise_string = String::new();
-                        io::stdin()
-                            .read_line(&mut raise_string)
-                            .expect("Failed to read line");
+                println!("Raise {raise_amount} chips?");
+                print!("yes/no [Y/n]: ");
+                io::stdout().flush().expect("Failed to flush stdout.");
 
-                        let raise: u32 = match raise_string.trim().parse() {
-                            Ok(num) => num,
-                            Err(_) => {
-                                eprintln!("Invalid input. Please enter a valid number.");
-                                continue;
-                            }
-                        };
+                let mut confirm = String::new();
+                io::stdin()
+                    .read_line(&mut confirm)
+                    .expect("Failed to read line");
+                let trimmed_confirm = confirm.trim();
 
-                        println!("Are you happy raising by {}?", raise);
-                        print!("yes/no [Y/n]: ");
-                        io::stdout().flush().expect("Failed to flush stdout.");
-
-                        let mut confirm = String::new();
-                        io::stdin()
-                            .read_line(&mut confirm)
-                            .expect("Failed to read line");
-                        let trimmed_confirm = confirm.trim();
-
-                        match trimmed_confirm.to_lowercase().as_str() {
-                            "q" | "quit" => {
-                                println!("Quitting game.");
-                                process::exit(0);
-                            }
-                            "n" | "no" => {
-                                continue;
-                            }
-                            "y" | "yes" | "" => {
-                                return PlayerAction::Raise(raise);
-                            }
-                            _ => println!(
-                                "Invalid input. Please enter 'y' or 'n' or enter 'q' to quit the game."
-                            ),
-                        }
+                match trimmed_confirm.to_lowercase().as_str() {
+                    "q" | "quit" => {
+                        println!("Quitting game.");
+                        process::exit(0);
                     }
+                    "n" | "no" => {
+                        continue;
+                    }
+                    "y" | "yes" | "" => {
+                        return PlayerAction::Raise(raise_amount);
+                    }
+                    _ => println!(
+                        "Invalid input. Please enter 'y' or 'n' or enter 'q' to quit the game."
+                    ),
                 }
             }
             _ => println!("Invalid input. Please enter a valid option or enter 'q' to quit.\n"),
