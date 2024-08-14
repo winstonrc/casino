@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "casino_poker"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "casino_cards",
  "strum",
