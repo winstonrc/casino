@@ -4,7 +4,7 @@
 
 Play casino games in your terminal.
 
-**Note:** This program is still a work-in-process and is being actively developed. Expect the usage below to change.
+**Note:** This program is still a work-in-progress and is being actively developed. Expect the usage below to change.
 
 ## Games
 
