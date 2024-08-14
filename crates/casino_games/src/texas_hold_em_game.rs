@@ -133,13 +133,22 @@ impl TexasHoldEmGame {
         let mut round_over = false;
         while !round_over {
             // Pre-flop betting round
-            let big_blind_seat_index = self.game.get_big_blind_seat_index();
-            let first_better = self.game.rotate_current_player(big_blind_seat_index);
-            (round_over, player_hands) =
-                self.run_betting_round(first_better, player_hands, &table_cards);
+            let mut starting_better_seat_index: usize = self.game.get_under_the_gun_seat_index();
+            let mut starting_bet_amount: u32 = self.game.get_big_blind_amount();
+            (round_over, player_hands, burned_cards) = self.run_betting_round(
+                starting_better_seat_index,
+                starting_bet_amount,
+                player_hands,
+                &table_cards,
+                burned_cards
+            );
             if round_over {
                 break;
             }
+
+            // These remain the same for the following betting rounds
+            starting_better_seat_index = self.game.get_small_blind_seat_index();
+            starting_bet_amount = 0;
 
             // Flop
             if let Some(card) = self.game.deal_card() {
@@ -157,11 +166,14 @@ impl TexasHoldEmGame {
             println!("{}", table_cards.to_symbols());
             println!();
 
-            let starting_better_seat_index = self.game.get_small_blind_seat_index();
-
             // Flop betting round
-            (round_over, player_hands) =
-                self.run_betting_round(starting_better_seat_index, player_hands, &table_cards);
+            (round_over, player_hands, burned_cards) = self.run_betting_round(
+                starting_better_seat_index,
+                starting_bet_amount,
+                player_hands,
+                &table_cards,
+                burned_cards
+            );
             if round_over {
                 break;
             }
@@ -181,8 +193,13 @@ impl TexasHoldEmGame {
             println!();
 
             // Turn betting round
-            (round_over, player_hands) =
-                self.run_betting_round(starting_better_seat_index, player_hands, &table_cards);
+            (round_over, player_hands, burned_cards) = self.run_betting_round(
+                starting_better_seat_index,
+                starting_bet_amount,
+                player_hands,
+                &table_cards,
+                burned_cards
+            );
             if round_over {
                 break;
             }
@@ -202,8 +219,13 @@ impl TexasHoldEmGame {
             println!();
 
             // River betting round
-            (round_over, player_hands) =
-                self.run_betting_round(starting_better_seat_index, player_hands, &table_cards);
+            (round_over, player_hands, burned_cards) = self.run_betting_round(
+                starting_better_seat_index,
+                starting_bet_amount,
+                player_hands,
+                &table_cards,
+                burned_cards
+            );
             if round_over {
                 break;
             }
@@ -215,7 +237,7 @@ impl TexasHoldEmGame {
         let winning_players = self.game.rank_all_hands(&player_hands, &table_cards);
         self.game.determine_round_result(&winning_players);
 
-        // Post-round
+    // Post-round
         self.game
             .reset_deck(player_hands, table_cards, burned_cards);
         self.game.reset_pots();
@@ -226,37 +248,64 @@ impl TexasHoldEmGame {
     ///
     /// The round is over if only one player remains.
     /// The round continues if more than one player remains.
+    // todo: Replace all these variables with a game state
     fn run_betting_round(
         &mut self,
         starting_better_seat_index: usize,
+        starting_bet_amount: u32,
         mut player_hands: HashMap<Uuid, Hand>,
         table_cards: &Hand,
-    ) -> (bool, HashMap<Uuid, Hand>) {
+        mut burned_cards: Hand
+    ) -> (bool, HashMap<Uuid, Hand>, Hand) {
         // Betting begins with the first player to the left of the dealer, aka the small blind
         let mut current_player_seat_index = starting_better_seat_index;
-        let mut current_table_bet: u32 = 0;
+        let mut current_table_bet: u32 = starting_bet_amount;
         let mut active_players: HashSet<Uuid> = player_hands.keys().copied().collect();
-        let mut last_player_to_raise: Option<Uuid> = None;
+
+        // Last player to raise needs to be set to the big blind if the first player to bet is under the gun.
+        // This is because we can view the betting at the start of the betting round as the small blind raising and then the big blind
+        // raising by a larger amount that the small blind will have to action upon after the betting has rotated back to them.
+        let mut last_player_to_raise_identifier: Option<Uuid> = None;
+        if current_player_seat_index == self.game.get_under_the_gun_seat_index() {
+            if let Some(big_blind) = self
+                .game
+                .get_player_at_seat(self.game.get_big_blind_seat_index())
+            {
+                last_player_to_raise_identifier = Some(big_blind.identifier);
+            }
+        }
+
         let mut last_action: Option<PlayerAction> = None;
-        let mut can_player_check_as_action: bool = true;
         let mut first_player_who_checked: Option<Uuid> = None;
+        let mut can_player_check_as_action: bool = current_table_bet == 0;
 
         while active_players.len() > 1 {
             if let Some(current_player) = self.game.get_player_at_seat(current_player_seat_index) {
-                if let Some(last_player_to_raise_identifier) = last_player_to_raise {
-                    if current_player.identifier == last_player_to_raise_identifier {
+                if let Some(identifier) = last_player_to_raise_identifier {
+                    if current_player.identifier == identifier {
                         break;
                     }
                 }
 
                 if let Some(first_player_to_check_identifier) = first_player_who_checked {
-                    if current_player.identifier == first_player_to_check_identifier {
+                    if current_player.identifier == first_player_to_check_identifier
+                        && last_player_to_raise_identifier.is_none()
+                    {
                         break;
                     }
                 }
 
                 if active_players.contains(&current_player.identifier) {
-                    let action: PlayerAction = if current_player.identifier == self.user.identifier
+                    let action: PlayerAction = 
+                    // todo: Implement side-pot logic so that the player can go all-in properly.
+                    // Right now, the current player is forced to fold to keep the game moving along.
+                    if current_player.chips < current_table_bet {
+                        println!(
+                            "{} doesn't have enough chips to continue betting.",
+                            current_player.name
+                        );
+                        PlayerAction::Fold()
+                    } else if current_player.identifier == self.user.identifier
                     {
                         println!("It's your turn.");
                         println!("The current bet is {current_table_bet} chips.");
@@ -268,7 +317,6 @@ impl TexasHoldEmGame {
                         )
                     } else {
                         println!("It's {}'s turn.", current_player.name);
-                        println!("The current bet is {current_table_bet} chips.");
                         computer_action(
                             current_table_bet,
                             current_player.chips,
@@ -301,21 +349,31 @@ impl TexasHoldEmGame {
                         }
                         PlayerAction::Fold() => {
                             println!("{} folds.", current_player.name);
+                            
+                            let hand = player_hands.get(&current_player.identifier);
+                            if let Some(hand) = hand {
+                                if let (Some(card1), Some(card2)) = (hand.cards.first(), hand.cards.last()) {
+                                burned_cards.push(*card1);
+                                burned_cards.push(*card2);
+                                }
+                            }
                             player_hands.remove(&current_player.identifier);
                             active_players.remove(&current_player.identifier);
                         }
                         PlayerAction::Raise(bet) => {
                             let total_bet = current_table_bet + bet;
 
-                            println!("{} raises by {} chips.", current_player.name, bet);
+                            println!("{} raises by {bet} chips.", current_player.name);
                             if total_bet == current_player.chips {
                                 println!("{} is all in.", current_player.name);
                             }
 
-                            last_player_to_raise = Some(current_player.identifier);
+                            last_player_to_raise_identifier = Some(current_player.identifier);
                             current_player.subtract_chips(total_bet);
                             self.game.add_chips_to_main_pot(total_bet);
                             current_table_bet += bet;
+
+                            println!("The current bet is now {current_table_bet}.");
                         }
                     }
                 } else {
@@ -332,7 +390,7 @@ impl TexasHoldEmGame {
 
         let round_over = player_hands.len() == 1;
 
-        (round_over, player_hands)
+        (round_over, player_hands, burned_cards)
     }
 }
 
@@ -529,7 +587,7 @@ fn computer_action(
     current_table_bet: u32,
     player_chips: u32,
     last_action: &Option<PlayerAction>,
-    can_player_check_as_action: bool,
+    check_action_is_available: bool,
     _table_cards: &Hand,
 ) -> PlayerAction {
     let mut rng = rand::thread_rng();
@@ -540,71 +598,85 @@ fn computer_action(
     let delay_duration = Duration::from_secs(delay_seconds);
     sleep(delay_duration);
 
-    if player_chips >= current_table_bet {
-        let raise_amount: u32 = if player_chips >= current_table_bet * 3 {
+    let raise_amount: u32 = if player_chips >= (current_table_bet * 3) + current_table_bet {
+        if random_num < 0.5 {
             current_table_bet * 3
-        } else if player_chips >= current_table_bet * 2 {
-            current_table_bet * 2
         } else {
-            0
-        };
+            current_table_bet * 2
+        }
+    } else if player_chips >= (current_table_bet * 2) + current_table_bet {
+        current_table_bet * 2
+    } else {
+        0
+    };
 
-        match last_action {
-            None => {
+    match last_action {
+        None => {
+            // This logic defers in the first betting round and the later betting rounds.
+            // In the first betting round, the minimum bet is the big blind amount, and the first better is the player under the gun.
+            // This means that the first better (under the gun) cannot check but can call instead.
+            // In later betting rounds, the betting starts at 0, and the first better (small blind) can check.
+            // Technically the small blind is always the first better, but posting the small blind and big blind are automatic bets,
+            // so we consider the under the gun player the first better in the first betting round.
+            if check_action_is_available {
                 if random_num <= 0.66 || raise_amount == 0 {
                     PlayerAction::Check()
                 } else {
                     PlayerAction::Raise(raise_amount)
                 }
+            } else if random_num <= 0.33 {
+                PlayerAction::Call()
+            } else if random_num <= 0.5 && raise_amount > 0 {
+                PlayerAction::Raise(raise_amount)
+            } else {
+                PlayerAction::Fold()
             }
-            Some(action) => match action {
-                PlayerAction::Check() => {
+        }
+        Some(action) => match action {
+            PlayerAction::Check() => {
+                if random_num <= 0.75 || raise_amount == 0 {
+                    PlayerAction::Check()
+                } else {
+                    PlayerAction::Raise(raise_amount)
+                }
+            }
+            PlayerAction::Call() => {
+                if random_num <= 0.4 {
+                    PlayerAction::Call()
+                } else if random_num <= 0.55 && raise_amount > 0 {
+                    PlayerAction::Raise(raise_amount)
+                } else {
+                    PlayerAction::Fold()
+                }
+            }
+            PlayerAction::Raise(_) => {
+                if random_num <= 0.4 {
+                    PlayerAction::Call()
+                } else if random_num <= 0.5 && raise_amount > 0 {
+                    PlayerAction::Raise(raise_amount)
+                } else {
+                    PlayerAction::Fold()
+                }
+            }
+            // It's possible that the previous / first player to bet folded, and checking is still an option for the next player.
+            // In normal play, the first player is likely going to check rather than fold every time, but it is a possibility.
+            // (*cough* @thien *cough*).
+            PlayerAction::Fold() => {
+                if check_action_is_available {
                     if random_num <= 0.75 || raise_amount == 0 {
                         PlayerAction::Check()
                     } else {
                         PlayerAction::Raise(raise_amount)
                     }
+                } else if random_num <= 0.33 {
+                    PlayerAction::Call()
+                } else if random_num <= 0.5 && raise_amount > 0 {
+                    PlayerAction::Raise(raise_amount)
+                } else {
+                    PlayerAction::Fold()
                 }
-                PlayerAction::Call() => {
-                    if random_num <= 0.4 {
-                        PlayerAction::Call()
-                    } else if random_num <= 0.55 && raise_amount > 0 {
-                        PlayerAction::Raise(raise_amount)
-                    } else {
-                        PlayerAction::Fold()
-                    }
-                }
-                PlayerAction::Raise(_) => {
-                    if random_num <= 0.4 {
-                        PlayerAction::Call()
-                    } else if random_num <= 0.5 && raise_amount > 0 {
-                        PlayerAction::Raise(raise_amount)
-                    } else {
-                        PlayerAction::Fold()
-                    }
-                }
-                // It's possible that the previous and first player to bet folded,
-                // in which case, you could theoretically still check.
-                // Normally however, you wouldn't be able to check if bets have already been made.
-                // In normal play, the first player is likely not going to fold if they can check.
-                // But it has been done before (*cough cough* Thien).
-                PlayerAction::Fold() => {
-                    if random_num <= 0.4 {
-                        if can_player_check_as_action {
-                            PlayerAction::Check()
-                        } else {
-                            PlayerAction::Call()
-                        }
-                    } else if random_num <= 0.5 && raise_amount > 0 {
-                        PlayerAction::Raise(raise_amount)
-                    } else {
-                        PlayerAction::Fold()
-                    }
-                }
-            },
-        }
-    } else {
-        PlayerAction::Fold()
+            }
+        },
     }
 }
 
@@ -662,7 +734,7 @@ fn user_bet_prompt(
                 let raise_amount: u32;
 
                 if let Some(amount) = raise_arg {
-                    if player_chips < amount {
+                    if player_chips < current_table_bet + amount {
                         println!("You do not have enough chips to raise by {amount}.");
                         continue;
                     }
@@ -675,8 +747,13 @@ fn user_bet_prompt(
                         .read_line(&mut raise_string)
                         .expect("Failed to read line");
 
-                    raise_amount = if let Ok(num) = raise_string.trim().parse() {
-                        num
+                    raise_amount = if let Ok(amount) = raise_string.trim().parse() {
+                        if player_chips < current_table_bet + amount {
+                            println!("You do not have enough chips to raise by {amount}.");
+                            continue;
+                        }
+
+                        amount
                     } else {
                         eprintln!("Invalid input. Please enter a valid number.");
                         continue;
