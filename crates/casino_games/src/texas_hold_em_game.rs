@@ -140,7 +140,8 @@ impl TexasHoldEmGame {
                 starting_bet_amount,
                 player_hands,
                 &table_cards,
-                burned_cards
+                burned_cards,
+                self.game.get_big_blind_amount()
             );
             if round_over {
                 break;
@@ -172,7 +173,8 @@ impl TexasHoldEmGame {
                 starting_bet_amount,
                 player_hands,
                 &table_cards,
-                burned_cards
+                burned_cards,
+                self.game.get_big_blind_amount()
             );
             if round_over {
                 break;
@@ -198,7 +200,8 @@ impl TexasHoldEmGame {
                 starting_bet_amount,
                 player_hands,
                 &table_cards,
-                burned_cards
+                burned_cards,
+                self.game.get_big_blind_amount()
             );
             if round_over {
                 break;
@@ -224,7 +227,8 @@ impl TexasHoldEmGame {
                 starting_bet_amount,
                 player_hands,
                 &table_cards,
-                burned_cards
+                burned_cards,
+                self.game.get_big_blind_amount()
             );
             if round_over {
                 break;
@@ -255,7 +259,8 @@ impl TexasHoldEmGame {
         starting_bet_amount: u32,
         mut player_hands: HashMap<Uuid, Hand>,
         table_cards: &Hand,
-        mut burned_cards: Hand
+        mut burned_cards: Hand,
+        big_blind_amount: u32
     ) -> (bool, HashMap<Uuid, Hand>, Hand) {
         // Betting begins with the first player to the left of the dealer, aka the small blind
         let mut current_player_seat_index = starting_better_seat_index;
@@ -323,6 +328,7 @@ impl TexasHoldEmGame {
                             &last_action,
                             can_player_check_as_action,
                             table_cards,
+                            big_blind_amount
                         )
                     };
 
@@ -589,6 +595,7 @@ fn computer_action(
     last_action: &Option<PlayerAction>,
     check_action_is_available: bool,
     _table_cards: &Hand,
+    big_blind_amount: u32
 ) -> PlayerAction {
     let mut rng = rand::thread_rng();
     let random_num: f64 = rng.gen();
@@ -598,14 +605,15 @@ fn computer_action(
     let delay_duration = Duration::from_secs(delay_seconds);
     sleep(delay_duration);
 
-    let raise_amount: u32 = if player_chips >= (current_table_bet * 3) + current_table_bet {
+
+    let raise_amount: u32 = if player_chips >= (big_blind_amount * 3) + current_table_bet {
         if random_num < 0.5 {
-            current_table_bet * 3
+            big_blind_amount * 3
         } else {
-            current_table_bet * 2
+            big_blind_amount * 2
         }
-    } else if player_chips >= (current_table_bet * 2) + current_table_bet {
-        current_table_bet * 2
+    } else if player_chips >= (big_blind_amount * 2) + current_table_bet {
+        big_blind_amount * 2
     } else {
         0
     };
