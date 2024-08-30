@@ -109,7 +109,16 @@ impl Ord for HandRank {
 
             (HandRank::Straight(_), HandRank::Flush(_)) => Ordering::Less,
 
-            (HandRank::Flush(_), HandRank::Flush(_)) => Ordering::Equal,
+            (HandRank::Flush(cards1), HandRank::Flush(cards2)) => {
+                for i in (0..5).rev() {
+                    let cmp = cards1[i].rank.cmp(&cards2[i].rank);
+                    if cmp != Ordering::Equal {
+                        return cmp;
+                    }
+                }
+
+                Ordering::Equal
+            }
             (HandRank::Flush(_), _) => Ordering::Less,
             (_, HandRank::Flush(_)) => Ordering::Greater,
 
@@ -191,10 +200,17 @@ impl PartialEq for HandRank {
                 cards1.last().unwrap().rank == cards2.last().unwrap().rank
             }
             (HandRank::Flush(cards1), HandRank::Flush(cards2)) => {
-                // A flush made up of any set of cards equals a flush made up of another set of cards.
                 // Since a flush requires the use of table cards, it can only be made up of a single suit in a round.
                 // Accordingly, the suits should always equal each other.
-                cards1.last().unwrap().suit == cards2.last().unwrap().suit
+                // Compare each card in the flush from highest to lowest.
+                for i in (0..5).rev() {
+                    let cmp = cards1[i].rank.cmp(&cards2[i].rank);
+                    if cmp != Ordering::Equal {
+                        return false;
+                    }
+                }
+
+                true
             }
             (HandRank::FullHouse(cards1), HandRank::FullHouse(cards2)) => {
                 let (three_of_a_kind1_rank, pair1_rank) =
@@ -2381,9 +2397,9 @@ mod tests {
 
     /// Tests rank_hand().
     ///
-    /// Tests if players with equal Flushes in their hands push.
+    /// Tests if a player with a higher high card in their Flush beats a player with a lower high card.
     #[test]
-    fn rank_hand_flush_equal_flushes_in_hand_works() {
+    fn rank_hand_higher_flush_beats_lower_flush() {
         let two_of_clubs = card!(Two, Club);
         let two_of_diamonds = card!(Two, Diamond);
         let four_of_hearts = card!(Four, Heart);
@@ -2423,6 +2439,14 @@ mod tests {
             king_of_clubs,
         ];
 
+        let winning_flush = HandRank::Flush([
+            five_of_clubs,
+            eight_of_clubs,
+            nine_of_clubs,
+            queen_of_clubs,
+            king_of_clubs,
+        ]);
+
         let mut player1_cards: Vec<Card> = vec![two_of_clubs, four_of_hearts];
         player1_cards.extend(table_cards.clone());
         let player1_hand_rank = rank_hand(player1_cards);
@@ -2445,7 +2469,10 @@ mod tests {
         player5_cards.extend(table_cards.clone());
         let player5_hand_rank = rank_hand(player5_cards);
 
-        assert_eq!(player1_hand_rank, player2_hand_rank);
+        assert_ne!(flush1, flush2);
+        assert_eq!(winning_flush, flush2);
+        assert_eq!(winning_flush, player2_hand_rank);
+        assert_ne!(player1_hand_rank, player2_hand_rank);
         assert_ne!(player1_hand_rank, player3_hand_rank);
         assert_ne!(player1_hand_rank, player4_hand_rank);
         assert_ne!(player1_hand_rank, player5_hand_rank);
