@@ -1120,7 +1120,7 @@ mod tests {
     ///
     /// Tests that a single winner is correctly chosen.
     #[test]
-    fn rank_all_hands_identifies_push_with_equal_winning_hand_flushes() {
+    fn rank_all_hands_identifies_higher_flush_in_hand_wins() {
         let mut game = TexasHoldEm::new(100, 10, 1, 3);
 
         let two_of_diamonds = card!(Two, Diamond);
@@ -1163,6 +1163,14 @@ mod tests {
             king_of_clubs,
         ];
 
+        let winning_flush = HandRank::Flush([
+            three_of_clubs,
+            seven_of_clubs,
+            nine_of_clubs,
+            jack_of_clubs,
+            king_of_clubs,
+        ]);
+
         let mut player_hands: HashMap<Uuid, Hand> = HashMap::new();
         let table_cards = Hand::new_from_cards(table_cards);
 
@@ -1198,14 +1206,15 @@ mod tests {
 
         let leading_players = game.rank_all_hands(&player_hands, &table_cards);
 
-        assert_eq!(leading_players.len(), 2);
-        assert!(leading_players.contains_key(&player1.identifier));
+        assert_ne!(flush1, flush2);
+        assert_eq!(winning_flush, flush2);
+        assert_eq!(leading_players.len(), 1);
+        assert!(!leading_players.contains_key(&player1.identifier));
         assert!(leading_players.contains_key(&player2.identifier));
-        assert_eq!(leading_players.get(&player1.identifier).unwrap()[0], flush1);
-        assert_eq!(leading_players.get(&player2.identifier).unwrap()[0], flush2);
+        assert_eq!(flush2, leading_players.get(&player2.identifier).unwrap()[0]);
         assert_eq!(
-            *leading_players.get(&player1.identifier).unwrap(),
-            *leading_players.get(&player2.identifier).unwrap()
+            winning_flush,
+            leading_players.get(&player2.identifier).unwrap()[0]
         );
     }
 
