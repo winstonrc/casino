@@ -10,5 +10,5 @@ keywords = ["casino", "game", "poker", "texas-hold-em", "cards"]
 categories = ["games"]
 
 [dependencies]
-casino_poker = { version = "0.1.4", path = "../casino_poker" }
+casino_poker = { version = "0.1.6", path = "../casino_poker" }
 rand = "0.8.5"

@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "casino_cards"
-version = "0.1.1"
+version = "1.0.0"
 dependencies = [
  "rand",
  "strum",
@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "casino_poker"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "casino_cards",
  "strum",
