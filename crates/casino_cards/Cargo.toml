@@ -1,6 +1,6 @@
 [package]
 name = "casino_cards"
-version = "0.1.1"
+version = "1.0.0"
 edition = "2021"
 license = "MPL-2.0"
 description = "A library that provides a deck of playing cards that can be used for various card games."
