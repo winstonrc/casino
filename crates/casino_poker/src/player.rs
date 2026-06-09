@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Player {
     pub identifier: Uuid,
     pub name: String,
@@ -33,10 +34,15 @@ impl Player {
     }
 
     pub fn add_chips(&mut self, amount: u32) {
-        self.chips += amount;
+        self.chips = self.chips.saturating_add(amount);
     }
 
+    /// Subtracts chips from the player, saturating at zero.
+    ///
+    /// Saturating (rather than wrapping/panicking) is important for the all-in
+    /// path, where a player commits exactly their remaining stack and any
+    /// off-by-one in the betting math must not underflow a `u32`.
     pub fn subtract_chips(&mut self, amount: u32) {
-        self.chips -= amount;
+        self.chips = self.chips.saturating_sub(amount);
     }
 }
