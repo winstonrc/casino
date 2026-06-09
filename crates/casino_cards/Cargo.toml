@@ -1,6 +1,6 @@
 [package]
 name = "casino_cards"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 license = "MPL-2.0"
 description = "A library that provides a deck of playing cards that can be used for various card games."
@@ -11,4 +11,5 @@ categories = ["game-development"]
 
 [dependencies]
 rand = "0.8.5"
+serde = { version = "1.0", features = ["derive"] }
 strum = { version = "0.26.2", features = ["derive"] }

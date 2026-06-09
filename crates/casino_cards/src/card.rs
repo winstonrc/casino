@@ -1,7 +1,27 @@
 use std::cmp::Ordering;
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 
+use serde::{Deserialize, Serialize};
 use strum::EnumIter;
+
+/// Whether `Card`'s `Display` uses the single Unicode playing-card glyphs.
+/// Defaults to `false` (portable rank+suit text).
+static GLYPH_DISPLAY: AtomicBool = AtomicBool::new(false);
+
+/// Chooses how `Card` renders via its [`Display`](std::fmt::Display) impl:
+/// `true` for the single Unicode playing-card glyphs (e.g. `🂡` — pretty but tiny
+/// or missing in some terminals), `false` for portable rank+suit text (e.g.
+/// `A♠`). Applies process-wide and affects everything that prints a `Card` or
+/// `Hand`.
+pub fn set_glyph_display(enabled: bool) {
+    GLYPH_DISPLAY.store(enabled, AtomicOrdering::Relaxed);
+}
+
+/// Returns whether glyph display is currently enabled (see [`set_glyph_display`]).
+pub fn glyph_display_enabled() -> bool {
+    GLYPH_DISPLAY.load(AtomicOrdering::Relaxed)
+}
 
 /// Creates a new card.
 ///
@@ -22,7 +42,9 @@ macro_rules! card {
 /// Numerical values for the ranks.
 ///
 /// Ranks contain Two through Ace (Ace-high by default).
-#[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, EnumIter, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[repr(u8)]
 pub enum Rank {
     Two = 2,
@@ -71,7 +93,9 @@ impl fmt::Display for Rank {
 /// A suit can be a Club, Diamond, Heart, or Spade, which are ranked from lowest to highest value.
 ///
 /// Suit values are based on the values for the game Bridge.
-#[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, EnumIter, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
 pub enum Suit {
     Club = 0,
     Diamond = 1,
@@ -98,7 +122,7 @@ impl fmt::Display for Suit {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Card {
     pub rank: Rank,
     pub suit: Suit,
@@ -131,31 +155,20 @@ impl Card {
             Rank::King => 10,
         }
     }
-}
 
-impl Ord for Card {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let rank_ordering = self.rank.cmp(&other.rank);
-        match rank_ordering {
-            Ordering::Equal => self.suit.cmp(&other.suit),
-            _ => rank_ordering,
+    /// Returns the single Unicode playing-card glyph for this card (e.g. `🂡`),
+    /// or the card-back glyph (`🂠`) if it is face down.
+    ///
+    /// These glyphs render inconsistently across terminals and fonts — often
+    /// tiny or missing — so for portable, readable output prefer the
+    /// [`Display`](std::fmt::Display) form, which is the rank and suit (e.g.
+    /// `A♠`).
+    pub fn glyph(&self) -> char {
+        if !self.face_up {
+            return '🂠';
         }
-    }
-}
 
-impl PartialOrd for Card {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        let rank_ordering = self.rank.partial_cmp(&other.rank);
-        match rank_ordering {
-            Some(Ordering::Equal) => self.suit.partial_cmp(&other.suit),
-            _ => rank_ordering,
-        }
-    }
-}
-
-impl fmt::Display for Card {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut card = match (self.rank, self.suit) {
+        match (self.rank, self.suit) {
             (Rank::Two, Suit::Club) => '🃒',
             (Rank::Three, Suit::Club) => '🃓',
             (Rank::Four, Suit::Club) => '🃔',
@@ -208,13 +221,39 @@ impl fmt::Display for Card {
             (Rank::Queen, Suit::Spade) => '🂭',
             (Rank::King, Suit::Spade) => '🂮',
             (Rank::Ace, Suit::Spade) => '🂡',
-        };
-
-        if !self.face_up {
-            card = '🂠'
         }
+    }
+}
 
-        write!(f, "{}", card)
+impl Ord for Card {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let rank_ordering = self.rank.cmp(&other.rank);
+        match rank_ordering {
+            Ordering::Equal => self.suit.cmp(&other.suit),
+            _ => rank_ordering,
+        }
+    }
+}
+
+impl PartialOrd for Card {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl fmt::Display for Card {
+    /// Renders the card as rank followed by suit, e.g. `A♠`, `10♦` (a face-down
+    /// card renders as `??`). If glyph display is enabled via
+    /// [`set_glyph_display`], renders the single Unicode playing-card glyph
+    /// instead. The text form is portable and readable across terminals.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if glyph_display_enabled() {
+            write!(f, "{}", self.glyph())
+        } else if self.face_up {
+            write!(f, "{}{}", self.rank, self.suit)
+        } else {
+            write!(f, "??")
+        }
     }
 }
 
@@ -294,17 +333,25 @@ mod tests {
     }
 
     #[test]
-    fn cards_have_correct_string_values() {
-        let two_of_clubs_card = card!(Two, Club);
-        assert_eq!(two_of_clubs_card.to_string(), "🃒");
+    fn cards_display_as_rank_and_suit() {
+        assert_eq!(card!(Two, Club).to_string(), "2♣");
+        assert_eq!(card!(Seven, Diamond).to_string(), "7♦");
+        assert_eq!(card!(Ten, Spade).to_string(), "10♠");
+        assert_eq!(card!(King, Heart).to_string(), "K♥");
+        assert_eq!(card!(Ace, Spade).to_string(), "A♠");
 
-        let seven_of_diamonds_card = card!(Seven, Diamond);
-        assert_eq!(seven_of_diamonds_card.to_string(), "🃇");
+        let mut face_down = card!(Ace, Spade);
+        face_down.face_up = false;
+        assert_eq!(face_down.to_string(), "??");
+    }
 
-        let king_of_hearts_card = card!(King, Heart);
-        assert_eq!(king_of_hearts_card.to_string(), "🂾");
+    #[test]
+    fn glyph_returns_unicode_playing_card() {
+        assert_eq!(card!(Two, Club).glyph(), '🃒');
+        assert_eq!(card!(Ace, Spade).glyph(), '🂡');
 
-        let ace_of_spades_card = card!(Ace, Spade);
-        assert_eq!(ace_of_spades_card.to_string(), "🂡");
+        let mut face_down = card!(Ace, Spade);
+        face_down.face_up = false;
+        assert_eq!(face_down.glyph(), '🂠');
     }
 }

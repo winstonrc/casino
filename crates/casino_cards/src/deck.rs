@@ -9,6 +9,13 @@ pub struct Deck {
     cards: Vec<Card>,
 }
 
+impl Default for Deck {
+    /// A new, full 52-card deck (same as [`Deck::new`]).
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Deck {
     /// Create a new deck with 52 cards (13 cards for each of the 4 suits).
     pub fn new() -> Self {
