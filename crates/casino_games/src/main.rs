@@ -1,6 +1,7 @@
 use std::io::{self, Write};
 use std::process;
 
+mod persistence;
 mod texas_hold_em_game;
 
 fn main() {
@@ -14,8 +15,8 @@ fn main() {
 
 fn select_game() {
     println!("Games");
-    println!("Texas hold 'em");
-    println!("Which game would you like to play?");
+    println!("1. Texas hold 'em");
+    println!("Select a game by number, or press Enter to play Texas hold 'em.");
     print!("Game: ");
     io::stdout().flush().expect("Failed to flush stdout.");
 
@@ -30,12 +31,11 @@ fn select_game() {
             println!("Quitting game.");
             process::exit(0);
         }
-        "texasholdem" | "holdem" => {
+        // Default (Enter), the number, or the name all launch the only game.
+        "" | "1" | "texasholdem" | "holdem" => {
             println!();
             texas_hold_em_game::play_game();
         }
-        _ => println!(
-            "Invalid input. Please enter the name of a game listed above or enter 'q' to quit.\n"
-        ),
+        _ => println!("Invalid input. Enter 1 (or press Enter) to play, or 'q' to quit.\n"),
     }
 }

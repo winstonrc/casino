@@ -1,6 +1,6 @@
 [package]
 name = "casino_games"
-version = "0.1.8"
+version = "1.0.0"
 edition = "2021"
 license = "MPL-2.0"
 description = "Play casino games in your terminal."
@@ -10,5 +10,8 @@ keywords = ["casino", "game", "poker", "texas-hold-em", "cards"]
 categories = ["games"]
 
 [dependencies]
-casino_poker = { version = "0.1.6", path = "../casino_poker" }
+casino_poker = { version = "1.0", path = "../casino_poker" }
+directories = "6"
 rand = "0.8.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
