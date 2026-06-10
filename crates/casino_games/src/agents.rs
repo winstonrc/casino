@@ -44,7 +44,7 @@ impl PokerAgent for HumanAgent {
             view.pot_total, view.chips, view.amount_owed
         );
 
-        loop {
+        let action = loop {
             // Each action can be chosen by a single-letter shortcut or its full
             // word. Check uses `x` so `c` is unambiguously call.
             let mut menu: Vec<String> = vec!["(f)old".to_string()];
@@ -69,12 +69,12 @@ impl PokerAgent for HumanAgent {
 
             match tokens.next() {
                 Some("q") | Some("quit") => return Err(AgentError::Quit),
-                Some("f") | Some("fold") => return Ok(PlayerAction::Fold),
-                Some("x") | Some("check") if can_check => return Ok(PlayerAction::Check),
-                Some("c") | Some("call") if call_amount.is_some() => return Ok(PlayerAction::Call),
+                Some("f") | Some("fold") => break PlayerAction::Fold,
+                Some("x") | Some("check") if can_check => break PlayerAction::Check,
+                Some("c") | Some("call") if call_amount.is_some() => break PlayerAction::Call,
                 // Typing call when the stack can't fully cover the bet is a short all-in.
                 Some("c") | Some("call") if all_in_total.is_some() && !can_check => {
-                    return Ok(PlayerAction::AllIn)
+                    break PlayerAction::AllIn
                 }
                 // `c` when checking is free: there's nothing to call.
                 Some("c") | Some("call") if can_check => {
@@ -83,7 +83,7 @@ impl PokerAgent for HumanAgent {
                 Some("a") | Some("all") | Some("allin") | Some("all-in")
                     if all_in_total.is_some() =>
                 {
-                    return Ok(PlayerAction::AllIn)
+                    break PlayerAction::AllIn
                 }
                 Some("r") | Some("raise") if raise_range.is_some() => {
                     let (min, max) = raise_range.unwrap();
@@ -110,10 +110,14 @@ impl PokerAgent for HumanAgent {
                         eprintln!("You can raise to between {min} and {max} chips.");
                         continue;
                     }
-                    return Ok(PlayerAction::RaiseTo(to));
+                    break PlayerAction::RaiseTo(to);
                 }
                 _ => eprintln!("Invalid action. Try again, or type 'quit'."),
             }
-        }
+        };
+        // Blank line (stderr only) separates the prompt block from the history
+        // that resumes on stdout, bracketing it with the blank before "-- Your turn --".
+        eprintln!();
+        Ok(action)
     }
 }
