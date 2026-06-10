@@ -1,15 +1,12 @@
 name: CI
 
 on:
-  push:
   pull_request:
 
 permissions:
   contents: read
 
 concurrency:
-  # head_ref for PR events, ref for push events — so a push and its PR share
-  # one group and the redundant run is cancelled instead of double-building.
   group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
