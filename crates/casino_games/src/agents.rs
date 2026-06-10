@@ -1,0 +1,116 @@
+//! The human, terminal-driven agent. (Computer agents live in
+//! `casino_poker::agents`.)
+
+use std::io::{self, Write};
+
+use casino_poker::agent::{AgentError, PlayerAction, PlayerView, PokerAgent};
+use casino_poker::betting::LegalAction;
+
+use crate::prompts::read_line;
+use crate::render::cards_to_string;
+
+/// A human player driven by stdin prompts.
+pub struct HumanAgent;
+
+impl PokerAgent for HumanAgent {
+    fn decide(&mut self, view: &PlayerView) -> Result<PlayerAction, AgentError> {
+        let can_check = view
+            .legal_actions
+            .iter()
+            .any(|a| matches!(a, LegalAction::Check));
+        let call_amount = view.legal_actions.iter().find_map(|a| match *a {
+            LegalAction::Call(amount) => Some(amount),
+            _ => None,
+        });
+        let raise_range = view.legal_actions.iter().find_map(|a| match *a {
+            LegalAction::RaiseTo { min, max } => Some((min, max)),
+            _ => None,
+        });
+        let all_in_total = view.legal_actions.iter().find_map(|a| match *a {
+            LegalAction::AllIn(total) => Some(total),
+            _ => None,
+        });
+
+        println!("-- Your turn --");
+        println!("Your hand: {}", cards_to_string(&view.hole));
+        if !view.board.is_empty() {
+            println!("Board: {}", cards_to_string(&view.board));
+        }
+        println!(
+            "Pot: {} | Your chips: {} | To call: {}",
+            view.pot_total, view.chips, view.amount_owed
+        );
+
+        loop {
+            // Each action can be chosen by a single-letter shortcut or its full
+            // word. Check uses `x` so `c` is unambiguously call.
+            let mut menu: Vec<String> = vec!["(f)old".to_string()];
+            if can_check {
+                menu.push("(x) check".to_string());
+            } else if let Some(amount) = call_amount {
+                menu.push(format!("(c)all {amount}"));
+            }
+            if let Some((min, max)) = raise_range {
+                // Raise amounts are the total to commit this street ("raise to").
+                menu.push(format!("(r)aise to {min}-{max}"));
+            }
+            if let Some(total) = all_in_total {
+                menu.push(format!("(a)ll-in ({total})"));
+            }
+            print!("Action ({}): ", menu.join(", "));
+            io::stdout().flush().expect("Failed to flush stdout.");
+
+            let input = read_line()?;
+            let lowered = input.trim().to_lowercase();
+            let mut tokens = lowered.split_whitespace();
+
+            match tokens.next() {
+                Some("q") | Some("quit") => return Err(AgentError::Quit),
+                Some("f") | Some("fold") => return Ok(PlayerAction::Fold),
+                Some("x") | Some("check") if can_check => return Ok(PlayerAction::Check),
+                Some("c") | Some("call") if call_amount.is_some() => return Ok(PlayerAction::Call),
+                // Typing call when the stack can't fully cover the bet is a short all-in.
+                Some("c") | Some("call") if all_in_total.is_some() && !can_check => {
+                    return Ok(PlayerAction::AllIn)
+                }
+                // `c` when checking is free: there's nothing to call.
+                Some("c") | Some("call") if can_check => {
+                    println!("Nothing to call — type 'x' to check.");
+                }
+                Some("a") | Some("all") | Some("allin") | Some("all-in")
+                    if all_in_total.is_some() =>
+                {
+                    return Ok(PlayerAction::AllIn)
+                }
+                Some("r") | Some("raise") if raise_range.is_some() => {
+                    let (min, max) = raise_range.unwrap();
+                    // Accept both "raise 50" and "raise to 50".
+                    let mut amount_token = tokens.next();
+                    if amount_token == Some("to") {
+                        amount_token = tokens.next();
+                    }
+                    let to = match amount_token.and_then(|s| s.parse::<u32>().ok()) {
+                        Some(to) => to,
+                        None => {
+                            print!("Raise to how much? ");
+                            io::stdout().flush().expect("Failed to flush stdout.");
+                            match read_line()?.trim().parse::<u32>() {
+                                Ok(to) => to,
+                                Err(_) => {
+                                    println!("Please enter a whole number.");
+                                    continue;
+                                }
+                            }
+                        }
+                    };
+                    if to < min || to > max {
+                        println!("You can raise to between {min} and {max} chips.");
+                        continue;
+                    }
+                    return Ok(PlayerAction::RaiseTo(to));
+                }
+                _ => println!("Invalid action. Try again, or type 'quit'."),
+            }
+        }
+    }
+}

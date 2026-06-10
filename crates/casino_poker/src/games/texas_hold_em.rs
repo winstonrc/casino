@@ -17,7 +17,8 @@ use casino_cards::deck::Deck;
 use casino_cards::hand::Hand;
 
 use crate::agent::{AgentError, PlayerView, PokerAgent, Street};
-use crate::betting::{legal_actions, resolve_action, BettingRound, PlayerAction};
+use crate::betting::{legal_actions, resolve_action, BettingRound, PlayerAction, Resolved};
+use crate::events::{ActionView, Blind, GameEvent, GameObserver, NullObserver};
 use crate::hand_rankings::{evaluate, ComparableHand};
 use crate::player::Player;
 use crate::pot::{build_pots, distribute_pots, refund_uncalled};
@@ -62,6 +63,8 @@ pub struct TexasHoldEm {
     maximum_players_count: usize,
     small_blind_amount: u32,
     big_blind_amount: u32,
+    /// Receives the public narration of the hand. Defaults to a no-op sink.
+    observer: Box<dyn GameObserver>,
 }
 
 impl TexasHoldEm {
@@ -89,7 +92,14 @@ impl TexasHoldEm {
             maximum_players_count,
             small_blind_amount,
             big_blind_amount,
+            observer: Box::new(NullObserver),
         }
+    }
+
+    /// Set the observer that receives the hand's [`GameEvent`]s. Without one, the
+    /// engine runs silently (the default [`NullObserver`]).
+    pub fn set_observer(&mut self, observer: Box<dyn GameObserver>) {
+        self.observer = observer;
     }
 
     /// Create a new player with zero chips.
@@ -112,11 +122,6 @@ impl TexasHoldEm {
             return Err("The player does not have enough chips to play at this table.");
         }
 
-        println!(
-            "{} bought in with {} chips. Good luck!",
-            &player.name, &player.chips
-        );
-
         self.seats.push(player.identifier);
         self.players.insert(player.identifier, player);
         Ok(())
@@ -129,9 +134,10 @@ impl TexasHoldEm {
         self.players.remove(player_identifier)
     }
 
-    /// Remove players who have run out of chips. The dealer button is tracked by
-    /// id, so removing players (even the current button) does not seat a ghost.
-    pub fn remove_losers(&mut self) {
+    /// Remove players who have run out of chips and return their names (so the
+    /// caller can announce them). The dealer button is tracked by id, so removing
+    /// players (even the current button) does not seat a ghost.
+    pub fn remove_losers(&mut self) -> Vec<String> {
         let broke: Vec<Uuid> = self
             .players
             .iter()
@@ -139,25 +145,18 @@ impl TexasHoldEm {
             .map(|(id, _)| *id)
             .collect();
 
+        let mut removed = Vec::new();
         for id in broke {
-            if let Some(player) = self.players.get(&id) {
-                println!(
-                    "{} is out of chips and was removed from the game.",
-                    player.name
-                );
+            if let Some(player) = self.remove_player(&id) {
+                removed.push(player.name);
             }
-            self.remove_player(&id);
         }
+        removed
     }
 
     /// Returns `true` and ends the game if one or zero players remain.
     pub fn check_for_game_over(&mut self) -> bool {
         if self.players.len() <= 1 {
-            if self.players.is_empty() {
-                println!("No players remaining. Game over!");
-            } else {
-                println!("One player remaining. Game over!");
-            }
             self.end_game();
         }
 
@@ -167,30 +166,6 @@ impl TexasHoldEm {
     /// End the game.
     pub fn end_game(&mut self) {
         self.game_over = true;
-    }
-
-    /// Print statistics about the players currently seated at the table,
-    /// highest chip count first.
-    pub fn print_leaderboard(&self) {
-        let mut player_stats: Vec<&Player> = self
-            .seats
-            .iter()
-            .filter_map(|id| self.players.get(id))
-            .collect();
-        player_stats.sort_by_key(|p| std::cmp::Reverse(p.chips));
-
-        println!("***************");
-        println!("* LEADERBOARD *");
-        println!("***************");
-        for player in &player_stats {
-            println!(
-                "{}: {} chip{}",
-                player.name,
-                player.chips,
-                if player.chips == 1 { "" } else { "s" }
-            );
-        }
-        println!();
     }
 
     /// Shuffle the game's deck.
@@ -217,17 +192,6 @@ impl TexasHoldEm {
         };
         self.dealer_seat_index = next;
         self.dealer = Some(self.seats[next]);
-    }
-
-    /// Print the name of the player on the dealer button.
-    pub fn print_dealer(&self) {
-        if let Some(dealer) = self
-            .seats
-            .get(self.dealer_seat_index)
-            .and_then(|id| self.players.get(id))
-        {
-            println!("{} is the dealer.", dealer.name);
-        }
     }
 
     /// Seat index of the small blind. Heads-up, the button posts the small blind.
@@ -300,7 +264,16 @@ impl TexasHoldEm {
     pub fn begin_hand(&mut self) {
         self.rotate_dealer();
         self.shuffle_deck();
-        self.print_dealer();
+        if let Some(dealer) = self
+            .seats
+            .get(self.dealer_seat_index)
+            .and_then(|id| self.players.get(id))
+        {
+            let event = GameEvent::HandStarted {
+                dealer: dealer.name.clone(),
+            };
+            self.observer.notify(&event);
+        }
         self.post_blind(true);
         self.post_blind(false);
         self.deal_hands_to_all_players();
@@ -330,23 +303,23 @@ impl TexasHoldEm {
             player.subtract_chips(posted);
         }
         *self.contributed.entry(id).or_insert(0) += posted;
-        if posted < blind_amount {
+        let all_in = posted < blind_amount;
+        if all_in {
             self.all_in.insert(id);
         }
 
-        if let Some(player) = self.players.get(&id) {
-            println!(
-                "{} posts the {} blind: {} chip{}{}.",
-                player.name,
-                if is_small_blind { "small" } else { "big" },
-                posted,
-                if posted == 1 { "" } else { "s" },
-                if posted < blind_amount {
-                    " (all in)"
+        if let Some(name) = self.players.get(&id).map(|p| p.name.clone()) {
+            let event = GameEvent::BlindPosted {
+                player: name,
+                blind: if is_small_blind {
+                    Blind::Small
                 } else {
-                    ""
-                }
-            );
+                    Blind::Big
+                },
+                amount: posted,
+                all_in,
+            };
+            self.observer.notify(&event);
         }
     }
 
@@ -375,16 +348,19 @@ impl TexasHoldEm {
                 self.board.push(card);
             }
         }
+        self.emit_street_dealt(Street::Flop);
     }
 
     /// Burn a card, then deal the turn card to the board.
     pub fn deal_turn(&mut self) {
         self.deal_single_board_card();
+        self.emit_street_dealt(Street::Turn);
     }
 
     /// Burn a card, then deal the river card to the board.
     pub fn deal_river(&mut self) {
         self.deal_single_board_card();
+        self.emit_street_dealt(Street::River);
     }
 
     fn deal_single_board_card(&mut self) {
@@ -394,6 +370,15 @@ impl TexasHoldEm {
         if let Some(card) = self.deal_card() {
             self.board.push(card);
         }
+    }
+
+    fn emit_street_dealt(&mut self, street: Street) {
+        let event = GameEvent::StreetDealt {
+            street,
+            board: self.board.cards.clone(),
+            pot: self.pot_total(),
+        };
+        self.observer.notify(&event);
     }
 
     /// Deal a hand of two cards.
@@ -591,32 +576,34 @@ impl TexasHoldEm {
         }
     }
 
-    /// Print a human-readable description of a resolved action.
-    fn announce_action(&self, id: Uuid, resolved: &crate::betting::Resolved, current_bet: u32) {
-        let Some(name) = self.players.get(&id).map(|p| p.name.as_str()) else {
+    /// Emit an [`ActionTaken`](GameEvent::ActionTaken) event for a resolved action.
+    /// `current_bet` is the bet *before* this action, so a raise off a bet of zero
+    /// is an opening bet.
+    fn announce_action(&mut self, id: Uuid, resolved: &Resolved, current_bet: u32) {
+        let Some(name) = self.players.get(&id).map(|p| p.name.clone()) else {
             return;
         };
-        let all_in_note = if resolved.all_in {
-            " and is all in"
-        } else {
-            ""
-        };
-
-        if resolved.folded {
-            println!("{name} folds.");
+        let all_in = resolved.all_in;
+        let action = if resolved.folded {
+            ActionView::Folded
         } else if let Some(to) = resolved.raised_to {
-            // `current_bet` is the bet *before* this action, so a raise off a bet
-            // of zero is an opening bet.
             if current_bet == 0 {
-                println!("{name} bets {to}{all_in_note}.");
+                ActionView::Bet { amount: to, all_in }
             } else {
-                println!("{name} raises to {to}{all_in_note}.");
+                ActionView::Raised { to, all_in }
             }
         } else if resolved.paid == 0 {
-            println!("{name} checks.");
+            ActionView::Checked
         } else {
-            println!("{name} calls {}{all_in_note}.", resolved.paid);
-        }
+            ActionView::Called {
+                amount: resolved.paid,
+                all_in,
+            }
+        };
+        self.observer.notify(&GameEvent::ActionTaken {
+            player: name,
+            action,
+        });
     }
 
     /// Award the pot(s) at the end of a hand: refund any uncalled bet, build the
@@ -627,8 +614,11 @@ impl TexasHoldEm {
                 if let Some(player) = self.players.get_mut(&id) {
                     player.add_chips(refund);
                 }
-                if let Some(player) = self.players.get(&id) {
-                    println!("{} gets back {} uncalled.", player.name, refund);
+                if let Some(player) = self.players.get(&id).map(|p| p.name.clone()) {
+                    self.observer.notify(&GameEvent::UncalledBetReturned {
+                        player,
+                        amount: refund,
+                    });
                 }
             }
         }
@@ -648,8 +638,12 @@ impl TexasHoldEm {
                 if let Some(player) = self.players.get_mut(&winner) {
                     player.add_chips(total);
                 }
-                if let Some(player) = self.players.get(&winner) {
-                    println!("{} wins {} chips.", player.name, total);
+                if let Some(player) = self.players.get(&winner).map(|p| p.name.clone()) {
+                    self.observer.notify(&GameEvent::PotAwarded {
+                        player,
+                        amount: total,
+                        hand: None,
+                    });
                 }
             }
             return;
@@ -665,17 +659,16 @@ impl TexasHoldEm {
             }
         }
         for &id in &live {
-            if let (Some(player), Some(cards), Some(category)) = (
-                self.players.get(&id),
-                self.player_hands.get(&id),
-                evaluated.get(&id),
+            if let (Some(name), Some(cards), Some(category)) = (
+                self.players.get(&id).map(|p| p.name.clone()),
+                self.player_hands.get(&id).map(|h| h.cards.clone()),
+                evaluated.get(&id).map(|h| h.category),
             ) {
-                println!(
-                    "{} shows {} ({}).",
-                    player.name,
-                    cards.to_symbols(),
-                    category
-                );
+                self.observer.notify(&GameEvent::ShowdownReveal {
+                    player: name,
+                    cards,
+                    hand: category,
+                });
             }
         }
 
@@ -686,12 +679,13 @@ impl TexasHoldEm {
             if let Some(player) = self.players.get_mut(&id) {
                 player.add_chips(amount);
             }
-            let category = evaluated
-                .get(&id)
-                .map(|h| h.to_string())
-                .unwrap_or_default();
-            if let Some(player) = self.players.get(&id) {
-                println!("{} wins {} chips with {}.", player.name, amount, category);
+            let category = evaluated.get(&id).map(|h| h.category);
+            if let Some(player) = self.players.get(&id).map(|p| p.name.clone()) {
+                self.observer.notify(&GameEvent::PotAwarded {
+                    player,
+                    amount,
+                    hand: category,
+                });
             }
         }
     }
@@ -975,6 +969,58 @@ mod tests {
         // The whole table was all-in for differing amounts, so someone holds it all.
         let max_stack = game.players.values().map(|p| p.chips).max().unwrap();
         assert!(max_stack >= 100, "a winner should have gathered chips");
+    }
+
+    /// A `GameObserver` that records every event for assertions. Uses a shared
+    /// `Rc<RefCell<…>>` so the test can read the log back after the engine takes
+    /// ownership of the observer via `set_observer`.
+    struct RecordingObserver {
+        log: std::rc::Rc<std::cell::RefCell<Vec<GameEvent>>>,
+    }
+    impl GameObserver for RecordingObserver {
+        fn notify(&mut self, event: &GameEvent) {
+            self.log.borrow_mut().push(event.clone());
+        }
+    }
+
+    #[test]
+    fn observer_receives_events_in_order() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 50, 75]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        play_full_hand(&mut game, || Box::new(ShoveAgent));
+
+        let events = log.borrow();
+        let position = |pred: fn(&GameEvent) -> bool| events.iter().position(pred);
+        let last = |pred: fn(&GameEvent) -> bool| events.iter().rposition(pred);
+
+        // The hand opens with HandStarted, then exactly two blinds.
+        assert!(matches!(events[0], GameEvent::HandStarted { .. }));
+        assert!(matches!(events[1], GameEvent::BlindPosted { .. }));
+        assert!(matches!(events[2], GameEvent::BlindPosted { .. }));
+
+        // At least one action, then board, then showdown, then payouts.
+        let first_action = position(|e| matches!(e, GameEvent::ActionTaken { .. })).unwrap();
+        let first_street = position(|e| matches!(e, GameEvent::StreetDealt { .. })).unwrap();
+        let last_street = last(|e| matches!(e, GameEvent::StreetDealt { .. })).unwrap();
+        let first_reveal = position(|e| matches!(e, GameEvent::ShowdownReveal { .. })).unwrap();
+        let last_reveal = last(|e| matches!(e, GameEvent::ShowdownReveal { .. })).unwrap();
+        let first_award = position(|e| matches!(e, GameEvent::PotAwarded { .. })).unwrap();
+
+        assert!(first_action < first_street, "actions precede the board");
+        assert!(
+            last_street < first_reveal,
+            "the board is complete before showdown"
+        );
+        assert!(
+            last_reveal < first_award,
+            "all hands are revealed before any payout"
+        );
+        assert!(
+            matches!(events.last(), Some(GameEvent::PotAwarded { .. })),
+            "the hand ends with a payout"
+        );
     }
 
     #[test]
