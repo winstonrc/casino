@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use casino_poker::agent::Street;
 use casino_poker::casino_cards::card::Card;
-use casino_poker::events::{ActionView, Blind, GameEvent, GameObserver};
+use casino_poker::events::{ActionView, Blind, GameEvent, GameObserver, PotKind};
 use casino_poker::games::texas_hold_em::TexasHoldEm;
 use casino_poker::uuid::Uuid;
 
@@ -66,10 +66,20 @@ impl GameObserver for TerminalRenderer {
                 player,
                 amount,
                 hand,
-            } => match hand {
-                Some(category) => println!("{player} wins {amount} chips with {category}."),
-                None => println!("{player} wins {amount} chips."),
-            },
+                pot,
+            } => {
+                let from = match pot {
+                    Some(PotKind::Main) => " from the main pot".to_string(),
+                    Some(PotKind::Side(n)) => format!(" from side pot {n}"),
+                    None => String::new(),
+                };
+                match hand {
+                    Some(category) => {
+                        println!("{player} wins {amount} chips{from} with {category}.")
+                    }
+                    None => println!("{player} wins {amount} chips{from}."),
+                }
+            }
         }
     }
 }

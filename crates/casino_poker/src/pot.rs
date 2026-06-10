@@ -139,7 +139,24 @@ pub fn build_pots(contributed: &HashMap<Uuid, u32>, folded: &HashSet<Uuid>) -> V
     pots
 }
 
-/// Awards each pot to the best eligible hand(s) and returns chips won per player.
+/// The outcome of awarding a single pot: which pot it was, its size, and the
+/// chips each winner received from it. Returned by [`distribute_pots`], one entry
+/// per pot, so callers can narrate each pot separately rather than only a player's
+/// summed winnings.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PotAward {
+    /// Pot position: `0` for the main pot, `1..` for side pots in increasing
+    /// order of the all-in that created them.
+    pub index: usize,
+    /// Total chips in this pot.
+    pub amount: u32,
+    /// Each winner and the chips they received from this pot, ordered clockwise
+    /// from the dealer (the seat that receives any odd chip first).
+    pub payouts: Vec<(Uuid, u32)>,
+}
+
+/// Awards each pot to the best eligible hand(s), returning one [`PotAward`] per
+/// pot in main-then-side order.
 ///
 /// For each pot, the winner is the player(s) in `eligible` with the maximum
 /// [`ComparableHand`] in `evaluated`. Ties split the pot evenly; the leftover
@@ -154,10 +171,10 @@ pub fn distribute_pots(
     evaluated: &HashMap<Uuid, ComparableHand>,
     seats: &[Uuid],
     dealer_seat_index: usize,
-) -> HashMap<Uuid, u32> {
-    let mut winnings: HashMap<Uuid, u32> = HashMap::new();
+) -> Vec<PotAward> {
+    let mut awards: Vec<PotAward> = Vec::new();
 
-    for pot in pots {
+    for (index, pot) in pots.iter().enumerate() {
         if pot.amount == 0 {
             continue;
         }
@@ -172,13 +189,23 @@ pub fn distribute_pots(
         let base = pot.amount / count;
         let remainder = pot.amount % count;
 
-        for (i, id) in ordered.iter().enumerate() {
-            let extra = if (i as u32) < remainder { 1 } else { 0 };
-            *winnings.entry(*id).or_insert(0) += base + extra;
-        }
+        let payouts = ordered
+            .iter()
+            .enumerate()
+            .map(|(i, &id)| {
+                let extra = if (i as u32) < remainder { 1 } else { 0 };
+                (id, base + extra)
+            })
+            .collect();
+
+        awards.push(PotAward {
+            index,
+            amount: pot.amount,
+            payouts,
+        });
     }
 
-    winnings
+    awards
 }
 
 /// Returns the eligible players that win a pot: those tied for the best evaluated
@@ -244,6 +271,18 @@ mod tests {
             Card::new(Rank::Two, Suit::Club),
         ];
         evaluate(&[], &board)
+    }
+
+    /// Sums each player's chips across all pot awards, for assertions that only
+    /// care about totals rather than which pot paid them.
+    fn totals(awards: &[PotAward]) -> HashMap<Uuid, u32> {
+        let mut totals: HashMap<Uuid, u32> = HashMap::new();
+        for award in awards {
+            for &(id, amount) in &award.payouts {
+                *totals.entry(id).or_insert(0) += amount;
+            }
+        }
+        totals
     }
 
     fn rank_from(strength: u8) -> Rank {
@@ -353,7 +392,7 @@ mod tests {
         let pots = build_pots(&contributed, &HashSet::new());
         // C has the best hand, B second, A worst.
         let evaluated = HashMap::from([(a, hand(10)), (b, hand(12)), (c, hand(14))]);
-        let winnings = distribute_pots(&pots, &evaluated, &seats, 0);
+        let winnings = totals(&distribute_pots(&pots, &evaluated, &seats, 0));
         // C wins both the main (60) and side (80) pots.
         assert_eq!(winnings.get(&c), Some(&140));
         assert_eq!(winnings.get(&b), None);
@@ -368,10 +407,29 @@ mod tests {
         let pots = build_pots(&contributed, &HashSet::new());
         // Short stack A has the best hand but is only eligible for the main pot.
         let evaluated = HashMap::from([(a, hand(14)), (b, hand(13)), (c, hand(11))]);
-        let winnings = distribute_pots(&pots, &evaluated, &seats, 0);
+        let winnings = totals(&distribute_pots(&pots, &evaluated, &seats, 0));
         assert_eq!(winnings.get(&a), Some(&60)); // main pot only
         assert_eq!(winnings.get(&b), Some(&80)); // side pot: best among B, C
         assert_eq!(winnings.get(&c), None);
+    }
+
+    #[test]
+    fn distribute_reports_each_pot_separately() {
+        let (a, b, c) = (id(1), id(2), id(3));
+        let seats = vec![a, b, c];
+        let contributed = HashMap::from([(a, 20), (b, 60), (c, 60)]);
+        let pots = build_pots(&contributed, &HashSet::new());
+        // A wins the main pot; B wins the side pot it isn't eligible for.
+        let evaluated = HashMap::from([(a, hand(14)), (b, hand(13)), (c, hand(11))]);
+        let awards = distribute_pots(&pots, &evaluated, &seats, 0);
+
+        assert_eq!(awards.len(), 2);
+        assert_eq!(awards[0].index, 0);
+        assert_eq!(awards[0].amount, 60);
+        assert_eq!(awards[0].payouts, vec![(a, 60)]);
+        assert_eq!(awards[1].index, 1);
+        assert_eq!(awards[1].amount, 80);
+        assert_eq!(awards[1].payouts, vec![(b, 80)]);
     }
 
     #[test]
@@ -385,7 +443,7 @@ mod tests {
             eligible: BTreeSet::from([a, b]),
         }];
         let evaluated = HashMap::from([(a, hand(14)), (b, hand(14))]);
-        let winnings = distribute_pots(&pots, &evaluated, &seats, 0);
+        let winnings = totals(&distribute_pots(&pots, &evaluated, &seats, 0));
         assert_eq!(winnings.get(&b), Some(&3));
         assert_eq!(winnings.get(&a), Some(&2));
     }

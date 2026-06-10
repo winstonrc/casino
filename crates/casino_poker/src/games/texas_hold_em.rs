@@ -18,7 +18,7 @@ use casino_cards::hand::Hand;
 
 use crate::agent::{AgentError, PlayerView, PokerAgent, Street};
 use crate::betting::{legal_actions, resolve_action, BettingRound, PlayerAction, Resolved};
-use crate::events::{ActionView, Blind, GameEvent, GameObserver, NullObserver};
+use crate::events::{ActionView, Blind, GameEvent, GameObserver, NullObserver, PotKind};
 use crate::hand_rankings::{evaluate, ComparableHand};
 use crate::player::Player;
 use crate::pot::{build_pots, distribute_pots, refund_uncalled};
@@ -643,6 +643,7 @@ impl TexasHoldEm {
                         player,
                         amount: total,
                         hand: None,
+                        pot: None,
                     });
                 }
             }
@@ -672,20 +673,33 @@ impl TexasHoldEm {
             }
         }
 
-        let winnings = distribute_pots(&pots, &evaluated, &self.seats, self.dealer_seat_index);
-        let mut ordered: Vec<(Uuid, u32)> = winnings.into_iter().collect();
-        ordered.sort_by_key(|(_, amount)| std::cmp::Reverse(*amount));
-        for (id, amount) in ordered {
-            if let Some(player) = self.players.get_mut(&id) {
-                player.add_chips(amount);
-            }
-            let category = evaluated.get(&id).map(|h| h.category);
-            if let Some(player) = self.players.get(&id).map(|p| p.name.clone()) {
-                self.observer.notify(&GameEvent::PotAwarded {
-                    player,
-                    amount,
-                    hand: category,
-                });
+        let awards = distribute_pots(&pots, &evaluated, &self.seats, self.dealer_seat_index);
+        // Only label pots when the hand actually split into side pots; a single
+        // pot needs no "main pot" qualifier.
+        let labelled = awards.len() > 1;
+        for award in &awards {
+            let kind = if award.index == 0 {
+                PotKind::Main
+            } else {
+                PotKind::Side(award.index as u8)
+            };
+            let pot = labelled.then_some(kind);
+            for &(id, amount) in &award.payouts {
+                if amount == 0 {
+                    continue;
+                }
+                if let Some(player) = self.players.get_mut(&id) {
+                    player.add_chips(amount);
+                }
+                let category = evaluated.get(&id).map(|h| h.category);
+                if let Some(player) = self.players.get(&id).map(|p| p.name.clone()) {
+                    self.observer.notify(&GameEvent::PotAwarded {
+                        player,
+                        amount,
+                        hand: category,
+                        pot,
+                    });
+                }
             }
         }
     }
@@ -1021,6 +1035,107 @@ mod tests {
             matches!(events.last(), Some(GameEvent::PotAwarded { .. })),
             "the hand ends with a payout"
         );
+    }
+
+    #[test]
+    fn side_pot_awards_are_labelled_main_and_side() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[0, 0, 0]);
+        let (a, b, c) = (ids[0], ids[1], ids[2]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        game.contributed = HashMap::from([(a, 20), (b, 60), (c, 60)]);
+
+        // Short stack A wins the main pot; B takes the side pot.
+        game.board = Hand::new_from_cards(vec![
+            card(Rank::Two, Suit::Club),
+            card(Rank::Seven, Suit::Diamond),
+            card(Rank::Nine, Suit::Heart),
+            card(Rank::Jack, Suit::Spade),
+            card(Rank::King, Suit::Club),
+        ]);
+        game.player_hands.insert(
+            a,
+            Hand::new_from_cards(vec![
+                card(Rank::Ace, Suit::Club),
+                card(Rank::Ace, Suit::Diamond),
+            ]),
+        );
+        game.player_hands.insert(
+            b,
+            Hand::new_from_cards(vec![
+                card(Rank::Queen, Suit::Heart),
+                card(Rank::Queen, Suit::Spade),
+            ]),
+        );
+        game.player_hands.insert(
+            c,
+            Hand::new_from_cards(vec![
+                card(Rank::Three, Suit::Club),
+                card(Rank::Four, Suit::Diamond),
+            ]),
+        );
+
+        game.award_pots();
+
+        let events = log.borrow();
+        let awards: Vec<(u32, Option<crate::events::PotKind>)> = events
+            .iter()
+            .filter_map(|e| match e {
+                GameEvent::PotAwarded { amount, pot, .. } => Some((*amount, *pot)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            awards,
+            vec![
+                (60, Some(crate::events::PotKind::Main)),
+                (80, Some(crate::events::PotKind::Side(1))),
+            ]
+        );
+    }
+
+    #[test]
+    fn single_pot_award_is_unlabelled() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[0, 0]);
+        let (a, b) = (ids[0], ids[1]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        game.contributed = HashMap::from([(a, 50), (b, 50)]);
+        game.board = Hand::new_from_cards(vec![
+            card(Rank::Two, Suit::Club),
+            card(Rank::Seven, Suit::Diamond),
+            card(Rank::Nine, Suit::Heart),
+            card(Rank::Jack, Suit::Spade),
+            card(Rank::King, Suit::Club),
+        ]);
+        game.player_hands.insert(
+            a,
+            Hand::new_from_cards(vec![
+                card(Rank::Ace, Suit::Club),
+                card(Rank::Ace, Suit::Diamond),
+            ]),
+        );
+        game.player_hands.insert(
+            b,
+            Hand::new_from_cards(vec![
+                card(Rank::Three, Suit::Club),
+                card(Rank::Four, Suit::Diamond),
+            ]),
+        );
+
+        game.award_pots();
+
+        let events = log.borrow();
+        let award = events
+            .iter()
+            .find_map(|e| match e {
+                GameEvent::PotAwarded { pot, .. } => Some(*pot),
+                _ => None,
+            })
+            .expect("a pot was awarded");
+        assert_eq!(award, None, "a single pot needs no main/side label");
     }
 
     #[test]

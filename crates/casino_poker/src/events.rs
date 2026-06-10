@@ -23,6 +23,15 @@ pub enum Blind {
     Big,
 }
 
+/// Which pot an award came from, when a hand produced side pots.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum PotKind {
+    Main,
+    /// A side pot, numbered from `1` in increasing order of the all-in that
+    /// created it.
+    Side(u8),
+}
+
 /// A player's resolved action, as the rest of the table would see it.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ActionView {
@@ -72,11 +81,14 @@ pub enum GameEvent {
         cards: Vec<Card>,
         hand: HandCategory,
     },
-    /// A player won chips. `hand` is `None` when the pot was uncontested.
+    /// A player won chips. `hand` is `None` when the pot was uncontested. `pot`
+    /// identifies which pot the chips came from when the hand had side pots, and
+    /// is `None` when there was a single pot (nothing to distinguish).
     PotAwarded {
         player: String,
         amount: u32,
         hand: Option<HandCategory>,
+        pot: Option<PotKind>,
     },
 }
 
@@ -132,6 +144,7 @@ mod tests {
                 player: "Alice".to_string(),
                 amount: 20,
                 hand: Some(HandCategory::Pair),
+                pot: Some(PotKind::Side(1)),
             },
         ];
 
