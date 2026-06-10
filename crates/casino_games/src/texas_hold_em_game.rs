@@ -182,6 +182,9 @@ pub fn play_game() {
         }
     }
 
+    // Shuffle seating so the dealer button doesn't always start with the user.
+    game.randomize_seats();
+
     // Narrate the hand as a PokerStars history on stdout, from the user's seat.
     game.set_hero(user_id);
     game.set_observer(Box::new(HandHistory::stdout()));

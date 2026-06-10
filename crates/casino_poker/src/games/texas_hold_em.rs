@@ -10,6 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use rand::seq::SliceRandom;
 use uuid::Uuid;
 
 use casino_cards::card::Card;
@@ -138,6 +139,13 @@ impl TexasHoldEm {
         self.seats.push(player.identifier);
         self.players.insert(player.identifier, player);
         Ok(())
+    }
+
+    /// Shuffle the seating order so the dealer button (and therefore the blinds)
+    /// don't always start with the first player added. Call once after all players
+    /// are seated and before the first hand.
+    pub fn randomize_seats(&mut self) {
+        self.seats.shuffle(&mut rand::thread_rng());
     }
 
     /// Remove a player from the game.

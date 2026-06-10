@@ -6,20 +6,21 @@ crate follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## casino_poker 1.0.0 — 2026-06-09
+## casino_poker 1.0.0 — 2026-06-10
 
 First stable release. The backend now drives complete Texas Hold'em hands with
 correct betting, all-ins, and side pots, and exposes a stable public API.
 
 ### Added
+
 - `hand_rankings::evaluate(hole, board) -> ComparableHand` — picks the best
   5-card hand and returns a fully-ordered, kicker-correct value (`HandCategory`
-  + tiebreak ranks). Handles the wheel (A-2-3-4-5) and is cross-checked in tests
-  against an independent brute-force oracle. `evaluate_with_cards` additionally
-  returns the exact five cards that form the hand, and `ComparableHand::describe`
-  names a hand in PokerStars wording ("two pair, Jacks and Fives", "a flush, Ace
-  high", "a full house, Kings full of Threes", "a straight, Five to Nine").
-  `ComparableHand` derives serde.
+  - tiebreak ranks). Handles the wheel (A-2-3-4-5) and is cross-checked in tests
+    against an independent brute-force oracle. `evaluate_with_cards` additionally
+    returns the exact five cards that form the hand, and `ComparableHand::describe`
+    names a hand in PokerStars wording ("two pair, Jacks and Fives", "a flush, Ace
+    high", "a full house, Kings full of Threes", "a straight, Five to Nine").
+    `ComparableHand` derives serde.
 - `agent` module: the `PokerAgent` trait, an owned (serializable) `PlayerView`,
   `LegalAction`, `AgentError`, and `Street`. This is the seam for human, AI, and
   future model-backed players.
@@ -32,6 +33,8 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 - `TexasHoldEm` agent-driven hand lifecycle: `begin_hand`, `deal_flop`/`deal_turn`/
   `deal_river`, `run_betting_round`, `award_pots`, `end_hand`, `RoundOutcome`, and
   `set_hero` (the perspective player for hand histories).
+- `TexasHoldEm::randomize_seats` shuffles the seating order so the opening dealer
+  button (and the blinds) need not always start with the first player added.
 - `events` module: the engine is **I/O-free** and emits public narration as
   serializable `GameEvent`s (`HandStarted`, `HoleCardsDealt`, `BlindPosted`,
   `ActionTaken`, `StreetDealt`, `UncalledBetReturned`, `Showdown`,
@@ -46,6 +49,7 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 - `agents` module: reusable, I/O-free `RandomAgent` and `HeuristicAgent`.
 
 ### Changed
+
 - `PlayerAction` is now `Fold` / `Check` / `Call` / `RaiseTo(u32)` / `AllIn`
   (raise-to semantics) instead of the previous unit-style variants.
 - The engine no longer prints. `remove_losers` returns the removed players'
@@ -58,12 +62,14 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 - `Player::add_chips`/`subtract_chips` now saturate instead of overflowing.
 
 ### Removed
+
 - `HandRank`, `rank_hand`, `get_high_card_value`, and the `check_for_*` helpers.
   **Migration:** call `evaluate(hole, board)` and compare the returned
   `ComparableHand` values directly with `>`, `<`, and `==` — these handle hand
   category, kickers, and ties correctly.
 
 ### Fixed
+
 - All-ins and side pots: a short stack used to be force-folded and side pots were
   never paid. Unequal all-ins now resolve into correct main/side pots.
 - Calling no longer double-charges — a player owes only the delta over what they
@@ -75,6 +81,7 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 ## casino_cards 2.0.0 — 2026-06-10
 
 ### Added
+
 - `Serialize`/`Deserialize` (serde) for `Card`, `Rank`, `Suit`, and `Hand`.
 - `Card::glyph()` returns the single Unicode playing-card glyph (e.g. `🂡`).
 - `Rank::code()`/`Suit::code()` return the single-character PokerStars codes
@@ -83,6 +90,7 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 - `Display` for `Hand`, and `Default` for `Deck` and `Hand`.
 
 ### Changed
+
 - **Breaking:** `Card`'s text `Display` now renders the PokerStars two-character
   code (e.g. `As`, `Td`, `Ten` → `T`, lowercase suit) instead of the Unicode
   playing-card glyph, so output is parseable by standard hand-history tools. Use
@@ -95,6 +103,7 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 First stable release: a playable terminal Texas Hold'em game.
 
 ### Added
+
 - Play Texas Hold'em against computer opponents: a strength-aware `HeuristicAgent`
   (evaluates hole + board and weighs pot odds) plus a looser `RandomAgent`.
 - **PokerStars-format hand history**: each hand is narrated to **stdout** as a
@@ -109,8 +118,11 @@ First stable release: a playable terminal Texas Hold'em game.
   launch. Saves are written atomically.
 - Card-display preference (parseable text `As` or Unicode glyphs `🂡`), chosen at
   launch and saved with the profile.
+- Seating is randomized at table setup, so the human player is not always the
+  first dealer.
 
 ### Changed
+
 - Pick a game by number (or press Enter — there's only one for now). On your turn
   choose an action by a single-letter shortcut or full word: `(f)old`, `(x) check`,
   `(c)all`, `(r)aise to <amount>`, `(a)ll-in`.

@@ -65,6 +65,10 @@ let player = game.new_player_with_chips("Player 1", 100);
 game.add_player(player).unwrap();
 // ...seat more players...
 
+// Optional: shuffle seating once so the opening dealer button isn't always the
+// first player added (players are otherwise seated in `add_player` order).
+game.randomize_seats();
+
 let mut agents: HashMap<Uuid, Box<dyn PokerAgent>> = HashMap::new();
 for &id in game.seats() {
     agents.insert(id, Box::new(CallingAgent));
