@@ -1,6 +1,7 @@
 use std::fmt;
 
 use casino_cards::card::Card;
+use serde::{Deserialize, Serialize};
 
 /// The category of a poker hand, ordered from weakest (`HighCard`) to strongest
 /// (`StraightFlush`).
@@ -12,7 +13,7 @@ use casino_cards::card::Card;
 /// It is a payload-free type: it carries only the category, while
 /// [`ComparableHand`] pairs it with the tiebreak ranks. `HandCategory` is the
 /// source of truth for category precedence.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum HandCategory {
     HighCard,
     Pair,

@@ -61,7 +61,9 @@ version = "1.0.0"
 dependencies = [
  "casino_cards",
  "proptest",
+ "rand 0.8.5",
  "serde",
+ "serde_json",
  "strum",
  "uuid",
 ]
