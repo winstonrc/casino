@@ -194,6 +194,29 @@ impl TexasHoldEm {
         self.deck.shuffle();
     }
 
+    /// The player who held the dealer button on the last hand, or `None` before the
+    /// first hand. Note this id may belong to a player since removed (the button is
+    /// only advanced by [`begin_hand`]); callers that need a *seated* player should
+    /// check membership in [`seats`]. Used to snapshot a tournament for resumption.
+    ///
+    /// [`begin_hand`]: Self::begin_hand
+    /// [`seats`]: Self::seats
+    pub fn dealer(&self) -> Option<Uuid> {
+        self.dealer
+    }
+
+    /// Place the dealer button on a specific seated player. Used to restore a
+    /// resumed tournament to the button it left off on; the next [`begin_hand`]
+    /// rotates on from here. No-op if the player is not seated.
+    ///
+    /// [`begin_hand`]: Self::begin_hand
+    pub fn set_dealer(&mut self, player: Uuid) {
+        if let Some(pos) = self.seats.iter().position(|s| *s == player) {
+            self.dealer_seat_index = pos;
+            self.dealer = Some(player);
+        }
+    }
+
     /// Rotate the dealer button clockwise to the next seated player.
     ///
     /// The button is tracked by player id. If the previous button player is still
@@ -812,6 +835,26 @@ mod tests {
             ids.push(id);
         }
         ids
+    }
+
+    #[test]
+    fn set_dealer_places_the_button_and_begin_hand_rotates_on() {
+        // The button-restore seam used by tournament resume: placing the dealer on
+        // the *just-completed* hand's button must rotate to the correct next seat,
+        // not one too far (the off-by-one guard).
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 100, 100]);
+
+        game.set_dealer(ids[1]);
+        assert_eq!(game.dealer(), Some(ids[1]));
+
+        // An unseated id is ignored.
+        game.set_dealer(Uuid::nil());
+        assert_eq!(game.dealer(), Some(ids[1]));
+
+        // begin_hand rotates from the restored button to the next seat.
+        game.begin_hand();
+        assert_eq!(game.dealer(), Some(ids[2]));
     }
 
     #[test]

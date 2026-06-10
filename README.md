@@ -1,22 +1,24 @@
 # Casino
 
-Casino is a library that provides the backend for playing various card games including poker. The library comprises a deck of cards as well the implementations (hand ranking, betting, etc.) for the included games. The goal of this library is to provide well-tested code that can be safely relied upon for building card games on top of it.
+Casino is a library that provides the backend for playing various card games including poker. The library comprises a deck of cards as well as the implementations (hand ranking, betting, etc.) for the included games. The goal of this library is to provide well-tested code that can be safely relied upon for building card games on top of it.
 
 ## Crates
 
-- [casino_games](https://github.com/winstonrc/casino/tree/main/crates/casino_games): Play casino games in your terminal.
 - [casino_cards](https://github.com/winstonrc/casino/tree/main/crates/casino_cards): A library that provides a deck of playing cards that can be used for various card games.
 - [casino_poker](https://github.com/winstonrc/casino/tree/main/crates/casino_poker): A library that provides hand ranking & the backend for poker games.
 
-## Playing
+## Using the library
+
+Add `casino_poker` (which re-exports `casino_cards`) to your project and drive the
+`TexasHoldEm` engine with a thin loop, supplying a `PokerAgent` per player. The
+engine owns all money and rules; your code decides how each player acts. See the
+[`casino_poker` README](crates/casino_poker/README.md) for a complete, runnable
+example covering hand evaluation, playing a hand, and observing the event stream.
 
 ```console
-$ cargo run -p casino_games
+$ cargo test --workspace      # run the engine + card-library test suites
+$ cargo doc --no-deps --open  # browse the API docs
 ```
-
-Then pick a game from the menu (press Enter or `1` — Texas Hold'em is the only
-game for now). You buy in, play hands against a mix of heuristic and loose AI
-opponents, and your chip balance and stats persist between sessions.
 
 ## Architecture notes
 
@@ -26,9 +28,13 @@ opponents, and your chip balance and stats persist between sessions.
   correctly). Hand strength is evaluated with a kicker-correct `ComparableHand`,
   cross-checked in tests against an independent brute-force oracle.
 - Players act through a `PokerAgent` trait that receives an owned `PlayerView`
-  snapshot. Humans, the heuristic AI, and any future model-backed opponent all
-  implement the same trait — this is the seam for the local-model stretch goal,
-  and the owned/serializable view can be handed to an external model.
+  snapshot and can `observe` the public `GameEvent` stream. Humans and any
+  AI — including a future model-backed opponent — implement the same trait, so a
+  smarter agent can be swapped in without engine changes, and the owned/serializable
+  view can be handed to an external model.
+- The engine is **I/O-free**: instead of printing, it emits serializable
+  `GameEvent`s to a `GameObserver`, so a terminal, TUI, GUI, or network layer can
+  render or forward the same stream.
 
 ## Rules simplifications
 

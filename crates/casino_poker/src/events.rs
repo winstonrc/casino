@@ -18,6 +18,7 @@ use crate::hand_rankings::ComparableHand;
 
 /// Which blind a player posted.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 pub enum Blind {
     Small,
     Big,
@@ -25,6 +26,7 @@ pub enum Blind {
 
 /// Which pot an award came from, when a hand produced side pots.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 pub enum PotKind {
     Main,
     /// A side pot, numbered from `1` for the smallest (lowest) side-pot layer
@@ -43,6 +45,7 @@ pub struct SeatInfo {
 
 /// A player's resolved action, as the rest of the table would see it.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 pub enum ActionView {
     Folded,
     Checked,
@@ -66,6 +69,7 @@ pub enum ActionView {
 
 /// A piece of public narration emitted during a hand.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub enum GameEvent {
     /// A new hand began. Carries everything a hand-history header needs: the hand
     /// number, the button seat (1-based), the blinds, and the seat roster with

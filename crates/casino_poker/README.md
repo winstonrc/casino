@@ -1,4 +1,4 @@
-[![crates.io](https://img.shields.io/crates/v/casino_poker.svg)](https://crates.io/crates/casino_poker) [![Poker Test](https://github.com/winstonrc/casino/actions/workflows/casino_poker.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions/workflows/casino_poker.yml)
+[![crates.io](https://img.shields.io/crates/v/casino_poker.svg)](https://crates.io/crates/casino_poker) [![CI](https://github.com/winstonrc/casino/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions/workflows/ci.yml)
 
 # casino_poker
 
@@ -91,14 +91,27 @@ game.award_pots();
 game.end_hand();
 ```
 
+The button accessors `dealer()` / `set_dealer` read and place the dealer button, so a
+front-end can snapshot an in-progress table and restore it on resume. A `PokerAgent`
+need only implement `decide`; the `observe` (watch the `GameEvent` stream) and
+`session_ended` (persist learned state) hooks default to no-ops, so a stateful AI can
+learn and persist across hands and sessions without any engine change.
+
+For a front-end training overlay, `PlayerView::metrics()` returns derived
+`HandMetrics` — pot odds (and the equity needed to call), stack-to-pot ratio, and
+stack/call sizes in big blinds — so a UI can render correct numbers without
+re-deriving them. `PlayerView` is `#[non_exhaustive]` (the engine builds it; use
+`PlayerView::builder()` to construct one in your own agent tests), and both it and
+`HandMetrics` can gain fields in a minor release.
+
 ### Observing a hand
 
 The engine does no I/O. Instead it emits **public** narration (only what every
 player at the table can see — opponents' hole cards are never broadcast mid-hand)
 as serializable `GameEvent`s to a `GameObserver`. Set one with `set_observer`;
 without one the engine runs silently. The stream carries everything a PokerStars
-hand history needs (the `casino_games` front-end renders exactly that); render it
-in a terminal, log it, or forward it over a network. Designate the perspective
+hand history needs, so a front-end can render exactly that; render it in a terminal,
+log it, or forward it over a network. Designate the perspective
 player with `set_hero` so `HoleCardsDealt` carries their cards (for `Dealt to …`).
 
 ```rust

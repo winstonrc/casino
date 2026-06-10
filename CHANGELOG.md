@@ -21,9 +21,16 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
     names a hand in PokerStars wording ("two pair, Jacks and Fives", "a flush, Ace
     high", "a full house, Kings full of Threes", "a straight, Five to Nine").
     `ComparableHand` derives serde.
-- `agent` module: the `PokerAgent` trait, an owned (serializable) `PlayerView`,
+- `agent` module: the `PokerAgent` trait — `decide`, plus default-no-op `observe`
+  (receive the `GameEvent` stream to update a player model) and `session_ended`
+  (persist what was learned) lifecycle hooks — an owned (serializable) `PlayerView`,
   `LegalAction`, `AgentError`, and `Street`. This is the seam for human, AI, and
-  future model-backed players.
+  future model-backed players. `PlayerView` is `#[non_exhaustive]` (built by the
+  engine; construct one elsewhere — e.g. in agent tests — via `PlayerView::builder()`)
+  so future snapshot fields are non-breaking. `PlayerView::metrics()` returns derived,
+  ready-to-display `HandMetrics` (pot odds, SPR, stack/call in big blinds, players
+  left) for a front-end training overlay; `HandMetrics` is `#[non_exhaustive]` so more
+  metrics can be added without breakage.
 - `betting` module: `amount_owed`, `resolve_action`, `legal_actions`,
   `PlayerAction`, and the `BettingRound` state machine.
 - `pot` module: `Pot`, `refund_uncalled`, `build_pots`, and `distribute_pots` —
@@ -35,6 +42,8 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   `set_hero` (the perspective player for hand histories).
 - `TexasHoldEm::randomize_seats` shuffles the seating order so the opening dealer
   button (and the blinds) need not always start with the first player added.
+- `TexasHoldEm::dealer` / `set_dealer` read and place the dealer button, so a
+  front-end can snapshot an in-progress table and restore it on resume.
 - `events` module: the engine is **I/O-free** and emits public narration as
   serializable `GameEvent`s (`HandStarted`, `HoleCardsDealt`, `BlindPosted`,
   `ActionTaken`, `StreetDealt`, `UncalledBetReturned`, `Showdown`,
@@ -45,8 +54,9 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   blinds; `ActionTaken` the `Street` and `ActionView::Raised { by, to }`;
   `ShowdownReveal`/`PotAwarded` the full `ComparableHand` (call `describe()` to
   name it); and `PotAwarded` an optional `PotKind` (`Main`/`Side(n)`) for per-pot
-  side-pot narration.
-- `agents` module: reusable, I/O-free `RandomAgent` and `HeuristicAgent`.
+  side-pot narration. The public event enums (`GameEvent`, `ActionView`, `PotKind`,
+  `Blind`) are `#[non_exhaustive]`, so future variants can be added without a
+  breaking change.
 
 ### Changed
 
@@ -95,38 +105,3 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   code (e.g. `As`, `Td`, `Ten` → `T`, lowercase suit) instead of the Unicode
   playing-card glyph, so output is parseable by standard hand-history tools. Use
   `set_glyph_display(true)` for the glyph form (`🂡`), or `Card::glyph()`.
-
----
-
-## casino_games 1.0.0 — 2026-06-10
-
-First stable release: a playable terminal Texas Hold'em game.
-
-### Added
-
-- Play Texas Hold'em against computer opponents: a strength-aware `HeuristicAgent`
-  (evaluates hole + board and weighs pot odds) plus a looser `RandomAgent`.
-- **PokerStars-format hand history**: each hand is narrated to **stdout** as a
-  PokerStars hand history (header, seats, blinds, `*** HOLE CARDS ***`, action
-  lines, street markers, `*** SHOW DOWN ***`, `*** SUMMARY ***`). In text mode the
-  cards are PokerStars codes (`As`, `Td`) so standard tools (PT4, Hold'em Manager,
-  open-source parsers) can ingest it; in glyph mode the same layout prints with
-  Unicode card glyphs as flair. Interactive prompts go to **stderr**, so
-  `casino_games > hand.txt` captures a clean, parseable history. Each session is
-  also auto-saved to a timestamped file under the data dir
-  (`history/<timestamp>.txt`, one file per session, created lazily on the first
-  hand); the saved log always uses parseable PokerStars card codes, even when the
-  screen shows glyph cards.
-- Profile persistence — name, chip balance, and basic stats (hands played/won)
-  are saved as JSON in the platform data directory and offered to resume on
-  launch. Saves are written atomically.
-- Card-display preference (parseable text `As` or Unicode glyphs `🂡`), chosen at
-  launch and saved with the profile.
-- Seating is randomized at table setup, so the human player is not always the
-  first dealer.
-
-### Changed
-
-- Pick a game by number (or press Enter — there's only one for now). On your turn
-  choose an action by a single-letter shortcut or full word: `(f)old`, `(x) check`,
-  `(c)all`, `(r)aise to <amount>`, `(a)ll-in`.
