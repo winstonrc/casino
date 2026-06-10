@@ -23,13 +23,17 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   `PlayerAction`, and the `BettingRound` state machine.
 - `pot` module: `Pot`, `refund_uncalled`, `build_pots`, and `distribute_pots` —
   side pots computed at showdown by layering total contributions.
+  `distribute_pots` returns one `PotAward` per pot (main then side), so callers
+  can report each pot's winners separately rather than only summed winnings.
 - `TexasHoldEm` agent-driven hand lifecycle: `begin_hand`, `deal_flop`/`deal_turn`/
   `deal_river`, `run_betting_round`, `award_pots`, `end_hand`, and `RoundOutcome`.
 - `events` module: the engine is **I/O-free** and emits public narration as
   serializable `GameEvent`s (`HandStarted`, `BlindPosted`, `ActionTaken`,
   `StreetDealt`, `UncalledBetReturned`, `ShowdownReveal`, `PotAwarded`) to a
   `GameObserver` set via `TexasHoldEm::set_observer` (default `NullObserver`).
-  Render them, log them, or forward them over a network.
+  Render them, log them, or forward them over a network. `PotAwarded` carries an
+  optional `PotKind` (`Main`/`Side(n)`) so side-pot payouts can be narrated per
+  pot, and `None` for single-pot hands.
 - `agents` module: reusable, I/O-free `RandomAgent` and `HeuristicAgent`.
 
 ### Changed
