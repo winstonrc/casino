@@ -1,0 +1,49 @@
+name: Autofix
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: autofix-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  format:
+    name: Format & fix
+    runs-on: ubuntu-latest
+    # Skip forks: their GITHUB_TOKEN is read-only and cannot push back.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache build artifacts
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Apply rustfmt
+        run: cargo fmt --all
+
+      - name: Apply clippy fixes
+        run: cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged
+
+      # Commits made with the default GITHUB_TOKEN do not re-trigger workflows,
+      # so the CI run on the original push may show stale formatting results
+      # until the next manual push.
+      - name: Commit fixes
+        uses: stefanzweifel/git-auto-commit-action@04702edda442b2e678b25b537cec683a1493fcb9 # v7.1.0
+        with:
+          commit_message: "style: cargo fmt + clippy --fix"
