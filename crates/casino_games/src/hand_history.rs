@@ -11,6 +11,7 @@
 //! by the agent (see [`crate::agents`]).
 
 use std::collections::HashMap;
+use std::fs::File;
 use std::io::{self, Stdout, Write};
 
 use chrono::Local;
@@ -36,6 +37,9 @@ const TIMEZONE: &str = "ET";
 /// tests.
 pub struct HandHistory<W: Write = Stdout> {
     out: W,
+    /// Optional per-session log file: the same lines are mirrored here so a clean
+    /// hand history is saved without any shell redirection.
+    log: Option<File>,
     // The button seat (1-based) and roster for the current hand, kept for the
     // SUMMARY's position tags. (Hand number and blinds are written from the
     // `HandStarted` event directly and not retained.)
@@ -52,17 +56,20 @@ pub struct HandHistory<W: Write = Stdout> {
 }
 
 impl HandHistory<Stdout> {
-    /// A renderer that writes the hand history to stdout.
-    pub fn stdout() -> Self {
-        Self::new(io::stdout())
+    /// A renderer that writes the hand history to stdout, optionally mirroring
+    /// every line to a per-session log file.
+    pub fn stdout(log: Option<File>) -> Self {
+        Self::new(io::stdout(), log)
     }
 }
 
 impl<W: Write> HandHistory<W> {
-    /// A renderer that writes the hand history to `out`.
-    pub fn new(out: W) -> Self {
+    /// A renderer that writes the hand history to `out`, optionally mirroring it
+    /// to `log`.
+    pub fn new(out: W, log: Option<File>) -> Self {
         Self {
             out,
+            log,
             button_seat: 0,
             seats: Vec::new(),
             board: Vec::new(),
@@ -157,11 +164,17 @@ impl<W: Write> GameObserver for HandHistory<W> {
 }
 
 impl<W: Write> HandHistory<W> {
-    /// Writes one history line and flushes (so a redirected stdout file stays
-    /// current and correctly ordered).
+    /// Writes one history line to stdout (flushed, so a redirected stdout file
+    /// stays current and correctly ordered) and mirrors it to the session log.
     fn line(&mut self, text: &str) {
         let _ = writeln!(self.out, "{text}");
         let _ = self.out.flush();
+        if let Some(log) = self.log.as_mut() {
+            // `File` is unbuffered, so each line reaches the OS immediately and
+            // survives an abrupt exit — no explicit flush needed (a future
+            // `BufWriter` here would need one).
+            let _ = writeln!(log, "{text}");
+        }
     }
 
     fn start_hand(
@@ -422,7 +435,7 @@ mod tests {
             &board,
         );
 
-        let mut hh = HandHistory::new(Vec::new());
+        let mut hh = HandHistory::new(Vec::new(), None);
         let events = [
             GameEvent::HandStarted {
                 hand_number: 1,
@@ -556,7 +569,7 @@ mod tests {
             &board,
         );
 
-        let mut hh = HandHistory::new(Vec::new());
+        let mut hh = HandHistory::new(Vec::new(), None);
         for event in [
             GameEvent::HandStarted {
                 hand_number: 4,

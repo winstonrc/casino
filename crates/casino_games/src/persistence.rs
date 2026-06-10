@@ -4,9 +4,10 @@
 //! in the platform's standard data directory, e.g. `~/.local/share/casino/` on
 //! Linux. The schema is versioned so it can grow without breaking old saves.
 
-use std::fs;
+use std::fs::{self, File};
 use std::path::PathBuf;
 
+use chrono::Local;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
@@ -99,4 +100,21 @@ pub fn save_location() -> String {
     profile_path()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "an unknown location".to_string())
+}
+
+/// Creates a fresh timestamped hand-history file for this session under the data
+/// dir's `history/` subdirectory, e.g. `…/history/2026-06-10_14-32-05.txt`, and
+/// returns the open file and its path.
+///
+/// One file per session keeps each log small and self-limiting (old sessions are
+/// separate files you can prune). Returns `None` if the directory or file can't
+/// be created — non-fatal, the game still streams the history to stdout.
+pub fn new_session_history() -> Option<(File, PathBuf)> {
+    let dir = ProjectDirs::from("com", "winstoncooke", "casino")?
+        .data_dir()
+        .join("history");
+    fs::create_dir_all(&dir).ok()?;
+    let path = dir.join(format!("{}.txt", Local::now().format("%Y-%m-%d_%H-%M-%S")));
+    let file = File::create(&path).ok()?;
+    Some((file, path))
 }

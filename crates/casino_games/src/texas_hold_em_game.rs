@@ -185,9 +185,16 @@ pub fn play_game() {
     // Shuffle seating so the dealer button doesn't always start with the user.
     game.randomize_seats();
 
-    // Narrate the hand as a PokerStars history on stdout, from the user's seat.
+    // Narrate the hand as a PokerStars history on stdout, from the user's seat,
+    // mirrored to a per-session log file so a clean history is always saved.
+    let session_log = persistence::new_session_history();
+    if let Some((_, path)) = &session_log {
+        eprintln!("Saving this session's hand history to {}.", path.display());
+    }
     game.set_hero(user_id);
-    game.set_observer(Box::new(HandHistory::stdout()));
+    game.set_observer(Box::new(HandHistory::stdout(
+        session_log.map(|(file, _)| file),
+    )));
 
     let mut texas_hold_em = TexasHoldEmGame::new(game, user_id, profile);
 
