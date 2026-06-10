@@ -25,10 +25,20 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   side pots computed at showdown by layering total contributions.
 - `TexasHoldEm` agent-driven hand lifecycle: `begin_hand`, `deal_flop`/`deal_turn`/
   `deal_river`, `run_betting_round`, `award_pots`, `end_hand`, and `RoundOutcome`.
+- `events` module: the engine is **I/O-free** and emits public narration as
+  serializable `GameEvent`s (`HandStarted`, `BlindPosted`, `ActionTaken`,
+  `StreetDealt`, `UncalledBetReturned`, `ShowdownReveal`, `PotAwarded`) to a
+  `GameObserver` set via `TexasHoldEm::set_observer` (default `NullObserver`).
+  Render them, log them, or forward them over a network.
+- `agents` module: reusable, I/O-free `RandomAgent` and `HeuristicAgent`.
 
 ### Changed
 - `PlayerAction` is now `Fold` / `Check` / `Call` / `RaiseTo(u32)` / `AllIn`
   (raise-to semantics) instead of the previous unit-style variants.
+- The engine no longer prints. `remove_losers` returns the removed players'
+  names (`Vec<String>`); `add_player` and `check_for_game_over` no longer print;
+  `print_leaderboard`/`print_dealer` were removed (render from events/getters).
+- `HandCategory` derives serde.
 - Showdowns compare `ComparableHand` values, which resolve all kickers and do
   **not** break ties by suit on straights/straight flushes (equal hands chop).
 - `HandCategory`/`ComparableHand` print without articles (e.g. `Pair`, `Flush`).
