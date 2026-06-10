@@ -68,9 +68,10 @@ $ cargo run -p casino_games | tee session.txt   # play normally AND save a clean
 Each session is also **saved automatically** to a timestamped file in the data
 directory — `~/.local/share/casino/history/<YYYY-MM-DD_HH-MM-SS>.txt` on Linux —
 so you always have a clean history without redirecting (the path is printed at
-launch). One file per session keeps each log small and easy to prune. The saved
-log mirrors the on-screen history, so it is tool-parseable in the default **text**
-card mode; if you switch to glyph cards, the saved log contains glyphs too.
+launch). One file per session keeps each log small and easy to prune, and the file
+is created only when the first hand is dealt (quitting at setup leaves nothing
+behind). The saved log is **always** written with parseable PokerStars card codes,
+even if you play with glyph cards on screen — the file is for tooling.
 
 ```text
 PokerStars Hand #1: Hold'em No Limit (1/3) - 2026/06/10 14:32:01 ET

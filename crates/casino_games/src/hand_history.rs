@@ -3,9 +3,13 @@
 //! A [`HandHistory`] is a [`GameObserver`] that turns the engine's public
 //! `GameEvent` stream into a PokerStars hand history written to **stdout**, one
 //! line at a time (flushed, so redirecting stdout to a file yields a clean,
-//! parseable history). In the default text card mode the cards are PokerStars
-//! codes (`As`, `Td`) so standard tools can parse the output; in glyph mode the
-//! same layout prints with Unicode card glyphs as flair.
+//! parseable history). On stdout the cards follow the player's display preference:
+//! PokerStars codes (`As`, `Td`) in text mode, or Unicode glyphs (`🂡`) as flair in
+//! glyph mode.
+//!
+//! It can also save the history to a per-session log file (created lazily on the
+//! first hand). That file **always** uses parseable text codes, regardless of the
+//! on-screen card style, since it exists for tooling.
 //!
 //! The human's turn prompt is *not* part of the history — it is written to stderr
 //! by the agent (see [`crate::agents`]).
@@ -13,6 +17,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Stdout, Write};
+use std::path::PathBuf;
 
 use chrono::Local;
 
@@ -37,8 +42,12 @@ const TIMEZONE: &str = "ET";
 /// tests.
 pub struct HandHistory<W: Write = Stdout> {
     out: W,
-    /// Optional per-session log file: the same lines are mirrored here so a clean
-    /// hand history is saved without any shell redirection.
+    /// Where the per-session log file will be created (lazily, on the first line),
+    /// so quitting before any hand leaves no file. Taken once the file is opened.
+    log_path: Option<PathBuf>,
+    /// The per-session log file, opened on the first line. The history is mirrored
+    /// here with cards always in parseable text codes, regardless of the on-screen
+    /// glyph/text preference — the log is for tooling.
     log: Option<File>,
     // The button seat (1-based) and roster for the current hand, kept for the
     // SUMMARY's position tags. (Hand number and blinds are written from the
@@ -56,20 +65,21 @@ pub struct HandHistory<W: Write = Stdout> {
 }
 
 impl HandHistory<Stdout> {
-    /// A renderer that writes the hand history to stdout, optionally mirroring
-    /// every line to a per-session log file.
-    pub fn stdout(log: Option<File>) -> Self {
-        Self::new(io::stdout(), log)
+    /// A renderer that writes the hand history to stdout, and (when `log_path` is
+    /// given) also saves a parseable copy to that file, created on the first hand.
+    pub fn stdout(log_path: Option<PathBuf>) -> Self {
+        Self::new(io::stdout(), log_path)
     }
 }
 
 impl<W: Write> HandHistory<W> {
-    /// A renderer that writes the hand history to `out`, optionally mirroring it
-    /// to `log`.
-    pub fn new(out: W, log: Option<File>) -> Self {
+    /// A renderer that writes the hand history to `out`, optionally also saving a
+    /// parseable copy to the file at `log_path` (created lazily on the first line).
+    pub fn new(out: W, log_path: Option<PathBuf>) -> Self {
         Self {
             out,
-            log,
+            log_path,
+            log: None,
             button_seat: 0,
             seats: Vec::new(),
             board: Vec::new(),
@@ -111,7 +121,10 @@ impl<W: Write> GameObserver for HandHistory<W> {
             GameEvent::HoleCardsDealt { hero } => {
                 self.line("*** HOLE CARDS ***");
                 if let Some((name, cards)) = hero {
-                    self.line(&format!("Dealt to {name} [{}]", cards_to_string(cards)));
+                    self.emit(
+                        &format!("Dealt to {name} [{}]", cards_to_string(cards)),
+                        &format!("Dealt to {name} [{}]", text_cards(cards)),
+                    );
                 }
             }
 
@@ -123,7 +136,10 @@ impl<W: Write> GameObserver for HandHistory<W> {
 
             GameEvent::StreetDealt { street, board, .. } => {
                 self.board = board.clone();
-                self.line(&street_marker(*street, board));
+                self.emit(
+                    &street_marker(*street, board, cards_to_string),
+                    &street_marker(*street, board, text_cards),
+                );
             }
 
             GameEvent::UncalledBetReturned { player, amount } => {
@@ -137,11 +153,11 @@ impl<W: Write> GameObserver for HandHistory<W> {
 
             GameEvent::ShowdownReveal { player, hole, hand } => {
                 self.shown.insert(player.clone(), (hole.clone(), *hand));
-                self.line(&format!(
-                    "{player}: shows [{}] ({})",
-                    cards_to_string(hole),
-                    hand.describe()
-                ));
+                let desc = hand.describe();
+                self.emit(
+                    &format!("{player}: shows [{}] ({desc})", cards_to_string(hole)),
+                    &format!("{player}: shows [{}] ({desc})", text_cards(hole)),
+                );
             }
 
             GameEvent::PotAwarded {
@@ -164,16 +180,30 @@ impl<W: Write> GameObserver for HandHistory<W> {
 }
 
 impl<W: Write> HandHistory<W> {
-    /// Writes one history line to stdout (flushed, so a redirected stdout file
-    /// stays current and correctly ordered) and mirrors it to the session log.
+    /// Writes a line with no cards: identical to stdout and the session log.
     fn line(&mut self, text: &str) {
-        let _ = writeln!(self.out, "{text}");
+        self.emit(text, text);
+    }
+
+    /// Writes one history line: `screen` to stdout (honoring the card display
+    /// preference, flushed so a redirected stdout file stays current) and `logged`
+    /// to the session log (cards always in parseable text codes). For lines
+    /// without cards the two are identical.
+    fn emit(&mut self, screen: &str, logged: &str) {
+        let _ = writeln!(self.out, "{screen}");
         let _ = self.out.flush();
+        // Open the log lazily on the first line, so an abandoned setup writes no
+        // file. The directory was already ensured by `session_history_path`.
+        if self.log.is_none() {
+            if let Some(path) = self.log_path.take() {
+                self.log = File::create(&path).ok();
+            }
+        }
         if let Some(log) = self.log.as_mut() {
             // `File` is unbuffered, so each line reaches the OS immediately and
             // survives an abrupt exit — no explicit flush needed (a future
             // `BufWriter` here would need one).
-            let _ = writeln!(log, "{text}");
+            let _ = writeln!(log, "{logged}");
         }
     }
 
@@ -233,17 +263,18 @@ impl<W: Write> HandHistory<W> {
         self.line("*** SUMMARY ***");
         self.line(&self.total_pot_line());
         if !self.board.is_empty() {
-            self.line(&format!("Board [{}]", cards_to_string(&self.board)));
+            self.emit(
+                &format!("Board [{}]", cards_to_string(&self.board)),
+                &format!("Board [{}]", text_cards(&self.board)),
+            );
         }
         let seats = self.seats.clone();
         for seat in &seats {
-            let line = format!(
-                "Seat {}: {}{}",
-                seat.seat_no,
-                seat.name,
-                self.seat_tag(seat)
+            let prefix = format!("Seat {}: {}", seat.seat_no, seat.name);
+            self.emit(
+                &format!("{prefix}{}", self.seat_tag(seat, cards_to_string)),
+                &format!("{prefix}{}", self.seat_tag(seat, text_cards)),
             );
-            self.line(&line);
         }
     }
 
@@ -287,15 +318,16 @@ impl<W: Write> HandHistory<W> {
         format!("Total pot {total} {breakdown} | Rake 0")
     }
 
-    /// The position tag and result clause for a seat's SUMMARY line.
-    fn seat_tag(&self, seat: &SeatInfo) -> String {
+    /// The position tag and result clause for a seat's SUMMARY line. `fmt` renders
+    /// any shown cards (screen style for stdout, text codes for the log).
+    fn seat_tag(&self, seat: &SeatInfo, fmt: impl Fn(&[Card]) -> String) -> String {
         let mut tag = String::new();
         if let Some(position) = self.position(seat.seat_no) {
             tag.push_str(&format!(" ({position})"));
         }
         let won = self.collected.get(&seat.name).copied().unwrap_or(0);
         if let Some((hole, hand)) = self.shown.get(&seat.name) {
-            let cards = cards_to_string(hole);
+            let cards = fmt(hole);
             if won > 0 {
                 tag.push_str(&format!(
                     " showed [{cards}] and won ({won}) with {}",
@@ -370,21 +402,33 @@ fn fold_phrase(street: Street) -> &'static str {
     }
 }
 
+/// Renders cards as parseable PokerStars codes (`As Kh`), ignoring the glyph
+/// display toggle — used for the saved log, which must stay tool-parseable even
+/// when the screen shows glyph cards.
+fn text_cards(cards: &[Card]) -> String {
+    cards
+        .iter()
+        .map(|card| format!("{}{}", card.rank.code(), card.suit.code()))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// The PokerStars street marker, splitting the cumulative board so the turn and
-/// river cards appear in their own brackets.
-fn street_marker(street: Street, board: &[Card]) -> String {
+/// river cards appear in their own brackets. `fmt` renders the cards (screen style
+/// for stdout, text codes for the log).
+fn street_marker(street: Street, board: &[Card], fmt: impl Fn(&[Card]) -> String) -> String {
     match street {
         Street::Preflop => String::new(), // never emitted for pre-flop
-        Street::Flop => format!("*** FLOP *** [{}]", cards_to_string(&board[..3])),
+        Street::Flop => format!("*** FLOP *** [{}]", fmt(&board[..3])),
         Street::Turn => format!(
             "*** TURN *** [{}] [{}]",
-            cards_to_string(&board[..3]),
-            cards_to_string(&board[3..4])
+            fmt(&board[..3]),
+            fmt(&board[3..4])
         ),
         Street::River => format!(
             "*** RIVER *** [{}] [{}]",
-            cards_to_string(&board[..4]),
-            cards_to_string(&board[4..5])
+            fmt(&board[..4]),
+            fmt(&board[4..5])
         ),
     }
 }
@@ -609,5 +653,71 @@ mod tests {
             ),
             "summary in:\n{output}"
         );
+    }
+
+    #[test]
+    fn text_cards_are_always_parseable_codes() {
+        // `text_cards` never consults the glyph toggle, so the saved log stays
+        // tool-parseable even when the screen is showing glyph cards.
+        assert_eq!(
+            text_cards(&[
+                c(Rank::Ace, Suit::Spade),
+                c(Rank::Ten, Suit::Diamond),
+                c(Rank::King, Suit::Club),
+            ]),
+            "As Td Kc"
+        );
+    }
+
+    #[test]
+    fn session_log_is_created_lazily_and_saved_as_text() {
+        let dir = std::env::temp_dir().join(format!("casino_hh_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("session.txt");
+        let _ = std::fs::remove_file(&path);
+
+        let mut hh = HandHistory::new(Vec::new(), Some(path.clone()));
+        // Nothing written yet, so the file must not exist (no empty file if the
+        // player quits during setup).
+        assert!(!path.exists(), "log must not be created before any hand");
+
+        for event in [
+            GameEvent::HandStarted {
+                hand_number: 1,
+                button_seat: 1,
+                small_blind: 1,
+                big_blind: 2,
+                seats: vec![seat(1, "Hero", 200), seat(2, "Villain", 200)],
+            },
+            GameEvent::HoleCardsDealt {
+                hero: Some((
+                    "Hero".to_string(),
+                    vec![c(Rank::Ace, Suit::Heart), c(Rank::King, Suit::Club)],
+                )),
+            },
+            GameEvent::ActionTaken {
+                player: "Hero".to_string(),
+                street: Street::Preflop,
+                action: ActionView::Folded,
+            },
+            GameEvent::PotAwarded {
+                player: "Villain".to_string(),
+                amount: 3,
+                hand: None,
+                pot: None,
+            },
+            GameEvent::HandComplete,
+        ] {
+            hh.notify(&event);
+        }
+
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("PokerStars Hand #1"), "log header:\n{saved}");
+        // Cards are saved as parseable codes (text_cards), not glyphs.
+        assert!(
+            saved.contains("Dealt to Hero [Ah Kc]"),
+            "log card codes:\n{saved}"
+        );
+        let _ = std::fs::remove_file(&path);
     }
 }

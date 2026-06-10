@@ -114,8 +114,9 @@ First stable release: a playable terminal Texas Hold'em game.
   Unicode card glyphs as flair. Interactive prompts go to **stderr**, so
   `casino_games > hand.txt` captures a clean, parseable history. Each session is
   also auto-saved to a timestamped file under the data dir
-  (`history/<timestamp>.txt`, one file per session); the saved log mirrors the
-  on-screen cards, so it is parseable in the default text mode.
+  (`history/<timestamp>.txt`, one file per session, created lazily on the first
+  hand); the saved log always uses parseable PokerStars card codes, even when the
+  screen shows glyph cards.
 - Profile persistence — name, chip balance, and basic stats (hands played/won)
   are saved as JSON in the platform data directory and offered to resume on
   launch. Saves are written atomically.
