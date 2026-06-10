@@ -145,8 +145,8 @@ pub fn build_pots(contributed: &HashMap<Uuid, u32>, folded: &HashSet<Uuid>) -> V
 /// summed winnings.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PotAward {
-    /// Pot position: `0` for the main pot, `1..` for side pots in increasing
-    /// order of the all-in that created them.
+    /// Pot position: `0` for the main pot, `1..` for side pots from the smallest
+    /// (lowest) layer upward.
     pub index: usize,
     /// Total chips in this pot.
     pub amount: u32,

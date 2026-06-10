@@ -1,5 +1,8 @@
 //! The human, terminal-driven agent. (Computer agents live in
 //! `casino_poker::agents`.)
+//!
+//! All prompts are written to **stderr**, keeping stdout a clean PokerStars hand
+//! history (see [`crate::hand_history`]); input is read from stdin.
 
 use std::io::{self, Write};
 
@@ -31,12 +34,12 @@ impl PokerAgent for HumanAgent {
             _ => None,
         });
 
-        println!("-- Your turn --");
-        println!("Your hand: {}", cards_to_string(&view.hole));
+        eprintln!("\n-- Your turn --");
+        eprintln!("Your hand: {}", cards_to_string(&view.hole));
         if !view.board.is_empty() {
-            println!("Board: {}", cards_to_string(&view.board));
+            eprintln!("Board: {}", cards_to_string(&view.board));
         }
-        println!(
+        eprintln!(
             "Pot: {} | Your chips: {} | To call: {}",
             view.pot_total, view.chips, view.amount_owed
         );
@@ -57,8 +60,8 @@ impl PokerAgent for HumanAgent {
             if let Some(total) = all_in_total {
                 menu.push(format!("(a)ll-in ({total})"));
             }
-            print!("Action ({}): ", menu.join(", "));
-            io::stdout().flush().expect("Failed to flush stdout.");
+            eprint!("Action ({}): ", menu.join(", "));
+            io::stderr().flush().expect("Failed to flush stderr.");
 
             let input = read_line()?;
             let lowered = input.trim().to_lowercase();
@@ -75,7 +78,7 @@ impl PokerAgent for HumanAgent {
                 }
                 // `c` when checking is free: there's nothing to call.
                 Some("c") | Some("call") if can_check => {
-                    println!("Nothing to call — type 'x' to check.");
+                    eprintln!("Nothing to call — type 'x' to check.");
                 }
                 Some("a") | Some("all") | Some("allin") | Some("all-in")
                     if all_in_total.is_some() =>
@@ -92,24 +95,24 @@ impl PokerAgent for HumanAgent {
                     let to = match amount_token.and_then(|s| s.parse::<u32>().ok()) {
                         Some(to) => to,
                         None => {
-                            print!("Raise to how much? ");
-                            io::stdout().flush().expect("Failed to flush stdout.");
+                            eprint!("Raise to how much? ");
+                            io::stderr().flush().expect("Failed to flush stderr.");
                             match read_line()?.trim().parse::<u32>() {
                                 Ok(to) => to,
                                 Err(_) => {
-                                    println!("Please enter a whole number.");
+                                    eprintln!("Please enter a whole number.");
                                     continue;
                                 }
                             }
                         }
                     };
                     if to < min || to > max {
-                        println!("You can raise to between {min} and {max} chips.");
+                        eprintln!("You can raise to between {min} and {max} chips.");
                         continue;
                     }
                     return Ok(PlayerAction::RaiseTo(to));
                 }
-                _ => println!("Invalid action. Try again, or type 'quit'."),
+                _ => eprintln!("Invalid action. Try again, or type 'quit'."),
             }
         }
     }

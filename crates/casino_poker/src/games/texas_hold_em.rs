@@ -18,7 +18,7 @@ use casino_cards::hand::Hand;
 
 use crate::agent::{AgentError, PlayerView, PokerAgent, Street};
 use crate::betting::{legal_actions, resolve_action, BettingRound, PlayerAction, Resolved};
-use crate::events::{ActionView, Blind, GameEvent, GameObserver, NullObserver, PotKind};
+use crate::events::{ActionView, Blind, GameEvent, GameObserver, NullObserver, PotKind, SeatInfo};
 use crate::hand_rankings::{evaluate, ComparableHand};
 use crate::player::Player;
 use crate::pot::{build_pots, distribute_pots, refund_uncalled};
@@ -63,6 +63,11 @@ pub struct TexasHoldEm {
     maximum_players_count: usize,
     small_blind_amount: u32,
     big_blind_amount: u32,
+    /// Hands dealt so far this session, used to number hand histories.
+    hand_number: u32,
+    /// The perspective player whose hole cards appear in the hand history's
+    /// `Dealt to …` line. `None` runs with no perspective (e.g. all-bot tables).
+    hero: Option<Uuid>,
     /// Receives the public narration of the hand. Defaults to a no-op sink.
     observer: Box<dyn GameObserver>,
 }
@@ -92,8 +97,16 @@ impl TexasHoldEm {
             maximum_players_count,
             small_blind_amount,
             big_blind_amount,
+            hand_number: 0,
+            hero: None,
             observer: Box::new(NullObserver),
         }
+    }
+
+    /// Designate the perspective player for hand histories (their hole cards show
+    /// in the `Dealt to …` line). Typically the human at a terminal.
+    pub fn set_hero(&mut self, hero: Uuid) {
+        self.hero = Some(hero);
     }
 
     /// Set the observer that receives the hand's [`GameEvent`]s. Without one, the
@@ -264,19 +277,39 @@ impl TexasHoldEm {
     pub fn begin_hand(&mut self) {
         self.rotate_dealer();
         self.shuffle_deck();
-        if let Some(dealer) = self
+        self.hand_number += 1;
+        // Emitted before blinds are posted, so the seat stacks are pre-blind.
+        let seats: Vec<SeatInfo> = self
             .seats
-            .get(self.dealer_seat_index)
-            .and_then(|id| self.players.get(id))
-        {
-            let event = GameEvent::HandStarted {
-                dealer: dealer.name.clone(),
-            };
-            self.observer.notify(&event);
+            .iter()
+            .enumerate()
+            .filter_map(|(i, id)| {
+                self.players.get(id).map(|p| SeatInfo {
+                    seat_no: i + 1,
+                    name: p.name.clone(),
+                    stack: p.chips,
+                })
+            })
+            .collect();
+        if !seats.is_empty() {
+            self.observer.notify(&GameEvent::HandStarted {
+                hand_number: self.hand_number,
+                button_seat: self.dealer_seat_index + 1,
+                small_blind: self.small_blind_amount,
+                big_blind: self.big_blind_amount,
+                seats,
+            });
         }
         self.post_blind(true);
         self.post_blind(false);
         self.deal_hands_to_all_players();
+        // The marker always fires; carry the hero's cards for the `Dealt to …` line.
+        let hero = self.hero.and_then(|id| {
+            let name = self.players.get(&id)?.name.clone();
+            let hand = self.player_hands.get(&id)?;
+            Some((name, hand.cards.clone()))
+        });
+        self.observer.notify(&GameEvent::HoleCardsDealt { hero });
     }
 
     /// Post a blind, going all-in if the player cannot cover it. The blind is
@@ -490,7 +523,7 @@ impl TexasHoldEm {
                 player.subtract_chips(resolved.paid);
             }
             *self.contributed.entry(id).or_insert(0) += resolved.paid;
-            self.announce_action(id, &resolved, round.current_bet);
+            self.announce_action(id, &resolved, round.current_bet, street);
 
             if resolved.folded {
                 self.folded.insert(id);
@@ -578,8 +611,8 @@ impl TexasHoldEm {
 
     /// Emit an [`ActionTaken`](GameEvent::ActionTaken) event for a resolved action.
     /// `current_bet` is the bet *before* this action, so a raise off a bet of zero
-    /// is an opening bet.
-    fn announce_action(&mut self, id: Uuid, resolved: &Resolved, current_bet: u32) {
+    /// is an opening bet and a raise's `by` is the increment over that prior bet.
+    fn announce_action(&mut self, id: Uuid, resolved: &Resolved, current_bet: u32, street: Street) {
         let Some(name) = self.players.get(&id).map(|p| p.name.clone()) else {
             return;
         };
@@ -590,7 +623,11 @@ impl TexasHoldEm {
             if current_bet == 0 {
                 ActionView::Bet { amount: to, all_in }
             } else {
-                ActionView::Raised { to, all_in }
+                ActionView::Raised {
+                    by: to.saturating_sub(current_bet),
+                    to,
+                    all_in,
+                }
             }
         } else if resolved.paid == 0 {
             ActionView::Checked
@@ -602,6 +639,7 @@ impl TexasHoldEm {
         };
         self.observer.notify(&GameEvent::ActionTaken {
             player: name,
+            street,
             action,
         });
     }
@@ -650,25 +688,27 @@ impl TexasHoldEm {
             return;
         }
 
+        // Re-show the final board (it has scrolled past during betting) before any
+        // hand is revealed.
+        self.observer.notify(&GameEvent::Showdown {
+            board: self.board.cards.clone(),
+            pot: total,
+        });
+
+        // Evaluate each live hand once, recording its value for pot distribution
+        // and emitting its showdown reveal.
         let mut evaluated: HashMap<Uuid, ComparableHand> = HashMap::new();
         for &id in &live {
-            if let Some(hand) = self.player_hands.get(&id) {
-                evaluated.insert(
-                    id,
-                    evaluate(&[hand.cards[0], hand.cards[1]], &self.board.cards),
-                );
-            }
-        }
-        for &id in &live {
-            if let (Some(name), Some(cards), Some(category)) = (
-                self.players.get(&id).map(|p| p.name.clone()),
-                self.player_hands.get(&id).map(|h| h.cards.clone()),
-                evaluated.get(&id).map(|h| h.category),
-            ) {
+            let Some(hand) = self.player_hands.get(&id) else {
+                continue;
+            };
+            let comparable = evaluate(&[hand.cards[0], hand.cards[1]], &self.board.cards);
+            evaluated.insert(id, comparable);
+            if let Some(name) = self.players.get(&id).map(|p| p.name.clone()) {
                 self.observer.notify(&GameEvent::ShowdownReveal {
                     player: name,
-                    cards,
-                    hand: category,
+                    hole: hand.cards.clone(),
+                    hand: comparable,
                 });
             }
         }
@@ -691,12 +731,12 @@ impl TexasHoldEm {
                 if let Some(player) = self.players.get_mut(&id) {
                     player.add_chips(amount);
                 }
-                let category = evaluated.get(&id).map(|h| h.category);
+                let hand = evaluated.get(&id).copied();
                 if let Some(player) = self.players.get(&id).map(|p| p.name.clone()) {
                     self.observer.notify(&GameEvent::PotAwarded {
                         player,
                         amount,
-                        hand: category,
+                        hand,
                         pot,
                     });
                 }
@@ -706,7 +746,13 @@ impl TexasHoldEm {
 
     /// Return every card from hands, board, and burn pile to the deck and clear
     /// the per-hand state, readying the engine for the next hand.
+    ///
+    /// Called after `award_pots` on every completed hand, so it is also where the
+    /// [`HandComplete`](GameEvent::HandComplete) signal is emitted (covering both
+    /// the contested and uncontested award paths). A hand abandoned via a player
+    /// quit never reaches here, and so produces no summary — intentionally.
     pub fn end_hand(&mut self) {
+        self.observer.notify(&GameEvent::HandComplete);
         for (_, hand) in self.player_hands.drain() {
             for card in hand.cards {
                 let _ = self.deck.insert_at_top(card);
@@ -854,9 +900,11 @@ mod tests {
 
     #[test]
     fn uncontested_pot_goes_to_lone_live_player() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         let ids = seat_players(&mut game, &[0, 0]);
         let (a, b) = (ids[0], ids[1]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
         game.contributed = HashMap::from([(a, 2), (b, 10)]);
         game.folded.insert(a);
         // B has no hand evaluated need; wins uncontested.
@@ -871,6 +919,61 @@ mod tests {
         game.award_pots();
         // Refund returns B's uncalled 8; remaining pot of 4 (2+2) goes to B.
         assert_eq!(game.players[&b].chips, 8 + 4);
+        // No one reached a showdown, so neither a header nor a reveal is emitted.
+        let events = log.borrow();
+        assert!(
+            !events.iter().any(|e| matches!(
+                e,
+                GameEvent::Showdown { .. } | GameEvent::ShowdownReveal { .. }
+            )),
+            "an uncontested hand has no showdown"
+        );
+    }
+
+    #[test]
+    fn showdown_event_reports_the_final_board_and_post_refund_pot() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[0, 0]);
+        let (a, b) = (ids[0], ids[1]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        // B overbet: 60 vs A's 40, so 20 is refunded as uncalled before the
+        // showdown header, which should report the post-refund pot of 80.
+        game.contributed = HashMap::from([(a, 40), (b, 60)]);
+        game.board = Hand::new_from_cards(vec![
+            card(Rank::Two, Suit::Club),
+            card(Rank::Seven, Suit::Diamond),
+            card(Rank::Nine, Suit::Heart),
+            card(Rank::Jack, Suit::Spade),
+            card(Rank::King, Suit::Club),
+        ]);
+        game.player_hands.insert(
+            a,
+            Hand::new_from_cards(vec![
+                card(Rank::Ace, Suit::Club),
+                card(Rank::Ace, Suit::Diamond),
+            ]),
+        );
+        game.player_hands.insert(
+            b,
+            Hand::new_from_cards(vec![
+                card(Rank::Queen, Suit::Club),
+                card(Rank::Queen, Suit::Diamond),
+            ]),
+        );
+
+        game.award_pots();
+
+        let events = log.borrow();
+        let showdown = events
+            .iter()
+            .find_map(|e| match e {
+                GameEvent::Showdown { board, pot } => Some((board.clone(), *pot)),
+                _ => None,
+            })
+            .expect("a contested hand emits a showdown header");
+        assert_eq!(showdown.0.len(), 5, "the full board is reported");
+        assert_eq!(showdown.1, 80, "pot is the post-refund total (40 + 40)");
     }
 
     /// An agent that checks when it can, otherwise calls, otherwise shoves, and
@@ -1018,22 +1121,31 @@ mod tests {
         let first_action = position(|e| matches!(e, GameEvent::ActionTaken { .. })).unwrap();
         let first_street = position(|e| matches!(e, GameEvent::StreetDealt { .. })).unwrap();
         let last_street = last(|e| matches!(e, GameEvent::StreetDealt { .. })).unwrap();
+        let showdown = position(|e| matches!(e, GameEvent::Showdown { .. })).unwrap();
         let first_reveal = position(|e| matches!(e, GameEvent::ShowdownReveal { .. })).unwrap();
         let last_reveal = last(|e| matches!(e, GameEvent::ShowdownReveal { .. })).unwrap();
         let first_award = position(|e| matches!(e, GameEvent::PotAwarded { .. })).unwrap();
 
         assert!(first_action < first_street, "actions precede the board");
         assert!(
-            last_street < first_reveal,
-            "the board is complete before showdown"
+            last_street < showdown,
+            "the board is complete before the showdown header"
+        );
+        assert!(
+            showdown < first_reveal,
+            "the showdown header re-shows the board before any reveal"
         );
         assert!(
             last_reveal < first_award,
             "all hands are revealed before any payout"
         );
         assert!(
-            matches!(events.last(), Some(GameEvent::PotAwarded { .. })),
-            "the hand ends with a payout"
+            first_award < position(|e| matches!(e, GameEvent::HandComplete)).unwrap(),
+            "payouts precede the hand-complete signal"
+        );
+        assert!(
+            matches!(events.last(), Some(GameEvent::HandComplete)),
+            "the hand ends with the completion signal"
         );
     }
 
@@ -1136,6 +1248,176 @@ mod tests {
             })
             .expect("a pot was awarded");
         assert_eq!(award, None, "a single pot needs no main/side label");
+    }
+
+    #[test]
+    fn showdown_reveals_each_live_hand_with_its_value() {
+        use crate::hand_rankings::HandCategory;
+
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[0, 0]);
+        let (a, b) = (ids[0], ids[1]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        game.contributed = HashMap::from([(a, 10), (b, 10)]);
+
+        // Board pair of Queens; A plays the board (pair), B has pocket fives (two pair).
+        game.board = Hand::new_from_cards(vec![
+            card(Rank::Queen, Suit::Club),
+            card(Rank::Jack, Suit::Spade),
+            card(Rank::Four, Suit::Diamond),
+            card(Rank::Queen, Suit::Spade),
+            card(Rank::Ten, Suit::Club),
+        ]);
+        game.player_hands.insert(
+            a,
+            Hand::new_from_cards(vec![
+                card(Rank::Three, Suit::Heart),
+                card(Rank::Two, Suit::Diamond),
+            ]),
+        );
+        game.player_hands.insert(
+            b,
+            Hand::new_from_cards(vec![
+                card(Rank::Five, Suit::Spade),
+                card(Rank::Five, Suit::Heart),
+            ]),
+        );
+
+        game.award_pots();
+
+        let name_a = game.players[&a].name.clone();
+        let name_b = game.players[&b].name.clone();
+        let events = log.borrow();
+        let category = |name: &str| {
+            events.iter().find_map(|e| match e {
+                GameEvent::ShowdownReveal { player, hand, .. } if player == name => {
+                    Some(hand.category)
+                }
+                _ => None,
+            })
+        };
+        assert_eq!(category(&name_a), Some(HandCategory::Pair));
+        assert_eq!(category(&name_b), Some(HandCategory::TwoPair));
+    }
+
+    #[test]
+    fn three_layer_all_in_labels_main_and_two_side_pots() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[0, 0, 0, 0]);
+        let (a, b, c, d) = (ids[0], ids[1], ids[2], ids[3]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        // Three contribution levels => main pot + two side pots. The top level is
+        // shared by C and D so nothing is refunded as uncalled.
+        game.contributed = HashMap::from([(a, 20), (b, 40), (c, 60), (d, 60)]);
+
+        // No board rank coincides with the pocket pairs, so the pocket pairs rank
+        // A > K > Q > J cleanly.
+        game.board = Hand::new_from_cards(vec![
+            card(Rank::Two, Suit::Club),
+            card(Rank::Five, Suit::Diamond),
+            card(Rank::Seven, Suit::Heart),
+            card(Rank::Nine, Suit::Spade),
+            card(Rank::Ten, Suit::Club),
+        ]);
+        // A best (aces, eligible main only); B next (kings, main + side 1);
+        // C (queens) beats D (jacks) for side 2.
+        game.player_hands.insert(
+            a,
+            Hand::new_from_cards(vec![
+                card(Rank::Ace, Suit::Club),
+                card(Rank::Ace, Suit::Diamond),
+            ]),
+        );
+        game.player_hands.insert(
+            b,
+            Hand::new_from_cards(vec![
+                card(Rank::King, Suit::Club),
+                card(Rank::King, Suit::Diamond),
+            ]),
+        );
+        game.player_hands.insert(
+            c,
+            Hand::new_from_cards(vec![
+                card(Rank::Queen, Suit::Club),
+                card(Rank::Queen, Suit::Diamond),
+            ]),
+        );
+        game.player_hands.insert(
+            d,
+            Hand::new_from_cards(vec![
+                card(Rank::Jack, Suit::Club),
+                card(Rank::Jack, Suit::Diamond),
+            ]),
+        );
+
+        game.award_pots();
+
+        let events = log.borrow();
+        let awards: Vec<(u32, Option<crate::events::PotKind>)> = events
+            .iter()
+            .filter_map(|e| match e {
+                GameEvent::PotAwarded { amount, pot, .. } => Some((*amount, *pot)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            awards,
+            vec![
+                (80, Some(crate::events::PotKind::Main)), // 20 * 4, won by A
+                (60, Some(crate::events::PotKind::Side(1))), // 20 * 3, won by B
+                (40, Some(crate::events::PotKind::Side(2))), // 20 * 2, won by C
+            ]
+        );
+    }
+
+    #[test]
+    fn split_pot_award_is_unlabelled() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[0, 0]);
+        let (a, b) = (ids[0], ids[1]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        game.contributed = HashMap::from([(a, 10), (b, 10)]);
+
+        // Both players play the same board (a chop): one pot, two winners.
+        game.board = Hand::new_from_cards(vec![
+            card(Rank::Ace, Suit::Spade),
+            card(Rank::Ace, Suit::Heart),
+            card(Rank::King, Suit::Spade),
+            card(Rank::King, Suit::Heart),
+            card(Rank::Queen, Suit::Diamond),
+        ]);
+        game.player_hands.insert(
+            a,
+            Hand::new_from_cards(vec![
+                card(Rank::Three, Suit::Club),
+                card(Rank::Two, Suit::Club),
+            ]),
+        );
+        game.player_hands.insert(
+            b,
+            Hand::new_from_cards(vec![
+                card(Rank::Three, Suit::Diamond),
+                card(Rank::Two, Suit::Diamond),
+            ]),
+        );
+
+        game.award_pots();
+
+        let events = log.borrow();
+        let pots: Vec<Option<crate::events::PotKind>> = events
+            .iter()
+            .filter_map(|e| match e {
+                GameEvent::PotAwarded { amount, pot, .. } => Some((*amount, *pot)),
+                _ => None,
+            })
+            .map(|(_, pot)| pot)
+            .collect();
+        assert_eq!(pots, vec![None, None], "a single split pot needs no label");
+        assert_eq!(game.players[&a].chips, 10);
+        assert_eq!(game.players[&b].chips, 10);
     }
 
     #[test]

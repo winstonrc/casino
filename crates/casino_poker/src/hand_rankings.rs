@@ -79,15 +79,100 @@ impl fmt::Display for HandCategory {
 /// );
 /// assert_eq!(flush.category, HandCategory::Flush);
 /// ```
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct ComparableHand {
     pub category: HandCategory,
     pub tiebreak: [u8; 5],
 }
 
+impl ComparableHand {
+    /// Names the made hand in **PokerStars hand-history wording** — e.g.
+    /// `two pair, Jacks and Fives`, `a pair of Sevens`, `a flush, Ace high`,
+    /// `a full house, Kings full of Threes`, `a straight, Five to Nine`,
+    /// `a straight flush, Ten to Ace`. Kickers are intentionally absent (the cards
+    /// in the `[..]` notation carry them), matching PokerStars output.
+    pub fn describe(&self) -> String {
+        let t = &self.tiebreak;
+        match self.category {
+            HandCategory::HighCard => format!("high card {}", rank_name(t[0])),
+            HandCategory::Pair => format!("a pair of {}", rank_plural(t[0])),
+            HandCategory::TwoPair => {
+                format!("two pair, {} and {}", rank_plural(t[0]), rank_plural(t[1]))
+            }
+            HandCategory::ThreeOfAKind => format!("three of a kind, {}", rank_plural(t[0])),
+            HandCategory::Straight => format!("a straight, {}", straight_range(t[0])),
+            HandCategory::Flush => format!("a flush, {} high", rank_name(t[0])),
+            HandCategory::FullHouse => {
+                format!(
+                    "a full house, {} full of {}",
+                    rank_plural(t[0]),
+                    rank_plural(t[1])
+                )
+            }
+            HandCategory::FourOfAKind => format!("four of a kind, {}", rank_plural(t[0])),
+            HandCategory::StraightFlush => format!("a straight flush, {}", straight_range(t[0])),
+        }
+    }
+}
+
 impl fmt::Display for ComparableHand {
+    /// Writes only the bare category (e.g. `Two Pair`). For the PokerStars-worded
+    /// made hand with its ranks (e.g. `two pair, Jacks and Fives`), use
+    /// [`describe`](ComparableHand::describe).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.category)
+    }
+}
+
+/// The low-to-high span of a straight (or straight flush) by its high-card value,
+/// PokerStars style: `Five to Nine`. The wheel (5-high) plays the Ace low and
+/// reads `Ace to Five`.
+fn straight_range(high: u8) -> String {
+    if high == 5 {
+        "Ace to Five".to_string()
+    } else {
+        format!("{} to {}", rank_name(high - 4), rank_name(high))
+    }
+}
+
+/// The singular name of a rank value (2..=14), for "<rank>-high" phrasings.
+fn rank_name(value: u8) -> &'static str {
+    match value {
+        2 => "Two",
+        3 => "Three",
+        4 => "Four",
+        5 => "Five",
+        6 => "Six",
+        7 => "Seven",
+        8 => "Eight",
+        9 => "Nine",
+        10 => "Ten",
+        11 => "Jack",
+        12 => "Queen",
+        13 => "King",
+        14 => "Ace",
+        _ => "?",
+    }
+}
+
+/// The plural name of a rank value (2..=14), for naming sets — note `Six` →
+/// `Sixes`, so a simple `+ "s"` won't do.
+fn rank_plural(value: u8) -> &'static str {
+    match value {
+        2 => "Twos",
+        3 => "Threes",
+        4 => "Fours",
+        5 => "Fives",
+        6 => "Sixes",
+        7 => "Sevens",
+        8 => "Eights",
+        9 => "Nines",
+        10 => "Tens",
+        11 => "Jacks",
+        12 => "Queens",
+        13 => "Kings",
+        14 => "Aces",
+        _ => "?",
     }
 }
 
@@ -102,10 +187,21 @@ impl fmt::Display for ComparableHand {
 ///
 /// Panics if `hole.len() + board.len() < 5`, since no 5-card hand can be formed.
 pub fn evaluate(hole: &[Card], board: &[Card]) -> ComparableHand {
+    evaluate_with_cards(hole, board).0
+}
+
+/// Like [`evaluate`], but also returns the exact five cards that form the best
+/// hand, so a caller can show *which* cards make a player's hand (e.g. to
+/// distinguish playing the board from using hole cards).
+///
+/// # Panics
+///
+/// Panics if `hole.len() + board.len() < 5`.
+pub fn evaluate_with_cards(hole: &[Card], board: &[Card]) -> (ComparableHand, [Card; 5]) {
     let mut cards: Vec<Card> = Vec::with_capacity(hole.len() + board.len());
     cards.extend_from_slice(hole);
     cards.extend_from_slice(board);
-    best_five(&cards)
+    best_five_with_cards(&cards)
 }
 
 /// Returns the strongest [`ComparableHand`] over every 5-card subset of `cards`.
@@ -117,6 +213,19 @@ pub fn evaluate(hole: &[Card], board: &[Card]) -> ComparableHand {
 ///
 /// Panics if `cards.len() < 5`.
 pub fn best_five(cards: &[Card]) -> ComparableHand {
+    best_five_with_cards(cards).0
+}
+
+/// Like [`best_five`], but also returns the exact five cards forming the hand.
+///
+/// Among equally-ranked 5-card subsets the choice is unspecified but
+/// deterministic (the first encountered in enumeration order). Use the returned
+/// [`ComparableHand`], not the card identities, to reason about ties.
+///
+/// # Panics
+///
+/// Panics if `cards.len() < 5`.
+pub fn best_five_with_cards(cards: &[Card]) -> (ComparableHand, [Card; 5]) {
     assert!(
         cards.len() >= 5,
         "best_five requires at least 5 cards, got {}",
@@ -124,7 +233,7 @@ pub fn best_five(cards: &[Card]) -> ComparableHand {
     );
 
     let n = cards.len();
-    let mut best: Option<ComparableHand> = None;
+    let mut best: Option<(ComparableHand, [Card; 5])> = None;
     for a in 0..n {
         for b in (a + 1)..n {
             for c in (b + 1)..n {
@@ -132,8 +241,8 @@ pub fn best_five(cards: &[Card]) -> ComparableHand {
                     for e in (d + 1)..n {
                         let five = [cards[a], cards[b], cards[c], cards[d], cards[e]];
                         let score = score_five(&five);
-                        if best.is_none_or(|current| score > current) {
-                            best = Some(score);
+                        if best.is_none_or(|(current, _)| score > current) {
+                            best = Some((score, five));
                         }
                     }
                 }
@@ -294,6 +403,108 @@ mod comparable_hand_tests {
         assert!(HandCategory::Flush < HandCategory::FullHouse);
         assert!(HandCategory::FullHouse < HandCategory::FourOfAKind);
         assert!(HandCategory::FourOfAKind < HandCategory::StraightFlush);
+    }
+
+    #[test]
+    fn describe_uses_pokerstars_wording() {
+        let describe = |cards: &[Card]| eval(cards).describe();
+
+        assert_eq!(
+            describe(&[
+                c(Rank::Jack, Suit::Heart),
+                c(Rank::Ten, Suit::Spade),
+                c(Rank::Eight, Suit::Club),
+                c(Rank::Five, Suit::Spade),
+                c(Rank::Five, Suit::Diamond),
+            ]),
+            "a pair of Fives"
+        );
+        assert_eq!(
+            describe(&[
+                c(Rank::Queen, Suit::Club),
+                c(Rank::Queen, Suit::Diamond),
+                c(Rank::Five, Suit::Spade),
+                c(Rank::Five, Suit::Heart),
+                c(Rank::King, Suit::Club),
+            ]),
+            "two pair, Queens and Fives"
+        );
+        assert_eq!(
+            describe(&[
+                c(Rank::King, Suit::Club),
+                c(Rank::King, Suit::Diamond),
+                c(Rank::King, Suit::Heart),
+                c(Rank::Three, Suit::Spade),
+                c(Rank::Three, Suit::Club),
+            ]),
+            "a full house, Kings full of Threes"
+        );
+        assert_eq!(
+            describe(&[
+                c(Rank::Ace, Suit::Heart),
+                c(Rank::King, Suit::Heart),
+                c(Rank::Nine, Suit::Heart),
+                c(Rank::Five, Suit::Heart),
+                c(Rank::Two, Suit::Heart),
+            ]),
+            "a flush, Ace high"
+        );
+        // Straights read low-to-high.
+        assert_eq!(
+            describe(&[
+                c(Rank::Five, Suit::Heart),
+                c(Rank::Six, Suit::Spade),
+                c(Rank::Seven, Suit::Club),
+                c(Rank::Eight, Suit::Diamond),
+                c(Rank::Nine, Suit::Heart),
+            ]),
+            "a straight, Five to Nine"
+        );
+        // Wheel plays the Ace low.
+        assert_eq!(
+            describe(&[
+                c(Rank::Ace, Suit::Heart),
+                c(Rank::Two, Suit::Heart),
+                c(Rank::Three, Suit::Heart),
+                c(Rank::Four, Suit::Heart),
+                c(Rank::Five, Suit::Heart),
+            ]),
+            "a straight flush, Ace to Five"
+        );
+        // Broadway straight flush (a "royal") reads Ten to Ace, PokerStars style.
+        assert_eq!(
+            describe(&[
+                c(Rank::Ten, Suit::Spade),
+                c(Rank::Jack, Suit::Spade),
+                c(Rank::Queen, Suit::Spade),
+                c(Rank::King, Suit::Spade),
+                c(Rank::Ace, Suit::Spade),
+            ]),
+            "a straight flush, Ten to Ace"
+        );
+    }
+
+    #[test]
+    fn best_five_with_cards_returns_the_forming_cards() {
+        // Board pair of Queens plus three low cards; the best five is the two
+        // Queens and the three highest kickers, regardless of input order.
+        let qc = c(Rank::Queen, Suit::Club);
+        let qs = c(Rank::Queen, Suit::Spade);
+        let (hand, five) = evaluate_with_cards(
+            &[c(Rank::Three, Suit::Heart), c(Rank::Two, Suit::Diamond)],
+            &[
+                qc,
+                c(Rank::Jack, Suit::Spade),
+                c(Rank::Four, Suit::Diamond),
+                qs,
+                c(Rank::Ten, Suit::Club),
+            ],
+        );
+        assert_eq!(hand.category, HandCategory::Pair);
+        assert!(five.contains(&qc) && five.contains(&qs));
+        // The low hole cards (3, 2) are worse kickers than the board's J/10/4.
+        assert!(!five.contains(&c(Rank::Three, Suit::Heart)));
+        assert!(!five.contains(&c(Rank::Two, Suit::Diamond)));
     }
 
     #[test]

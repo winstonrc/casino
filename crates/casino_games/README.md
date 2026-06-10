@@ -46,14 +46,47 @@ Enter your name: Alice
 On your turn you choose an action by a single-letter shortcut or its full word:
 `(f)old`, `(x) check`, `(c)all`, `(r)aise to <amount>`, `(a)ll-in` (check uses
 `x` so `c` is always call). The available actions and amounts are shown each turn;
-`raise to N` sets your total bet this street to `N`. At showdown each remaining
-player's hole cards are revealed.
+`raise to N` sets your total bet this street to `N`.
+
+### Hand history output
+
+Each hand is narrated to **stdout** as a **PokerStars-format hand history** —
+header, seats, blinds, `*** HOLE CARDS ***`, action lines, street markers,
+`*** SHOW DOWN ***`, and `*** SUMMARY ***`. In the default text card mode the
+cards are PokerStars codes (`As`, `Td`), so the output is a real hand history that
+standard tools (PokerTracker, Hold'em Manager, open-source parsers) can ingest; in
+glyph mode the same layout prints with Unicode card glyphs (`🂡`) as flair.
+
+Interactive prompts (your turn, setup, the leaderboard) are written to **stderr**,
+so they stay out of the history. Redirect stdout to capture a clean log:
+
+```console
+$ cargo run -p casino_games > session.txt   # session.txt is parseable hand history
+```
+
+```text
+PokerStars Hand #1: Hold'em No Limit (1/3) - 2026/06/10 14:32:01 ET
+Table 'Casino' 6-max Seat #1 is the button
+Seat 1: Alice (190 in chips)
+...
+*** HOLE CARDS ***
+Dealt to Alice [Kd Js]
+Alice: raises 6 to 9
+...
+*** SHOW DOWN ***
+Player 6: shows [Jc Tc] (two pair, Jacks and Fives)
+Player 6 collected 55 from pot
+*** SUMMARY ***
+Total pot 55 | Rake 0
+Board [5d 5c 2s Qh Jd]
+```
 
 ### Card display
 
-At launch you choose how cards are drawn: portable **text** (`A♠`, `10♦` — the
-default, readable in any terminal) or Unicode **glyphs** (`🂡`). The choice is
-saved with your profile.
+At launch you choose how cards are drawn: parseable **text** (`As`, `Td` — the
+default, PokerStars codes so the history is machine-readable) or Unicode
+**glyphs** (`🂡` — prettier flair, not parseable). The choice is saved with your
+profile.
 
 The glyphs live in Unicode's *Playing Cards* block (U+1F0A0–U+1F0FF), which many
 terminal fonts render tiny or not at all. For them to look right your terminal

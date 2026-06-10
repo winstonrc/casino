@@ -22,7 +22,7 @@ pub struct Profile {
     pub hands_played: u64,
     /// Hands where the player ended chip-positive (won a pot net of their bets).
     pub hands_won: u64,
-    /// Render cards as Unicode playing-card glyphs (`🂡`) instead of text (`A♠`).
+    /// Render cards as Unicode playing-card glyphs (`🂡`) instead of text (`As`).
     /// Defaults to `false` so older saves load fine.
     #[serde(default)]
     pub glyph_cards: bool,

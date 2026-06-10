@@ -13,6 +13,9 @@ A library that provides hand ranking & the backend for poker games.
 `evaluate` returns a `ComparableHand` — a kicker-correct, fully-ordered value of
 the best 5-card hand from hole cards plus the board. Compare two players'
 `ComparableHand`s directly with `<`, `>`, and `==` (equal hands chop the pot).
+Call `hand.describe()` for a PokerStars-style name ("two pair, Jacks and Fives",
+"a flush, Ace high", "a full house, Kings full of Threes"), or
+`evaluate_with_cards` to also get the exact five cards forming the hand.
 
 ```rust
 use casino_cards::card::{Card, Rank, Suit};
@@ -83,4 +86,48 @@ for street in [Street::Preflop, Street::Flop, Street::Turn, Street::River] {
 game.award_pots();
 game.end_hand();
 ```
+
+### Observing a hand
+
+The engine does no I/O. Instead it emits **public** narration (only what every
+player at the table can see — opponents' hole cards are never broadcast mid-hand)
+as serializable `GameEvent`s to a `GameObserver`. Set one with `set_observer`;
+without one the engine runs silently. The stream carries everything a PokerStars
+hand history needs (the `casino_games` front-end renders exactly that); render it
+in a terminal, log it, or forward it over a network. Designate the perspective
+player with `set_hero` so `HoleCardsDealt` carries their cards (for `Dealt to …`).
+
+```rust
+use casino_poker::events::{GameEvent, GameObserver};
+
+struct Printer;
+impl GameObserver for Printer {
+    fn notify(&mut self, event: &GameEvent) {
+        println!("{event:?}");
+    }
+}
+
+// game.set_observer(Box::new(Printer));
+```
+
+Notable events:
+
+- `HandStarted` carries the seat roster (`SeatInfo` with name + starting stack),
+  the button seat, and the blinds — the data a hand-history header needs.
+- `HoleCardsDealt` marks the start of betting; its `hero` field carries the
+  perspective player's name and cards (when a hero is set), else `None`.
+- `ActionTaken` carries the `Street` and an `ActionView`; `Raised { by, to }`
+  gives both the raise increment and the new total (PokerStars "raises by to to").
+- `Showdown` is emitted once before the reveals when two or more players reach a
+  showdown, carrying the final `board` and `pot`.
+- `ShowdownReveal` carries the player's `hole` cards and their `hand` (a
+  `ComparableHand` — `hand.describe()` for the named hand, `hand.category` for the
+  bare category).
+- `PotAwarded` carries the winning `hand` (`Option<ComparableHand>`) and an
+  optional `PotKind` (`Main` / `Side(n)`) for per-pot narration (`None` for a
+  single pot). `HandComplete` signals the hand is fully resolved.
+
+To award winners yourself rather than from events, `pot::distribute_pots` returns
+one `PotAward` per pot (main first, then side pots), each listing that pot's
+winners and the chips they receive.
 

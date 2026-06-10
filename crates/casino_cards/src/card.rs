@@ -11,8 +11,8 @@ static GLYPH_DISPLAY: AtomicBool = AtomicBool::new(false);
 
 /// Chooses how `Card` renders via its [`Display`](std::fmt::Display) impl:
 /// `true` for the single Unicode playing-card glyphs (e.g. `🂡` — pretty but tiny
-/// or missing in some terminals), `false` for portable rank+suit text (e.g.
-/// `A♠`). Applies process-wide and affects everything that prints a `Card` or
+/// or missing in some terminals), `false` for parseable PokerStars codes (e.g.
+/// `As`). Applies process-wide and affects everything that prints a `Card` or
 /// `Hand`.
 pub fn set_glyph_display(enabled: bool) {
     GLYPH_DISPLAY.store(enabled, AtomicOrdering::Relaxed);
@@ -66,6 +66,27 @@ impl Rank {
     pub fn value(&self) -> u8 {
         *self as u8
     }
+
+    /// The single-character PokerStars rank code: `2`–`9`, `T` (Ten), `J`, `Q`,
+    /// `K`, `A`. Used by `Card`'s text `Display` so output is parseable by
+    /// standard hand-history tools.
+    pub fn code(&self) -> char {
+        match self {
+            Rank::Two => '2',
+            Rank::Three => '3',
+            Rank::Four => '4',
+            Rank::Five => '5',
+            Rank::Six => '6',
+            Rank::Seven => '7',
+            Rank::Eight => '8',
+            Rank::Nine => '9',
+            Rank::Ten => 'T',
+            Rank::Jack => 'J',
+            Rank::Queen => 'Q',
+            Rank::King => 'K',
+            Rank::Ace => 'A',
+        }
+    }
 }
 
 impl fmt::Display for Rank {
@@ -106,6 +127,16 @@ pub enum Suit {
 impl Suit {
     pub fn value(&self) -> u8 {
         *self as u8
+    }
+
+    /// The single-character PokerStars suit code: `c`, `d`, `h`, `s` (lowercase).
+    pub fn code(&self) -> char {
+        match self {
+            Suit::Club => 'c',
+            Suit::Diamond => 'd',
+            Suit::Heart => 'h',
+            Suit::Spade => 's',
+        }
     }
 }
 
@@ -160,9 +191,9 @@ impl Card {
     /// or the card-back glyph (`🂠`) if it is face down.
     ///
     /// These glyphs render inconsistently across terminals and fonts — often
-    /// tiny or missing — so for portable, readable output prefer the
-    /// [`Display`](std::fmt::Display) form, which is the rank and suit (e.g.
-    /// `A♠`).
+    /// tiny or missing — so for portable, parseable output prefer the
+    /// [`Display`](std::fmt::Display) form, which is the PokerStars code (e.g.
+    /// `As`).
     pub fn glyph(&self) -> char {
         if !self.face_up {
             return '🂠';
@@ -242,15 +273,16 @@ impl PartialOrd for Card {
 }
 
 impl fmt::Display for Card {
-    /// Renders the card as rank followed by suit, e.g. `A♠`, `10♦` (a face-down
-    /// card renders as `??`). If glyph display is enabled via
-    /// [`set_glyph_display`], renders the single Unicode playing-card glyph
-    /// instead. The text form is portable and readable across terminals.
+    /// Renders the card as the PokerStars two-character code — rank code plus a
+    /// lowercase suit letter, e.g. `As`, `Td` (a face-down card renders as `??`).
+    /// This form is parseable by standard hand-history tools. If glyph display is
+    /// enabled via [`set_glyph_display`], renders the single Unicode playing-card
+    /// glyph instead.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if glyph_display_enabled() {
             write!(f, "{}", self.glyph())
         } else if self.face_up {
-            write!(f, "{}{}", self.rank, self.suit)
+            write!(f, "{}{}", self.rank.code(), self.suit.code())
         } else {
             write!(f, "??")
         }
@@ -333,12 +365,12 @@ mod tests {
     }
 
     #[test]
-    fn cards_display_as_rank_and_suit() {
-        assert_eq!(card!(Two, Club).to_string(), "2♣");
-        assert_eq!(card!(Seven, Diamond).to_string(), "7♦");
-        assert_eq!(card!(Ten, Spade).to_string(), "10♠");
-        assert_eq!(card!(King, Heart).to_string(), "K♥");
-        assert_eq!(card!(Ace, Spade).to_string(), "A♠");
+    fn cards_display_as_pokerstars_codes() {
+        assert_eq!(card!(Two, Club).to_string(), "2c");
+        assert_eq!(card!(Seven, Diamond).to_string(), "7d");
+        assert_eq!(card!(Ten, Spade).to_string(), "Ts");
+        assert_eq!(card!(King, Heart).to_string(), "Kh");
+        assert_eq!(card!(Ace, Spade).to_string(), "As");
 
         let mut face_down = card!(Ace, Spade);
         face_down.face_up = false;

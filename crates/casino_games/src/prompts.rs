@@ -22,8 +22,8 @@ pub fn read_line() -> Result<String, AgentError> {
 
 pub fn get_player_name_prompt() -> String {
     loop {
-        print!("Enter your name: ");
-        io::stdout().flush().expect("Failed to flush stdout.");
+        eprint!("Enter your name: ");
+        io::stderr().flush().expect("Failed to flush stderr.");
 
         let mut input = String::new();
         if io::stdin().read_line(&mut input).is_err() {
@@ -32,7 +32,7 @@ pub fn get_player_name_prompt() -> String {
         let trimmed_input = input.trim();
 
         if trimmed_input.eq_ignore_ascii_case("q") || trimmed_input.eq_ignore_ascii_case("quit") {
-            println!("Quitting game.");
+            eprintln!("Quitting game.");
             process::exit(0);
         }
 
@@ -42,9 +42,9 @@ pub fn get_player_name_prompt() -> String {
             String::from(trimmed_input)
         };
 
-        println!("\nWelcome {name}! Are you happy with this name?");
-        print!("yes/no [Y/n]: ");
-        io::stdout().flush().expect("Failed to flush stdout.");
+        eprintln!("\nWelcome {name}! Are you happy with this name?");
+        eprint!("yes/no [Y/n]: ");
+        io::stderr().flush().expect("Failed to flush stderr.");
 
         let mut confirm = String::new();
         if io::stdin().read_line(&mut confirm).is_err() {
@@ -53,7 +53,7 @@ pub fn get_player_name_prompt() -> String {
 
         match confirm.trim().to_lowercase().as_str() {
             "q" | "quit" => {
-                println!("Quitting game.");
+                eprintln!("Quitting game.");
                 process::exit(0);
             }
             "n" | "no" => continue,
@@ -64,12 +64,12 @@ pub fn get_player_name_prompt() -> String {
 
 pub fn choose_table() -> (u32, u32) {
     loop {
-        println!("Tables");
-        println!("1. 1/3 No-limit");
-        println!("2. 2/5 No-limit");
-        println!("3. Custom");
-        print!("Table: ");
-        io::stdout().flush().expect("Failed to flush stdout.");
+        eprintln!("Tables");
+        eprintln!("1. 1/3 No-limit");
+        eprintln!("2. 2/5 No-limit");
+        eprintln!("3. Custom");
+        eprint!("Table: ");
+        io::stderr().flush().expect("Failed to flush stderr.");
 
         let mut input = String::new();
         if io::stdin().read_line(&mut input).is_err() {
@@ -79,15 +79,15 @@ pub fn choose_table() -> (u32, u32) {
 
         match trimmed_input.to_lowercase().as_str() {
             "q" | "quit" => {
-                println!("Quitting game.");
+                eprintln!("Quitting game.");
                 process::exit(0);
             }
             "1" => return (1, 3),
             "2" => return (2, 5),
             "3" => loop {
-                println!("Enter the small and big blind amounts.");
-                print!("Format <small_blind> <big_blind>: ");
-                io::stdout().flush().expect("Failed to flush stdout.");
+                eprintln!("Enter the small and big blind amounts.");
+                eprint!("Format <small_blind> <big_blind>: ");
+                io::stderr().flush().expect("Failed to flush stderr.");
 
                 let mut custom = String::new();
                 if io::stdin().read_line(&mut custom).is_err() {
@@ -105,18 +105,18 @@ pub fn choose_table() -> (u32, u32) {
                         return (small, big);
                     }
                 }
-                println!("Please enter two numbers where the big blind exceeds the small blind.");
+                eprintln!("Please enter two numbers where the big blind exceeds the small blind.");
             },
-            _ => println!("Invalid input. Enter 1, 2, 3, or 'q' to quit.\n"),
+            _ => eprintln!("Invalid input. Enter 1, 2, 3, or 'q' to quit.\n"),
         }
     }
 }
 
 pub fn buy_chips_prompt(player: &mut Player) {
-    println!("How many chips would you like to buy?");
+    eprintln!("How many chips would you like to buy?");
     loop {
-        print!("Amount ({CURRENCY}) of chips to buy: ");
-        io::stdout().flush().expect("Failed to flush stdout.");
+        eprint!("Amount ({CURRENCY}) of chips to buy: ");
+        io::stderr().flush().expect("Failed to flush stderr.");
 
         let mut input = String::new();
         if io::stdin().read_line(&mut input).is_err() {
@@ -125,17 +125,17 @@ pub fn buy_chips_prompt(player: &mut Player) {
         let trimmed_input = input.trim();
 
         if trimmed_input.eq_ignore_ascii_case("q") || trimmed_input.eq_ignore_ascii_case("quit") {
-            println!("No chips were purchased. Quitting game.");
+            eprintln!("No chips were purchased. Quitting game.");
             process::exit(0);
         }
 
         match trimmed_input.parse::<u32>() {
             Ok(chips) => {
                 player.add_chips(chips);
-                println!("You purchased {CURRENCY} {chips} worth of chips.\n");
+                eprintln!("You purchased {CURRENCY} {chips} worth of chips.\n");
                 return;
             }
-            Err(_) => println!("Error: Not a valid number."),
+            Err(_) => eprintln!("Error: Not a valid number."),
         }
     }
 }
@@ -144,11 +144,11 @@ pub fn buy_chips_prompt(player: &mut Player) {
 /// pressing Enter keeps it. Glyphs look nicer where supported; text is portable.
 pub fn choose_card_style(current: bool) -> bool {
     let current_label = if current { "glyphs" } else { "text" };
-    println!(
-        "Card display: (t)ext like A♠, or (g)lyphs like 🂡 (nicer, but tiny in some terminals)."
+    eprintln!(
+        "Card display: (t)ext like As (parseable), or (g)lyphs like 🂡 (nicer, but tiny in some terminals)."
     );
-    print!("Choose [t/g] (Enter keeps {current_label}): ");
-    io::stdout().flush().expect("Failed to flush stdout.");
+    eprint!("Choose [t/g] (Enter keeps {current_label}): ");
+    io::stderr().flush().expect("Failed to flush stderr.");
 
     let mut input = String::new();
     if io::stdin().read_line(&mut input).is_err() {
@@ -156,7 +156,7 @@ pub fn choose_card_style(current: bool) -> bool {
     }
     match input.trim().to_lowercase().as_str() {
         "q" | "quit" => {
-            println!("Quitting game.");
+            eprintln!("Quitting game.");
             process::exit(0);
         }
         "g" | "glyph" | "glyphs" => true,
@@ -168,19 +168,19 @@ pub fn choose_card_style(current: bool) -> bool {
 /// Loads the saved profile (offering to resume it) or creates a fresh one.
 pub fn load_or_create_profile() -> Profile {
     if let Some(profile) = persistence::load() {
-        println!(
+        eprintln!(
             "Welcome back, {}! You have {} chips ({} hands played, {} won).",
             profile.name, profile.chips, profile.hands_played, profile.hands_won
         );
-        print!("Resume this profile? [Y/n]: ");
-        io::stdout().flush().expect("Failed to flush stdout.");
+        eprint!("Resume this profile? [Y/n]: ");
+        io::stderr().flush().expect("Failed to flush stderr.");
 
         let mut input = String::new();
         if io::stdin().read_line(&mut input).is_ok() {
             match input.trim().to_lowercase().as_str() {
                 "n" | "no" => {} // fall through to create a new profile
                 "q" | "quit" => {
-                    println!("Quitting game.");
+                    eprintln!("Quitting game.");
                     process::exit(0);
                 }
                 _ => return profile,
@@ -193,8 +193,8 @@ pub fn load_or_create_profile() -> Profile {
 }
 
 pub fn prompt_play_another_hand() -> bool {
-    print!("\nPlay another hand? [Y/n]: ");
-    io::stdout().flush().expect("Failed to flush stdout.");
+    eprint!("\nPlay another hand? [Y/n]: ");
+    io::stderr().flush().expect("Failed to flush stderr.");
 
     let mut input = String::new();
     if io::stdin().read_line(&mut input).is_err() {

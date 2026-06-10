@@ -8,9 +8,10 @@ use casino_poker::games::texas_hold_em::{RoundOutcome, TexasHoldEm};
 use casino_poker::uuid::Uuid;
 
 use crate::agents::HumanAgent;
+use crate::hand_history::HandHistory;
 use crate::persistence::{self, Profile};
 use crate::prompts;
-use crate::render::{self, TerminalRenderer};
+use crate::render;
 
 const MINIMUM_CHIPS_BUY_IN_AMOUNT: u32 = 100;
 // 10 is the recommended maximum number of players at a table, so it is the default.
@@ -18,8 +19,9 @@ const MAXIMUM_PLAYERS_COUNT: usize = 10;
 const OPPONENT_COUNT: usize = 5;
 
 /// Terminal front-end for Texas Hold'em: owns the engine and the per-player
-/// agents, and drives the hand/tournament loop. All rendering happens via the
-/// engine's [`TerminalRenderer`] observer and the `render` helpers.
+/// agents, and drives the hand/tournament loop. The hand history is rendered to
+/// stdout by the engine's [`HandHistory`] observer; between-hand chrome goes to
+/// stderr via the `render` helpers.
 pub struct TexasHoldEmGame {
     game: TexasHoldEm,
     agents: HashMap<Uuid, Box<dyn PokerAgent>>,
@@ -57,7 +59,7 @@ impl TexasHoldEmGame {
             let outcome = self.play_round();
 
             if outcome == RoundOutcome::Quit {
-                println!("Quitting game. Your progress is saved.");
+                eprintln!("Quitting game. Your progress is saved.");
                 self.persist();
                 return;
             }
@@ -75,7 +77,7 @@ impl TexasHoldEmGame {
             self.prune_agents();
 
             if self.game.player(&self.user_id).is_none() {
-                println!("\nYou are out of chips. Thanks for playing!");
+                eprintln!("\nYou are out of chips. Thanks for playing!");
                 self.persist();
                 return;
             }
@@ -87,7 +89,7 @@ impl TexasHoldEmGame {
             if !prompts::prompt_play_another_hand() {
                 self.game.end_game();
                 self.persist();
-                println!("Progress saved. See you next time!");
+                eprintln!("Progress saved. See you next time!");
                 return;
             }
         }
@@ -99,7 +101,6 @@ impl TexasHoldEmGame {
         use casino_poker::agent::Street;
 
         self.game.begin_hand();
-        render::render_your_hand(&self.game, &self.user_id);
 
         for street in [Street::Preflop, Street::Flop, Street::Turn, Street::River] {
             match street {
@@ -116,7 +117,6 @@ impl TexasHoldEmGame {
             }
         }
 
-        println!();
         self.game.award_pots();
         self.game.end_hand();
         RoundOutcome::Continue
@@ -130,9 +130,9 @@ impl TexasHoldEmGame {
 }
 
 pub fn play_game() {
-    println!("**********************");
-    println!("* ♠ Texas hold 'em ♠ *");
-    println!("**********************");
+    eprintln!("**********************");
+    eprintln!("* ♠ Texas hold 'em ♠ *");
+    eprintln!("**********************");
 
     let (small_blind_amount, big_blind_amount) = prompts::choose_table();
 
@@ -147,7 +147,7 @@ pub fn play_game() {
     let mut profile = prompts::load_or_create_profile();
     profile.glyph_cards = prompts::choose_card_style(profile.glyph_cards);
     set_glyph_display(profile.glyph_cards);
-    println!(
+    eprintln!(
         "Your progress was saved at {}.\n",
         persistence::save_location()
     );
@@ -155,7 +155,7 @@ pub fn play_game() {
     let mut user = game.new_player(&profile.name);
     user.add_chips(profile.chips);
     while user.chips < MINIMUM_CHIPS_BUY_IN_AMOUNT {
-        println!("You need at least {MINIMUM_CHIPS_BUY_IN_AMOUNT} chips to play at this table.");
+        eprintln!("You need at least {MINIMUM_CHIPS_BUY_IN_AMOUNT} chips to play at this table.");
         prompts::buy_chips_prompt(&mut user);
     }
     profile.chips = user.chips;
@@ -182,10 +182,9 @@ pub fn play_game() {
         }
     }
 
-    // Render the hand narration through the engine's observer.
-    game.set_observer(Box::new(TerminalRenderer::new(user_name)));
-
-    println!();
+    // Narrate the hand as a PokerStars history on stdout, from the user's seat.
+    game.set_hero(user_id);
+    game.set_observer(Box::new(HandHistory::stdout()));
 
     let mut texas_hold_em = TexasHoldEmGame::new(game, user_id, profile);
 
