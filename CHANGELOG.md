@@ -6,6 +6,41 @@ crate follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## Unreleased
+
+### casino_poker
+
+#### Added
+
+- **Serializable, resumable game state.** `TexasHoldEm` derives
+  `Serialize`/`Deserialize` (the observer and RNG are `#[serde(skip)]` and
+  re-attached/re-seeded on restore), so a front-end can serialize an *exact
+  in-progress hand* — deck, hole cards, board, bets, button — and restore it to
+  continue from the precise spot. `hand_in_progress` and `current_street` report
+  where a restored hand stands.
+- **Betting-street state machine** (the non-blocking driving seam):
+  `begin_betting_round`, `submit_action`, `abort_betting_round`, and `BettingStep`
+  (`AwaitingAction { player, view }` / `RoundComplete(RoundOutcome)`). The blocking
+  `run_betting_round` is now a thin wrapper over it and, on a quit, leaves the round
+  paused (resumable) rather than aborting.
+- **Hand-level state machine.** `drive_hand` begins a fresh hand or resumes the one
+  in progress, and `submit_hand_action` feeds each action — together yielding
+  `HandStep` (`AwaitingAction` / `HandComplete`). The engine now owns the whole
+  deal → bet → deal → award sequence, pausing only for player decisions, so a
+  front-end no longer re-implements (or mis-implements) hand orchestration.
+  `play_hand(agents) -> HandOutcome` (`Complete` / `Quit`) is the blocking wrapper.
+- **Reconnect support.** `client_view(player_id) -> ClientView` bundles everything
+  one player needs to (re)join a game: the public `TableView`, that player's own
+  hole cards and decision view, and the hand's events so far — leak-safe by
+  construction (opponents' hole cards never appear; a multiplayer server
+  broadcasting one stream must run with no hero set). `replay_log` re-emits the
+  current hand's recorded `GameEvent`s to a freshly-attached observer, replaying the
+  hand-so-far narration exactly (header, blinds, every action, board).
+- `set_blinds` (rising tournament blind levels) and `add_chips_to` (rebuy/top-up),
+  each a no-op while a hand is in progress so it can't corrupt live pot accounting.
+
+---
+
 ## casino_poker 1.0.0 — 2026-06-10
 
 First stable release. The backend now drives complete Texas Hold'em hands with

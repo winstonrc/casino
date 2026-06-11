@@ -74,25 +74,26 @@ for &id in game.seats() {
     agents.insert(id, Box::new(CallingAgent));
 }
 
-// Play one hand: deal, run each street's betting, then award the pots.
-game.begin_hand();
-for street in [Street::Preflop, Street::Flop, Street::Turn, Street::River] {
-    match street {
-        Street::Flop => game.deal_flop(),
-        Street::Turn => game.deal_turn(),
-        Street::River => game.deal_river(),
-        Street::Preflop => {}
-    }
-    if game.run_betting_round(street, &mut agents) == RoundOutcome::HandOver {
-        break;
-    }
-}
-game.award_pots();
-game.end_hand();
+// Play one hand: the engine deals each street, runs its betting, and awards the
+// pots, sourcing each action from that player's agent.
+game.play_hand(&mut agents);
 ```
 
-The button accessors `dealer()` / `set_dealer` read and place the dealer button, so a
-front-end can snapshot an in-progress table and restore it on resume. A `PokerAgent`
+`play_hand` is the blocking convenience over the **resumable hand state machine**:
+`drive_hand()` (begin a fresh hand or resume the one in progress) and
+`submit_hand_action(action)` yield a `HandStep` (`AwaitingAction { player, view }` or
+`HandComplete`), so an async front-end (a network server, a UI) drives a whole hand
+action-by-action without re-implementing the deal/bet/award sequence. The same shape
+exists one level down for a single street (`begin_betting_round`/`submit_action` →
+`BettingStep`, with the blocking `run_betting_round` wrapper).
+
+For **save/resume and reconnection**, `TexasHoldEm` is `serde`-serializable: persist
+it mid-hand and restore it to continue from the exact spot (re-attach an observer
+with `set_observer`, then `replay_log()` to re-narrate the hand so far). For a
+networked client, `client_view(player_id)` returns a `ClientView` — the public
+`TableView` plus that player's own cards and pending decision and the hand's events —
+leak-safe to send on (re)connect. The button accessors `dealer()` / `set_dealer`
+read and place the dealer button. A `PokerAgent`
 need only implement `decide`; the `observe` (watch the `GameEvent` stream) and
 `session_ended` (persist learned state) hooks default to no-ops, so a stateful AI can
 learn and persist across hands and sessions without any engine change.
