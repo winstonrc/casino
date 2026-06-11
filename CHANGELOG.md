@@ -21,6 +21,9 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
     names a hand in PokerStars wording ("two pair, Jacks and Fives", "a flush, Ace
     high", "a full house, Kings full of Threes", "a straight, Five to Nine").
     `ComparableHand` derives serde.
+- `hand_rankings::best_omaha(hole, board) -> ComparableHand` — Omaha
+  evaluation, which must use exactly two of the four hole cards plus three
+  board cards (panics unless `hole.len() == 4` and `board.len()` is 3–5).
 - `agent` module: the `PokerAgent` trait — `decide`, plus default-no-op `observe`
   (receive the `GameEvent` stream to update a player model) and `session_ended`
   (persist what was learned) lifecycle hooks — an owned (serializable) `PlayerView`,
@@ -44,6 +47,17 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   button (and the blinds) need not always start with the first player added.
 - `TexasHoldEm::dealer` / `set_dealer` read and place the dealer button, so a
   front-end can snapshot an in-progress table and restore it on resume.
+- `TexasHoldEm::new_seeded` / `reseed` use a deterministic RNG seeded from a
+  `u64`, so shuffles and seat randomization are reproducible for replays,
+  provably-fair deals, and tests. (The seed is not persisted by serialization;
+  call `reseed` after a restore.)
+- `TexasHoldEm::begin_hand_with_deck` begins a hand from a caller-supplied
+  `Deck` rather than shuffling, for fixed-board scenarios and tests.
+- Read-only table accessors for rendering and snapshotting without driving the
+  hand: `to_act`, `current_bet`, `committed_this_street`, `has_folded`,
+  `is_all_in`, `button_seat`, `pots`, and `current_view`. `table()` returns a
+  single owned, serializable `TableView` (with per-seat `SeatView`s); both are
+  `#[non_exhaustive]`.
 - `events` module: the engine is **I/O-free** and emits public narration as
   serializable `GameEvent`s (`HandStarted`, `HoleCardsDealt`, `BlindPosted`,
   `ActionTaken`, `StreetDealt`, `UncalledBetReturned`, `Showdown`,
@@ -56,7 +70,9 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   name it); and `PotAwarded` an optional `PotKind` (`Main`/`Side(n)`) for per-pot
   side-pot narration. The public event enums (`GameEvent`, `ActionView`, `PotKind`,
   `Blind`) are `#[non_exhaustive]`, so future variants can be added without a
-  breaking change.
+  breaking change. `BroadcastObserver` fans a single event stream out to several
+  `GameObserver`s (notified in order), so e.g. a logger and a renderer can both
+  observe one hand.
 
 ### Changed
 
@@ -98,6 +114,17 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   (`A`, `K`, `T`, …, and `c`/`d`/`h`/`s`).
 - `set_glyph_display`/`glyph_display_enabled` to switch card rendering globally.
 - `Display` for `Hand`, and `Default` for `Deck` and `Hand`.
+- `FromStr` for `Card` (with `ParseCardError`): parses the two-character
+  PokerStars code (`"As"`, `"Td"`, `"9h"`), round-tripping `Card`'s text
+  `Display`, so hand histories can be read back as well as written.
+- `Deck::from_cards` builds a deck from a known card list (replays, fixed
+  setups, tests), complementing the existing `Deck::new`.
+- `Deck::peek` returns the next card `deal` would yield without removing it,
+  and `Deck::iter` borrows the cards in order (top card — next to be dealt —
+  yielded last).
+- `Deck::shuffle_with` shuffles with a caller-supplied RNG, so a seeded RNG
+  gives a deterministic shuffle for reproducible simulations, replays, and
+  tests (`shuffle` keeps using a thread-local RNG).
 
 ### Changed
 
