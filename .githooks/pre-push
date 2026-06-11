@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Pre-push gate: the heavier checks CI also enforces. Kept off pre-commit so
+# committing stays fast. Enable with: git config core.hooksPath .githooks
+set -euo pipefail
+
+echo "Running clippy (warnings denied)..."
+cargo clippy --workspace --all-targets --locked -- -D warnings
+
+echo "Running tests..."
+cargo test --workspace --locked
+
+echo "All checks passed."

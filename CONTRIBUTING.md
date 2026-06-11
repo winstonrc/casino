@@ -1,10 +1,27 @@
 # Contributing
 
+## Set up git hooks (one-time)
+
+This repo ships git hooks in [`.githooks/`](.githooks). They are **not** active
+until you point git at them once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+After that:
+
+- **pre-commit** runs `cargo fmt --all` (fast — formatting only).
+- **pre-push** runs clippy + tests (the same gate CI enforces).
+
+Hooks are a convenience, not a substitute for the checks below or for CI — you
+can bypass them in a pinch with `git commit --no-verify` / `git push
+--no-verify`, but CI remains the source of truth.
+
 ## Before you commit
 
-Always run the following locally before committing. These mirror what CI
-enforces, so running them first avoids red builds and round-trips with the
-autofix bot.
+Whether or not you use the hooks above, these are what CI enforces. Running them
+locally first avoids red builds and round-trips with the autofix bot.
 
 ```sh
 # 1. Format (CI runs this with --check and fails on any diff)

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Fast pre-commit gate: formatting only. Heavier checks (clippy, test) run on
+# push — see .githooks/pre-push. Enable with: git config core.hooksPath .githooks
+set -euo pipefail
+
+if cargo fmt --all --check >/dev/null 2>&1; then
+    exit 0
+fi
+
+echo "Formatting issues found — running 'cargo fmt --all' to fix them..."
+cargo fmt --all
+echo
+echo "Files were reformatted. Review the changes, 'git add' them, and commit again."
+exit 1
