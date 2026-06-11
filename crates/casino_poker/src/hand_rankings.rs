@@ -253,6 +253,47 @@ pub fn best_five_with_cards(cards: &[Card]) -> (ComparableHand, [Card; 5]) {
     best.expect("best_five always finds at least one 5-card hand")
 }
 
+/// Evaluates an Omaha hand: the best five cards using **exactly two** of the four
+/// `hole` cards and **exactly three** of the `board` cards — the Omaha
+/// constraint — returning a [`ComparableHand`] comparable with any other.
+///
+/// Unlike [`evaluate`] (which pools all cards and picks any best five, correct for
+/// hold'em), this enforces the 2-from-hand / 3-from-board rule.
+///
+/// # Panics
+///
+/// Panics unless `hole.len() == 4` and `board.len()` is between 3 and 5.
+pub fn best_omaha(hole: &[Card], board: &[Card]) -> ComparableHand {
+    assert!(
+        hole.len() == 4 && (3..=5).contains(&board.len()),
+        "best_omaha requires exactly 4 hole cards and 3-5 board cards, got {} and {}",
+        hole.len(),
+        board.len()
+    );
+
+    let n = board.len();
+    let mut best: Option<ComparableHand> = None;
+    // Exactly two of the four hole cards...
+    for h1 in 0..hole.len() {
+        for h2 in (h1 + 1)..hole.len() {
+            // ...with exactly three of the board cards.
+            for b1 in 0..n {
+                for b2 in (b1 + 1)..n {
+                    for b3 in (b2 + 1)..n {
+                        let five = [hole[h1], hole[h2], board[b1], board[b2], board[b3]];
+                        let score = score_five(&five);
+                        if best.is_none_or(|current| score > current) {
+                            best = Some(score);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    best.expect("best_omaha always finds at least one 5-card hand")
+}
+
 /// Scores exactly five cards into a [`ComparableHand`].
 fn score_five(cards: &[Card; 5]) -> ComparableHand {
     let mut ranks: [u8; 5] = [
@@ -391,6 +432,49 @@ mod comparable_hand_tests {
     /// Convenience: evaluate a flat list of cards (hole empty, all on "board").
     fn eval(cards: &[Card]) -> ComparableHand {
         evaluate(&[], cards)
+    }
+
+    #[test]
+    fn best_omaha_enforces_two_hole_three_board() {
+        // Four spades in hand plus one on the board: pooling all seven cards
+        // (hold'em style) makes a straight/royal flush, but Omaha may use only two
+        // hole cards, so no flush is possible — the constrained hand must be weaker.
+        let hole = [
+            c(Rank::Ace, Suit::Spade),
+            c(Rank::King, Suit::Spade),
+            c(Rank::Queen, Suit::Spade),
+            c(Rank::Jack, Suit::Spade),
+        ];
+        let board = [
+            c(Rank::Ten, Suit::Spade),
+            c(Rank::Two, Suit::Heart),
+            c(Rank::Three, Suit::Diamond),
+        ];
+
+        let pooled = evaluate(&hole, &board);
+        let omaha = best_omaha(&hole, &board);
+        assert_eq!(pooled.category, HandCategory::StraightFlush);
+        assert!(
+            omaha < pooled,
+            "Omaha's exact-2+3 rule must yield a weaker hand than pooling all seven"
+        );
+    }
+
+    #[test]
+    fn best_omaha_finds_quads_using_two_hole_cards() {
+        // Pocket aces + two aces on board = quad aces using exactly two hole cards.
+        let hole = [
+            c(Rank::Ace, Suit::Spade),
+            c(Rank::Ace, Suit::Heart),
+            c(Rank::King, Suit::Diamond),
+            c(Rank::Queen, Suit::Club),
+        ];
+        let board = [
+            c(Rank::Ace, Suit::Club),
+            c(Rank::Ace, Suit::Diamond),
+            c(Rank::Two, Suit::Spade),
+        ];
+        assert_eq!(best_omaha(&hole, &board).category, HandCategory::FourOfAKind);
     }
 
     #[test]

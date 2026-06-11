@@ -81,7 +81,7 @@ pub struct PlayerView {
 ///
 /// `#[non_exhaustive]`: more metrics can be added in a minor release; consumers
 /// read the fields they care about.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct HandMetrics {
     /// Total chips in the pot right now (all pots), before your call.

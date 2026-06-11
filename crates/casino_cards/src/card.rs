@@ -256,6 +256,66 @@ impl Card {
     }
 }
 
+/// The error returned when a [`Card`] cannot be parsed from its string code.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ParseCardError;
+
+impl fmt::Display for ParseCardError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "invalid card code (expected a rank 2-9/T/J/Q/K/A followed by a suit c/d/h/s, e.g. \"As\")"
+        )
+    }
+}
+
+impl std::error::Error for ParseCardError {}
+
+impl std::str::FromStr for Card {
+    type Err = ParseCardError;
+
+    /// Parses a PokerStars-style code — the inverse of the text [`Display`] form —
+    /// e.g. `"As"`, `"Td"`, `"9h"`. The rank is `2`–`9`/`T`/`J`/`Q`/`K`/`A`
+    /// (uppercase) and the suit is `c`/`d`/`h`/`s` (lowercase); the parsed card is
+    /// face up. The face-down `"??"` form, and any malformed input, return an error.
+    ///
+    /// [`Display`]: std::fmt::Display
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut chars = s.chars();
+        let rank_ch = chars.next().ok_or(ParseCardError)?;
+        let suit_ch = chars.next().ok_or(ParseCardError)?;
+        if chars.next().is_some() {
+            return Err(ParseCardError);
+        }
+
+        let rank = match rank_ch {
+            '2' => Rank::Two,
+            '3' => Rank::Three,
+            '4' => Rank::Four,
+            '5' => Rank::Five,
+            '6' => Rank::Six,
+            '7' => Rank::Seven,
+            '8' => Rank::Eight,
+            '9' => Rank::Nine,
+            'T' => Rank::Ten,
+            'J' => Rank::Jack,
+            'Q' => Rank::Queen,
+            'K' => Rank::King,
+            'A' => Rank::Ace,
+            _ => return Err(ParseCardError),
+        };
+        let suit = match suit_ch {
+            'c' => Suit::Club,
+            'd' => Suit::Diamond,
+            'h' => Suit::Heart,
+            's' => Suit::Spade,
+            _ => return Err(ParseCardError),
+        };
+
+        Ok(Card::new(rank, suit))
+    }
+}
+
 impl Ord for Card {
     fn cmp(&self, other: &Self) -> Ordering {
         let rank_ordering = self.rank.cmp(&other.rank);
@@ -375,6 +435,26 @@ mod tests {
         let mut face_down = card!(Ace, Spade);
         face_down.face_up = false;
         assert_eq!(face_down.to_string(), "??");
+    }
+
+    #[test]
+    fn cards_parse_from_their_codes() {
+        use std::str::FromStr;
+
+        assert_eq!(Card::from_str("As").unwrap(), card!(Ace, Spade));
+        assert_eq!(Card::from_str("Td").unwrap(), card!(Ten, Diamond));
+        assert_eq!(Card::from_str("9h").unwrap(), card!(Nine, Heart));
+        assert_eq!(Card::from_str("2c").unwrap(), card!(Two, Club));
+
+        // Round-trips with the text Display form.
+        let king = card!(King, Heart);
+        assert_eq!(Card::from_str(&king.to_string()).unwrap(), king);
+
+        // Rejects the face-down form, wrong case, and malformed input.
+        assert!(Card::from_str("??").is_err());
+        assert!(Card::from_str("aS").is_err());
+        assert!(Card::from_str("A").is_err());
+        assert!(Card::from_str("Ass").is_err());
     }
 
     #[test]

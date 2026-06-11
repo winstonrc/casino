@@ -37,16 +37,17 @@ checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
 
 [[package]]
 name = "casino_cards"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "rand 0.8.5",
  "serde",
+ "serde_json",
  "strum",
 ]
 
 [[package]]
 name = "casino_poker"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "casino_cards",
  "proptest",

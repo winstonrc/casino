@@ -252,6 +252,7 @@ pub fn legal_actions(
 /// `BettingRound` is intended to be a short-lived local in the engine's
 /// round driver, not a long-lived field — it borrows nothing and is reset each
 /// street.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BettingRound {
     /// The amount to match this street.
     pub current_bet: u32,

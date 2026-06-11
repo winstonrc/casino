@@ -13,6 +13,7 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::hand_rankings::ComparableHand;
@@ -22,7 +23,7 @@ use crate::hand_rankings::ComparableHand;
 /// `eligible` is a [`BTreeSet`] so iteration order is deterministic for tests;
 /// it must **not** be relied on for seat ordering — odd-chip distribution
 /// re-sorts by seat position relative to the dealer.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Pot {
     pub amount: u32,
     /// Players eligible to win this pot: those who contributed to its layer and
@@ -143,7 +144,7 @@ pub fn build_pots(contributed: &HashMap<Uuid, u32>, folded: &HashSet<Uuid>) -> V
 /// chips each winner received from it. Returned by [`distribute_pots`], one entry
 /// per pot, so callers can narrate each pot separately rather than only a player's
 /// summed winnings.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PotAward {
     /// Pot position: `0` for the main pot, `1..` for side pots from the smallest
     /// (lowest) layer upward.

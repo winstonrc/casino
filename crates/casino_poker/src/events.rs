@@ -149,6 +149,35 @@ impl GameObserver for NullObserver {
     fn notify(&mut self, _event: &GameEvent) {}
 }
 
+/// A [`GameObserver`] that fans every event out to several observers, in order.
+///
+/// The engine holds a single observer, so this composes multiple sinks behind one
+/// `set_observer` call — e.g. a terminal renderer, a session logger, and a network
+/// broadcaster all receiving the same stream.
+pub struct BroadcastObserver {
+    observers: Vec<Box<dyn GameObserver>>,
+}
+
+impl BroadcastObserver {
+    /// Create a fan-out over the given observers (notified in order).
+    pub fn new(observers: Vec<Box<dyn GameObserver>>) -> Self {
+        Self { observers }
+    }
+
+    /// Add another observer to the fan-out.
+    pub fn push(&mut self, observer: Box<dyn GameObserver>) {
+        self.observers.push(observer);
+    }
+}
+
+impl GameObserver for BroadcastObserver {
+    fn notify(&mut self, event: &GameEvent) {
+        for observer in &mut self.observers {
+            observer.notify(event);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,6 +185,31 @@ mod tests {
     use casino_cards::card::{Card, Rank, Suit};
 
     use crate::hand_rankings::HandCategory;
+
+    #[test]
+    fn broadcast_observer_forwards_to_every_observer() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        struct Counter(Rc<RefCell<usize>>);
+        impl GameObserver for Counter {
+            fn notify(&mut self, _event: &GameEvent) {
+                *self.0.borrow_mut() += 1;
+            }
+        }
+
+        let (a, b) = (Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0)));
+        let mut broadcast = BroadcastObserver::new(vec![
+            Box::new(Counter(a.clone())),
+            Box::new(Counter(b.clone())),
+        ]);
+
+        broadcast.notify(&GameEvent::HandComplete);
+        broadcast.notify(&GameEvent::HandComplete);
+
+        assert_eq!(*a.borrow(), 2);
+        assert_eq!(*b.borrow(), 2);
+    }
 
     /// Events must survive a serialize/deserialize round-trip so they can be
     /// logged or sent over a network.

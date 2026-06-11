@@ -10,7 +10,9 @@
 
 use std::collections::{HashMap, HashSet};
 
+use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -23,7 +25,7 @@ use crate::betting::{legal_actions, resolve_action, BettingRound, PlayerAction, 
 use crate::events::{ActionView, Blind, GameEvent, GameObserver, NullObserver, PotKind, SeatInfo};
 use crate::hand_rankings::{evaluate, ComparableHand};
 use crate::player::Player;
-use crate::pot::{build_pots, distribute_pots, refund_uncalled};
+use crate::pot::{build_pots, distribute_pots, refund_uncalled, Pot};
 
 /// The result of running a betting street.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -57,6 +59,7 @@ pub enum BettingStep {
 
 /// The in-progress state of a single betting street, retained on the engine so the
 /// street can be paused (awaiting a player's action) and resumed across calls.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct ActiveBettingRound {
     street: Street,
     round: BettingRound,
@@ -66,9 +69,69 @@ struct ActiveBettingRound {
     awaiting: Option<Uuid>,
 }
 
+/// A serializable, read-only snapshot of the **public** table state — the
+/// safe-to-broadcast counterpart to the per-player [`PlayerView`]. It deliberately
+/// omits every player's hole cards, so it can be sent to spectators or to all
+/// seats at once without leaking hidden information. Produced by
+/// [`TexasHoldEm::table`].
+///
+/// `#[non_exhaustive]`: the engine produces these, so new fields can be added in a
+/// minor release without breaking downstream readers.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct TableView {
+    /// Each seat, in seat order.
+    pub seats: Vec<SeatView>,
+    /// Seat index of the dealer button, or `None` before the first hand.
+    pub button_seat: Option<usize>,
+    /// The street currently being bet, or `None` between streets/hands.
+    pub street: Option<Street>,
+    /// The amount to match on the current street (`0` when no round is active).
+    pub current_bet: u32,
+    /// The player whose action the engine is awaiting, if any.
+    pub to_act: Option<Uuid>,
+    /// The shared board cards (0, 3, 4, or 5).
+    pub board: Vec<Card>,
+    /// Total chips across all pots.
+    pub pot_total: u32,
+    /// The live side-pot structure built from current contributions.
+    pub pots: Vec<Pot>,
+}
+
+/// One seat's public state within a [`TableView`]. Contains **no** hole cards.
+///
+/// `#[non_exhaustive]`: more per-seat fields can be added in a minor release.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct SeatView {
+    pub id: Uuid,
+    pub name: String,
+    pub chips: u32,
+    /// Chips this player has committed on the current street.
+    pub committed_this_street: u32,
+    pub folded: bool,
+    pub all_in: bool,
+}
+
+/// The default observer for a freshly-deserialized engine: a silent sink. A
+/// restored engine produces no narration until [`TexasHoldEm::set_observer`] is
+/// called to re-attach a real observer.
+fn default_observer() -> Box<dyn GameObserver> {
+    Box::new(NullObserver)
+}
+
+/// The default RNG for a freshly-deserialized engine: a fresh entropy seed. The
+/// RNG is not serialized, so reproducibility is not preserved across a save/load
+/// (the in-flight hand's deck order *is* serialized); call
+/// [`TexasHoldEm::reseed`] after restore to re-establish determinism.
+fn default_rng() -> StdRng {
+    StdRng::from_entropy()
+}
+
 /// The core of the Texas hold 'em game.
 ///
 /// The game currently defaults to no-limit.
+#[derive(Serialize, Deserialize)]
 pub struct TexasHoldEm {
     game_over: bool,
     deck: Deck,
@@ -100,12 +163,22 @@ pub struct TexasHoldEm {
     /// The perspective player whose hole cards appear in the hand history's
     /// `Dealt to …` line. `None` runs with no perspective (e.g. all-bot tables).
     hero: Option<Uuid>,
-    /// Receives the public narration of the hand. Defaults to a no-op sink.
+    /// Receives the public narration of the hand. Defaults to a no-op sink. Not
+    /// serialized (a trait object); re-attach with [`set_observer`] after restore.
+    ///
+    /// [`set_observer`]: TexasHoldEm::set_observer
+    #[serde(skip, default = "default_observer")]
     observer: Box<dyn GameObserver>,
     /// The in-progress betting street, if one is paused or being driven. Holds the
     /// per-street state so a street can be advanced action-by-action; `None`
     /// between streets and hands. See [`TexasHoldEm::begin_betting_round`].
     betting: Option<ActiveBettingRound>,
+    /// The RNG driving shuffles and seat randomization. Not serialized; restored
+    /// engines re-seed from entropy (see [`default_rng`] and [`reseed`]).
+    ///
+    /// [`reseed`]: TexasHoldEm::reseed
+    #[serde(skip, default = "default_rng")]
+    rng: StdRng,
 }
 
 impl TexasHoldEm {
@@ -137,7 +210,37 @@ impl TexasHoldEm {
             hero: None,
             observer: Box::new(NullObserver),
             betting: None,
+            rng: default_rng(),
         }
+    }
+
+    /// Like [`new`](Self::new), but with a deterministic RNG seeded from `seed`, so
+    /// shuffles and seat randomization are reproducible. Useful for replays,
+    /// provably-fair deals, and tests. Note the seed is **not** persisted by
+    /// serialization — call [`reseed`](Self::reseed) after a restore to re-establish
+    /// determinism.
+    pub fn new_seeded(
+        minimum_chips_buy_in_amount: u32,
+        maximum_players_count: usize,
+        small_blind_amount: u32,
+        big_blind_amount: u32,
+        seed: u64,
+    ) -> Self {
+        let mut game = Self::new(
+            minimum_chips_buy_in_amount,
+            maximum_players_count,
+            small_blind_amount,
+            big_blind_amount,
+        );
+        game.rng = StdRng::seed_from_u64(seed);
+        game
+    }
+
+    /// Re-seed the engine's RNG, making subsequent shuffles/seat randomization
+    /// reproducible from `seed`. Call after deserializing a game if you need
+    /// deterministic future deals.
+    pub fn reseed(&mut self, seed: u64) {
+        self.rng = StdRng::seed_from_u64(seed);
     }
 
     /// Designate the perspective player for hand histories (their hole cards show
@@ -181,7 +284,7 @@ impl TexasHoldEm {
     /// don't always start with the first player added. Call once after all players
     /// are seated and before the first hand.
     pub fn randomize_seats(&mut self) {
-        self.seats.shuffle(&mut rand::thread_rng());
+        self.seats.shuffle(&mut self.rng);
     }
 
     /// Remove a player from the game.
@@ -225,9 +328,9 @@ impl TexasHoldEm {
         self.game_over = true;
     }
 
-    /// Shuffle the game's deck.
+    /// Shuffle the game's deck using the engine's RNG.
     pub fn shuffle_deck(&mut self) {
-        self.deck.shuffle();
+        self.deck.shuffle_with(&mut self.rng);
     }
 
     /// The player who held the dealer button on the last hand, or `None` before the
@@ -253,6 +356,45 @@ impl TexasHoldEm {
         }
     }
 
+    /// Set the blind amounts for subsequent hands (e.g. rising tournament levels).
+    ///
+    /// Apply **between hands**. Returns `false` (a no-op) while a hand is in
+    /// progress, because a street's bet sizing is seeded from the current blinds and
+    /// changing them mid-hand would corrupt it; returns `true` when applied.
+    pub fn set_blinds(&mut self, small_blind: u32, big_blind: u32) -> bool {
+        if self.hand_in_progress() {
+            return false;
+        }
+        self.small_blind_amount = small_blind;
+        self.big_blind_amount = big_blind;
+        true
+    }
+
+    /// Set the minimum buy-in required to seat new players. Affects only future
+    /// [`add_player`](Self::add_player) calls.
+    pub fn set_min_buy_in(&mut self, amount: u32) {
+        self.minimum_chips_buy_in_amount = amount;
+    }
+
+    /// Add chips to a seated player's stack — a rebuy or top-up — without
+    /// re-seating them (which would churn their id).
+    ///
+    /// Apply **between hands**. Returns `false` (a no-op) while a hand is in
+    /// progress (to avoid corrupting live pot/contribution accounting) or if the
+    /// player is not seated; returns `true` when the chips are added.
+    pub fn add_chips_to(&mut self, id: &Uuid, amount: u32) -> bool {
+        if self.hand_in_progress() {
+            return false;
+        }
+        match self.players.get_mut(id) {
+            Some(player) => {
+                player.add_chips(amount);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Rotate the dealer button clockwise to the next seated player.
     ///
     /// The button is tracked by player id. If the previous button player is still
@@ -275,8 +417,12 @@ impl TexasHoldEm {
     }
 
     /// Seat index of the small blind. Heads-up, the button posts the small blind.
+    /// Returns `0` on an empty table (there is no seat to index).
     pub fn get_small_blind_seat_index(&self) -> usize {
         let len = self.seats.len();
+        if len == 0 {
+            return 0;
+        }
         if len == 2 {
             self.dealer_seat_index
         } else {
@@ -285,8 +431,12 @@ impl TexasHoldEm {
     }
 
     /// Seat index of the big blind. Heads-up, the non-button player posts it.
+    /// Returns `0` on an empty table (there is no seat to index).
     pub fn get_big_blind_seat_index(&self) -> usize {
         let len = self.seats.len();
+        if len == 0 {
+            return 0;
+        }
         if len == 2 {
             (self.dealer_seat_index + 1) % len
         } else {
@@ -295,8 +445,13 @@ impl TexasHoldEm {
     }
 
     /// Seat index of the player to the left of the big blind (under the gun).
+    /// Returns `0` on an empty table (there is no seat to index).
     pub fn get_under_the_gun_seat_index(&self) -> usize {
-        (self.get_big_blind_seat_index() + 1) % self.seats.len()
+        let len = self.seats.len();
+        if len == 0 {
+            return 0;
+        }
+        (self.get_big_blind_seat_index() + 1) % len
     }
 
     pub fn get_small_blind_amount(&self) -> u32 {
@@ -332,6 +487,103 @@ impl TexasHoldEm {
         &self.seats
     }
 
+    /// The player the engine is currently awaiting an action from, or `None` when
+    /// no betting round is paused on a decision (between streets/hands, or while
+    /// the engine is skipping folded/all-in seats).
+    pub fn to_act(&self) -> Option<Uuid> {
+        self.betting.as_ref().and_then(|b| b.awaiting)
+    }
+
+    /// The amount to match on the current street, or `0` when no round is active.
+    pub fn current_bet(&self) -> u32 {
+        self.betting.as_ref().map_or(0, |b| b.round.current_bet)
+    }
+
+    /// Chips a player has committed on the current street (`0` when no round is
+    /// active or the player has committed nothing).
+    pub fn committed_this_street(&self, id: &Uuid) -> u32 {
+        self.betting.as_ref().map_or(0, |b| b.round.committed(*id))
+    }
+
+    /// Whether the player has folded this hand.
+    pub fn has_folded(&self, id: &Uuid) -> bool {
+        self.folded.contains(id)
+    }
+
+    /// Whether the player is all-in this hand.
+    pub fn is_all_in(&self, id: &Uuid) -> bool {
+        self.all_in.contains(id)
+    }
+
+    /// The seat index of the dealer button, or `None` before the first hand (or if
+    /// the button player has since been removed).
+    pub fn button_seat(&self) -> Option<usize> {
+        self.dealer
+            .and_then(|d| self.seats.iter().position(|s| *s == d))
+    }
+
+    /// The live side-pot structure built from the current contributions (main pot
+    /// at index 0). Lets a spectator/server render pots mid-hand, before showdown.
+    pub fn pots(&self) -> Vec<Pot> {
+        build_pots(&self.contributed, &self.folded)
+    }
+
+    /// A serializable snapshot of the public table state (no hole cards), for
+    /// spectator/lobby rendering or broadcasting to all seats. See [`TableView`].
+    pub fn table(&self) -> TableView {
+        let seats = self
+            .seats
+            .iter()
+            .map(|id| {
+                let player = self.players.get(id);
+                SeatView {
+                    id: *id,
+                    name: player.map(|p| p.name.clone()).unwrap_or_default(),
+                    chips: player.map_or(0, |p| p.chips),
+                    committed_this_street: self.committed_this_street(id),
+                    folded: self.folded.contains(id),
+                    all_in: self.all_in.contains(id),
+                }
+            })
+            .collect();
+
+        TableView {
+            seats,
+            button_seat: self.button_seat(),
+            street: self.betting.as_ref().map(|b| b.street),
+            current_bet: self.current_bet(),
+            to_act: self.to_act(),
+            board: self.board.cards.clone(),
+            pot_total: self.pot_total(),
+            pots: self.pots(),
+        }
+    }
+
+    /// The player currently on the clock and the [`PlayerView`] they need to act,
+    /// or `None` when no decision is pending. Unlike [`begin_betting_round`] /
+    /// [`submit_action`], this is **read-only** — it does not advance or reset the
+    /// round.
+    ///
+    /// This is the reconnection seam: after deserializing a game paused mid-street,
+    /// call it to re-derive the awaited player's prompt (to render their UI or feed
+    /// their agent) before resuming with [`submit_action`].
+    ///
+    /// [`begin_betting_round`]: Self::begin_betting_round
+    /// [`submit_action`]: Self::submit_action
+    pub fn current_view(&self) -> Option<(Uuid, PlayerView)> {
+        let active = self.betting.as_ref()?;
+        let id = active.awaiting?;
+        Some((id, self.build_view(id, active.street, &active.round)))
+    }
+
+    /// Whether a hand is currently in progress (cards dealt but not yet ended).
+    /// Mutators that must only run between hands gate on this — note `betting` is
+    /// `None` *between streets* even though the hand is live, so checking it alone
+    /// is insufficient.
+    fn hand_in_progress(&self) -> bool {
+        self.betting.is_some() || !self.player_hands.is_empty()
+    }
+
     /// Number of players still in the current hand (seated and not folded).
     fn live_count(&self) -> usize {
         self.seats
@@ -344,6 +596,30 @@ impl TexasHoldEm {
     pub fn begin_hand(&mut self) {
         self.rotate_dealer();
         self.shuffle_deck();
+        self.start_hand();
+    }
+
+    /// Begin a hand from a caller-supplied, pre-ordered deck **without shuffling**,
+    /// so an external harness can script exact hole/board cards (for tests,
+    /// replays, or puzzle setups).
+    ///
+    /// Dealing pops from the **tail** of the deck: `deal_*` and the hole-card deal
+    /// take the last card first. So lay the deck out in **reverse** deal order —
+    /// the final cards in the `Vec` are dealt first, and burn cards (one before
+    /// each of the flop/turn/river) must be included in that ordering.
+    pub fn begin_hand_with_deck(&mut self, deck: Deck) {
+        self.rotate_dealer();
+        self.deck = deck;
+        self.start_hand();
+    }
+
+    /// The shared body of [`begin_hand`]/[`begin_hand_with_deck`] that runs after
+    /// the button is set and the deck is in place: number the hand, announce it,
+    /// post the blinds, and deal hole cards.
+    ///
+    /// [`begin_hand`]: Self::begin_hand
+    /// [`begin_hand_with_deck`]: Self::begin_hand_with_deck
+    fn start_hand(&mut self) {
         self.hand_number += 1;
         // Emitted before blinds are posted, so the seat stacks are pre-blind.
         let seats: Vec<SeatInfo> = self
@@ -1452,6 +1728,180 @@ mod tests {
             BettingStep::RoundComplete(RoundOutcome::Continue)
         ));
         assert!(game.betting.is_none());
+    }
+
+    // --- Capability additions: serde, determinism, observability, robustness ---
+
+    #[test]
+    fn engine_round_trips_mid_hand_and_finishes_identically() {
+        // Control: drive the whole preflop street, no serialization.
+        let mut control = TexasHoldEm::new_seeded(0, 10, 1, 2, 7);
+        seat_players(&mut control, &[100, 100, 100]);
+        control.begin_hand();
+        let control_outcome = drive_street(&mut control, Street::Preflop, calling_policy);
+        let control_snap = seat_snapshot(&control);
+
+        // Subject: same seeded setup; take one action so the paused state is
+        // genuinely mid-street, then serde round-trip the *whole engine*.
+        let mut subject = TexasHoldEm::new_seeded(0, 10, 1, 2, 7);
+        seat_players(&mut subject, &[100, 100, 100]);
+        subject.begin_hand();
+        let mut step = subject.begin_betting_round(Street::Preflop);
+        if let BettingStep::AwaitingAction { view, .. } = &step {
+            let action = calling_policy(view);
+            step = subject.submit_action(action);
+        }
+        assert!(
+            matches!(step, BettingStep::AwaitingAction { .. }),
+            "expected to be paused mid-street before serializing"
+        );
+
+        let json = serde_json::to_string(&subject).expect("serialize engine");
+        let mut restored: TexasHoldEm = serde_json::from_str(&json).expect("deserialize engine");
+        restored.set_observer(Box::new(crate::events::NullObserver));
+
+        // Reconnection path: re-derive the awaited player's view from the RESTORED
+        // engine (not the pre-serialization step) and finish the street.
+        let mut outcome = None;
+        while let Some((_, view)) = restored.current_view() {
+            if let BettingStep::RoundComplete(o) = restored.submit_action(calling_policy(&view)) {
+                outcome = Some(o);
+            }
+        }
+        let outcome = outcome.expect("restored engine completed the street");
+
+        assert_eq!(outcome, control_outcome);
+        assert_eq!(
+            seat_snapshot(&restored),
+            control_snap,
+            "a restored engine must finish to the same chips as one never serialized"
+        );
+    }
+
+    #[test]
+    fn seeded_games_deal_identically() {
+        let deal = |seed: u64| {
+            let mut g = TexasHoldEm::new_seeded(0, 10, 1, 2, seed);
+            seat_players(&mut g, &[100, 100, 100]);
+            g.begin_hand();
+            g.deal_flop();
+            g
+        };
+        let a = deal(99);
+        let b = deal(99);
+
+        assert_eq!(
+            a.board().cards,
+            b.board().cards,
+            "same seed must deal the same board"
+        );
+        for i in 0..a.seats().len() {
+            let ha = a.player_hand(&a.seats()[i]).map(|h| h.cards.clone());
+            let hb = b.player_hand(&b.seats()[i]).map(|h| h.cards.clone());
+            assert_eq!(ha, hb, "seat {i} hole cards must match across identical seeds");
+        }
+    }
+
+    #[test]
+    fn begin_hand_with_deck_deals_scripted_cards() {
+        // Cards deal from the deck's TAIL (the next `deal` pops the last element),
+        // and `Deck::new` lays cards out suit-major ending Spades 2..Ace, so the
+        // very top is As, then Ks, Qs, Js. Heads-up, the button (= small blind =
+        // seat 0) is dealt first, two cards each in seat order. Assert exact
+        // per-seat hole cards to prove the tail-pop / seat-order contract.
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 100]);
+
+        game.begin_hand_with_deck(Deck::new());
+
+        assert_eq!(
+            game.player_hand(&ids[0]).unwrap().cards,
+            vec![card(Rank::Ace, Suit::Spade), card(Rank::King, Suit::Spade)],
+        );
+        assert_eq!(
+            game.player_hand(&ids[1]).unwrap().cards,
+            vec![card(Rank::Queen, Suit::Spade), card(Rank::Jack, Suit::Spade)],
+        );
+    }
+
+    #[test]
+    fn table_view_exposes_public_state_without_hole_cards() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 5);
+        seat_players(&mut game, &[100, 50, 75]);
+        game.begin_hand();
+        let _ = game.begin_betting_round(Street::Preflop);
+
+        let view = game.table();
+        assert_eq!(view.seats.len(), 3);
+        assert!(view.to_act.is_some(), "a player should be on the clock pre-flop");
+        assert_eq!(view.current_bet, game.get_big_blind_amount());
+        assert!(view.board.is_empty(), "no board pre-flop");
+
+        // Blinds are reflected in per-seat committed amounts and the pot.
+        let committed: u32 = view.seats.iter().map(|s| s.committed_this_street).sum();
+        assert_eq!(
+            committed,
+            game.get_small_blind_amount() + game.get_big_blind_amount()
+        );
+        assert_eq!(view.pot_total, committed);
+
+        // The snapshot serializes, and `SeatView` structurally carries no hole
+        // cards — the only cards it can ever hold are the public board (empty here).
+        let json = serde_json::to_string(&view).expect("serialize table view");
+        assert!(json.contains("committed_this_street"));
+    }
+
+    #[test]
+    fn seat_index_getters_do_not_panic_when_empty() {
+        let game = TexasHoldEm::new(0, 10, 1, 2);
+        assert_eq!(game.get_small_blind_seat_index(), 0);
+        assert_eq!(game.get_big_blind_seat_index(), 0);
+        assert_eq!(game.get_under_the_gun_seat_index(), 0);
+    }
+
+    #[test]
+    fn set_blinds_and_add_chips_are_noops_during_a_hand() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 100]);
+        game.begin_hand();
+        let _ = game.begin_betting_round(Street::Preflop);
+
+        let chips_before = game.player(&ids[0]).map(|p| p.chips);
+        assert!(!game.set_blinds(5, 10), "set_blinds must report no-op mid-hand");
+        assert!(
+            !game.add_chips_to(&ids[0], 1000),
+            "add_chips_to must report no-op mid-hand"
+        );
+        assert_eq!(game.get_big_blind_amount(), 2, "blinds unchanged mid-hand");
+        assert_eq!(
+            game.player(&ids[0]).map(|p| p.chips),
+            chips_before,
+            "chips unchanged mid-hand"
+        );
+    }
+
+    #[test]
+    fn current_view_re_derives_the_prompt_without_mutating() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 3);
+        seat_players(&mut game, &[100, 100, 100]);
+        game.begin_hand();
+        let step = game.begin_betting_round(Street::Preflop);
+
+        let BettingStep::AwaitingAction { player, view } = &step else {
+            panic!("expected to pause awaiting an actor");
+        };
+        // current_view re-derives the same prompt, read-only (callable repeatedly).
+        let (id1, v1) = game.current_view().expect("a decision is pending");
+        let (id2, _) = game.current_view().expect("still pending (no mutation)");
+        assert_eq!(id1, *player);
+        assert_eq!(id2, *player);
+        assert_eq!(v1.you, view.you);
+        assert_eq!(v1.legal_actions, view.legal_actions);
+
+        // Between hands there is no pending decision.
+        let mut idle = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut idle, &[100, 100]);
+        assert!(idle.current_view().is_none());
     }
 
     /// A `GameObserver` that records every event for assertions. Uses a shared
