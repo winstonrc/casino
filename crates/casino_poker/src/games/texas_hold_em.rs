@@ -2189,7 +2189,10 @@ mod tests {
         seat_players(&mut game, &[100, 100]);
         game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
         game.announce_resumed_hand(); // no hand dealt yet
-        assert!(log.borrow().is_empty(), "nothing to replay before a hand starts");
+        assert!(
+            log.borrow().is_empty(),
+            "nothing to replay before a hand starts"
+        );
     }
 
     #[test]
