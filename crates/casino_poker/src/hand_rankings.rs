@@ -474,7 +474,10 @@ mod comparable_hand_tests {
             c(Rank::Ace, Suit::Diamond),
             c(Rank::Two, Suit::Spade),
         ];
-        assert_eq!(best_omaha(&hole, &board).category, HandCategory::FourOfAKind);
+        assert_eq!(
+            best_omaha(&hole, &board).category,
+            HandCategory::FourOfAKind
+        );
     }
 
     #[test]

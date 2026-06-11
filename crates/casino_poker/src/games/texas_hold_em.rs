@@ -1798,7 +1798,10 @@ mod tests {
         for i in 0..a.seats().len() {
             let ha = a.player_hand(&a.seats()[i]).map(|h| h.cards.clone());
             let hb = b.player_hand(&b.seats()[i]).map(|h| h.cards.clone());
-            assert_eq!(ha, hb, "seat {i} hole cards must match across identical seeds");
+            assert_eq!(
+                ha, hb,
+                "seat {i} hole cards must match across identical seeds"
+            );
         }
     }
 
@@ -1820,7 +1823,10 @@ mod tests {
         );
         assert_eq!(
             game.player_hand(&ids[1]).unwrap().cards,
-            vec![card(Rank::Queen, Suit::Spade), card(Rank::Jack, Suit::Spade)],
+            vec![
+                card(Rank::Queen, Suit::Spade),
+                card(Rank::Jack, Suit::Spade)
+            ],
         );
     }
 
@@ -1833,7 +1839,10 @@ mod tests {
 
         let view = game.table();
         assert_eq!(view.seats.len(), 3);
-        assert!(view.to_act.is_some(), "a player should be on the clock pre-flop");
+        assert!(
+            view.to_act.is_some(),
+            "a player should be on the clock pre-flop"
+        );
         assert_eq!(view.current_bet, game.get_big_blind_amount());
         assert!(view.board.is_empty(), "no board pre-flop");
 
@@ -1867,7 +1876,10 @@ mod tests {
         let _ = game.begin_betting_round(Street::Preflop);
 
         let chips_before = game.player(&ids[0]).map(|p| p.chips);
-        assert!(!game.set_blinds(5, 10), "set_blinds must report no-op mid-hand");
+        assert!(
+            !game.set_blinds(5, 10),
+            "set_blinds must report no-op mid-hand"
+        );
         assert!(
             !game.add_chips_to(&ids[0], 1000),
             "add_chips_to must report no-op mid-hand"
