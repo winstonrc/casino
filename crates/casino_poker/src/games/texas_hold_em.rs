@@ -2332,7 +2332,10 @@ mod tests {
             .iter()
             .filter(|e| matches!(e, GameEvent::StreetDealt { .. }))
             .count();
-        assert_eq!(streets, 3, "flop, turn, and river are each dealt once on a run-out");
+        assert_eq!(
+            streets, 3,
+            "flop, turn, and river are each dealt once on a run-out"
+        );
         // Once the flop is dealt everyone is all-in, so no further actions occur.
         let first_street = events
             .iter()
@@ -2359,10 +2362,14 @@ mod tests {
         assert_eq!(game.play_hand(&mut agents), HandOutcome::Complete);
         let events = log.borrow();
         assert!(
-            !events.iter().any(|e| matches!(e, GameEvent::StreetDealt { .. })),
+            !events
+                .iter()
+                .any(|e| matches!(e, GameEvent::StreetDealt { .. })),
             "no community cards dealt when the hand ends pre-flop"
         );
-        assert!(events.iter().any(|e| matches!(e, GameEvent::PotAwarded { .. })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, GameEvent::PotAwarded { .. })));
         assert!(matches!(events.last(), Some(GameEvent::HandComplete)));
     }
 
@@ -2431,7 +2438,11 @@ mod tests {
 
         let step = game.drive_hand();
         assert!(matches!(step, HandStep::AwaitingAction { .. }));
-        assert_eq!(game.current_street(), Some(Street::Flop), "re-opens flop betting");
+        assert_eq!(
+            game.current_street(),
+            Some(Street::Flop),
+            "re-opens flop betting"
+        );
         assert_eq!(game.board().cards, board_before, "no re-deal");
         assert_eq!(game.deck_len(), deck_before, "no cards drawn");
     }
@@ -2448,13 +2459,19 @@ mod tests {
 
         let actor_cv = game.client_view(actor);
         assert!(actor_cv.to_act);
-        assert!(actor_cv.view.is_some(), "the acting player gets their decision view");
+        assert!(
+            actor_cv.view.is_some(),
+            "the acting player gets their decision view"
+        );
         assert!(actor_cv.hole.is_some());
 
         let other_cv = game.client_view(other);
         assert!(!other_cv.to_act);
         assert!(other_cv.view.is_none());
-        assert_ne!(actor_cv.hole, other_cv.hole, "each sees only their own cards");
+        assert_ne!(
+            actor_cv.hole, other_cv.hole,
+            "each sees only their own cards"
+        );
 
         assert!(
             actor_cv.recent_events.iter().all(|e| match e {
@@ -2468,7 +2485,10 @@ mod tests {
 
         // After the actor folds, their hole is mucked.
         game.submit_hand_action(PlayerAction::Fold);
-        assert!(game.client_view(actor).hole.is_none(), "folded cards are mucked");
+        assert!(
+            game.client_view(actor).hole.is_none(),
+            "folded cards are mucked"
+        );
     }
 
     #[test]
@@ -2488,10 +2508,22 @@ mod tests {
 
         game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
         game.replay_log();
-        assert_eq!(*log.borrow(), expected, "replay re-sends the real events in order");
-        assert_eq!(game.event_log.len(), len_before, "replay does not grow the log");
+        assert_eq!(
+            *log.borrow(),
+            expected,
+            "replay re-sends the real events in order"
+        );
+        assert_eq!(
+            game.event_log.len(),
+            len_before,
+            "replay does not grow the log"
+        );
         game.replay_log();
-        assert_eq!(game.event_log.len(), len_before, "a second replay still doesn't grow it");
+        assert_eq!(
+            game.event_log.len(),
+            len_before,
+            "a second replay still doesn't grow it"
+        );
     }
 
     #[test]
@@ -2501,7 +2533,10 @@ mod tests {
         let mut agents = agents_all(&game, || Box::new(CallingAgent));
         game.play_hand(&mut agents);
         // Between hands the log still holds the finished hand (incl. HandComplete).
-        assert!(matches!(game.event_log.last(), Some(GameEvent::HandComplete)));
+        assert!(matches!(
+            game.event_log.last(),
+            Some(GameEvent::HandComplete)
+        ));
         // The next hand clears it before re-populating.
         game.begin_hand();
         assert!(
