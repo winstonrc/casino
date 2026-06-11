@@ -40,10 +40,16 @@ jobs:
       - name: Apply clippy fixes
         run: cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged
 
-      # Commits made with the default GITHUB_TOKEN do not re-trigger workflows,
-      # so the CI run on the original push may show stale formatting results
-      # until the next manual push.
+      # Commit via the GitHub API so the commit is signed with GitHub's web-flow
+      # key and shows as Verified (satisfies "require signed commits"). Commits
+      # made with the default GITHUB_TOKEN do not re-trigger workflows, so the CI
+      # run on the original push may show stale formatting results until the next
+      # manual push.
       - name: Commit fixes
-        uses: stefanzweifel/git-auto-commit-action@04702edda442b2e678b25b537cec683a1493fcb9 # v7.1.0
+        uses: planetscale/ghcommit-action@a6b150b81dca5dd027baa898604418eec9e11465 # v0.2.22
         with:
           commit_message: "style: cargo fmt + clippy --fix"
+          repo: ${{ github.repository }}
+          branch: ${{ github.head_ref }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
