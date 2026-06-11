@@ -146,6 +146,10 @@ pub struct TexasHoldEm {
     contributed: HashMap<Uuid, u32>,
     /// Players who have folded this hand.
     folded: HashSet<Uuid>,
+    /// The street on which each folded player folded, so a resumed hand can replay
+    /// their fold (and a front-end can attribute "folded on the Turn" etc.) — the
+    /// `folded` set alone doesn't record when.
+    folded_on: HashMap<Uuid, Street>,
     /// Players who are all-in this hand.
     all_in: HashSet<Uuid>,
     /// Each player's two hole cards for the current hand.
@@ -198,6 +202,7 @@ impl TexasHoldEm {
             dealer_seat_index: 0,
             contributed: HashMap::new(),
             folded: HashSet::new(),
+            folded_on: HashMap::new(),
             all_in: HashSet::new(),
             player_hands: HashMap::new(),
             board: Hand::new(),
@@ -663,6 +668,80 @@ impl TexasHoldEm {
         self.observer.notify(&GameEvent::HoleCardsDealt { hero });
     }
 
+    /// Re-emit a resumed hand's context — the [`HandStarted`] header, the hero's hole
+    /// cards, any community cards already dealt, and the folds taken so far — to the
+    /// current observer. A front-end that attaches a fresh observer to a *restored* game
+    /// calls this once (after [`set_observer`]) so the resumed hand still renders a
+    /// coherent history and a complete end-of-hand summary. **No-op when no hand is
+    /// in progress** (a freshly-built or between-hands game), so it is safe to call
+    /// unconditionally during setup.
+    ///
+    /// The actions taken before the save are not replayed (those events belong to the
+    /// prior session); the seat stacks shown are the *current* (post-blind) stacks,
+    /// since the pre-hand stacks aren't recoverable mid-hand.
+    pub fn announce_resumed_hand(&mut self) {
+        if !self.hand_in_progress() {
+            return;
+        }
+        let seats: Vec<SeatInfo> = self
+            .seats
+            .iter()
+            .enumerate()
+            .filter_map(|(i, id)| {
+                self.players.get(id).map(|p| SeatInfo {
+                    seat_no: i + 1,
+                    name: p.name.clone(),
+                    stack: p.chips,
+                })
+            })
+            .collect();
+        if seats.is_empty() {
+            return;
+        }
+        self.observer.notify(&GameEvent::HandStarted {
+            hand_number: self.hand_number,
+            button_seat: self.dealer_seat_index + 1,
+            small_blind: self.small_blind_amount,
+            big_blind: self.big_blind_amount,
+            seats,
+        });
+        let hero = self.hero.and_then(|id| {
+            let name = self.players.get(&id)?.name.clone();
+            let hand = self.player_hands.get(&id)?;
+            Some((name, hand.cards.clone()))
+        });
+        self.observer.notify(&GameEvent::HoleCardsDealt { hero });
+        // Bring the observer's board up to date if community cards are already out.
+        let street = match self.board.cards.len() {
+            3 => Some(Street::Flop),
+            4 => Some(Street::Turn),
+            5 => Some(Street::River),
+            _ => None,
+        };
+        if let Some(street) = street {
+            self.observer.notify(&GameEvent::StreetDealt {
+                street,
+                board: self.board.cards.clone(),
+                pot: self.pot_total(),
+            });
+        }
+        // Replay the folds that happened before the save, on the streets they
+        // happened, so the observer can attribute them in the summary (a folded
+        // player neither shows at showdown nor is otherwise re-narrated on resume).
+        let folds: Vec<(String, Street)> = self
+            .folded_on
+            .iter()
+            .filter_map(|(id, &street)| self.players.get(id).map(|p| (p.name.clone(), street)))
+            .collect();
+        for (player, street) in folds {
+            self.observer.notify(&GameEvent::ActionTaken {
+                player,
+                street,
+                action: ActionView::Folded,
+            });
+        }
+    }
+
     /// Post a blind, going all-in if the player cannot cover it. The blind is
     /// recorded in `contributed`, which feeds side-pot construction.
     fn post_blind(&mut self, is_small_blind: bool) {
@@ -931,6 +1010,7 @@ impl TexasHoldEm {
 
         if resolved.folded {
             self.folded.insert(id);
+            self.folded_on.insert(id, active.street);
             if let Some(hand) = self.player_hands.remove(&id) {
                 for card in hand.cards {
                     self.burned.push(card);
@@ -1215,6 +1295,7 @@ impl TexasHoldEm {
         }
         self.contributed.clear();
         self.folded.clear();
+        self.folded_on.clear();
         self.all_in.clear();
         // Defensively drop any in-progress street so an abandoned/partial round
         // can never leak into the next hand.
@@ -2046,6 +2127,69 @@ mod tests {
             matches!(events.last(), Some(GameEvent::HandComplete)),
             "the hand ends with the completion signal"
         );
+    }
+
+    #[test]
+    fn announce_resumed_hand_replays_header_hole_cards_and_board() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 4);
+        let ids = seat_players(&mut game, &[100, 100, 100]);
+        game.set_hero(ids[0]);
+        game.begin_hand();
+        game.deal_flop(); // a flop is out — a mid-flop resume scenario
+                          // A player folded pre-flop before the save.
+        game.folded.insert(ids[2]);
+        game.folded_on.insert(ids[2], Street::Preflop);
+
+        // Attach a fresh observer (as a restored game would) and replay the context.
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        game.announce_resumed_hand();
+
+        let events = log.borrow();
+        assert!(
+            matches!(events.first(), Some(GameEvent::HandStarted { .. })),
+            "resume replays the hand header first"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, GameEvent::HoleCardsDealt { .. })),
+            "resume replays the hero's hole cards"
+        );
+        // The flop is re-announced so the observer's board is populated for narration.
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                GameEvent::StreetDealt {
+                    street: Street::Flop,
+                    board,
+                    ..
+                } if board.len() == 3
+            )),
+            "resume replays the community cards already dealt"
+        );
+        // The pre-save fold is replayed (on its street) so the summary can attribute it.
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                GameEvent::ActionTaken {
+                    action: ActionView::Folded,
+                    street: Street::Preflop,
+                    ..
+                }
+            )),
+            "resume replays folds taken before the save"
+        );
+    }
+
+    #[test]
+    fn announce_resumed_hand_is_a_noop_with_no_hand_in_progress() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        game.announce_resumed_hand(); // no hand dealt yet
+        assert!(log.borrow().is_empty(), "nothing to replay before a hand starts");
     }
 
     #[test]
