@@ -15,6 +15,7 @@ use casino_cards::card::Card;
 
 use crate::agent::Street;
 use crate::hand_rankings::ComparableHand;
+use crate::player::PlayerRef;
 
 /// Which blind a player posted.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -34,12 +35,13 @@ pub enum PotKind {
     Side(u8),
 }
 
-/// One seat in the hand-start roster: a 1-based seat number, the player's name,
-/// and their chip stack at the start of the hand (before blinds are posted).
+/// One seat in the hand-start roster: a 1-based seat number, a stable reference to
+/// the player, and their chip stack at the start of the hand (before blinds are
+/// posted).
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SeatInfo {
     pub seat_no: usize,
-    pub name: String,
+    pub player: PlayerRef,
     pub stack: u32,
 }
 
@@ -83,18 +85,20 @@ pub enum GameEvent {
     },
     /// A blind was posted (possibly all-in for less than the full blind).
     BlindPosted {
-        player: String,
+        player: PlayerRef,
         blind: Blind,
         amount: u32,
         all_in: bool,
     },
     /// Hole cards were dealt — the marker that betting is about to begin. `hero`
-    /// carries the perspective player's name and two cards when one is set (for
-    /// the `Dealt to …` line); `None` when no hero is designated.
-    HoleCardsDealt { hero: Option<(String, Vec<Card>)> },
+    /// carries the perspective player and two cards when one is set (for the
+    /// `Dealt to …` line); `None` when no hero is designated.
+    HoleCardsDealt {
+        hero: Option<(PlayerRef, Vec<Card>)>,
+    },
     /// A player acted on the given street.
     ActionTaken {
-        player: String,
+        player: PlayerRef,
         street: Street,
         action: ActionView,
     },
@@ -105,7 +109,7 @@ pub enum GameEvent {
         pot: u32,
     },
     /// An uncalled bet was returned to its bettor.
-    UncalledBetReturned { player: String, amount: u32 },
+    UncalledBetReturned { player: PlayerRef, amount: u32 },
     /// Two or more players reached a showdown. Emitted once, after the final
     /// betting round and before any [`ShowdownReveal`](GameEvent::ShowdownReveal),
     /// carrying the final board and pot so a front-end can re-show the table the
@@ -113,7 +117,7 @@ pub enum GameEvent {
     Showdown { board: Vec<Card>, pot: u32 },
     /// A player's hand was revealed at showdown.
     ShowdownReveal {
-        player: String,
+        player: PlayerRef,
         /// The player's two hole cards.
         hole: Vec<Card>,
         /// The player's best hand value. Call `hand.describe()` to name it or read
@@ -124,7 +128,7 @@ pub enum GameEvent {
     /// identifies which pot the chips came from when the hand had side pots, and
     /// is `None` when there was a single pot (nothing to distinguish).
     PotAwarded {
-        player: String,
+        player: PlayerRef,
         amount: u32,
         /// The winning hand value (`None` when the pot was uncontested). Call
         /// `hand.describe()` to name it.
@@ -183,8 +187,17 @@ mod tests {
     use super::*;
 
     use casino_cards::card::{Card, Rank, Suit};
+    use uuid::Uuid;
 
     use crate::hand_rankings::HandCategory;
+
+    /// A `PlayerRef` with a fresh id and the given name, for test events.
+    fn pref(name: &str) -> PlayerRef {
+        PlayerRef {
+            id: Uuid::new_v4(),
+            name: name.to_string(),
+        }
+    }
 
     #[test]
     fn broadcast_observer_forwards_to_every_observer() {
@@ -228,25 +241,25 @@ mod tests {
                 seats: vec![
                     SeatInfo {
                         seat_no: 1,
-                        name: "Alice".to_string(),
+                        player: pref("Alice"),
                         stack: 100,
                     },
                     SeatInfo {
                         seat_no: 2,
-                        name: "Bob".to_string(),
+                        player: pref("Bob"),
                         stack: 200,
                     },
                 ],
             },
             GameEvent::BlindPosted {
-                player: "Bob".to_string(),
+                player: pref("Bob"),
                 blind: Blind::Big,
                 amount: 2,
                 all_in: false,
             },
             GameEvent::HoleCardsDealt {
                 hero: Some((
-                    "Alice".to_string(),
+                    pref("Alice"),
                     vec![
                         Card::new(Rank::Ace, Suit::Spade),
                         Card::new(Rank::King, Suit::Heart),
@@ -254,7 +267,7 @@ mod tests {
                 )),
             },
             GameEvent::ActionTaken {
-                player: "Bob".to_string(),
+                player: pref("Bob"),
                 street: Street::Preflop,
                 action: ActionView::Raised {
                     by: 8,
@@ -273,7 +286,7 @@ mod tests {
                 pot: 40,
             },
             GameEvent::ShowdownReveal {
-                player: "Alice".to_string(),
+                player: pref("Alice"),
                 hole: vec![
                     Card::new(Rank::Ace, Suit::Spade),
                     Card::new(Rank::King, Suit::Heart),
@@ -281,7 +294,7 @@ mod tests {
                 hand: pair,
             },
             GameEvent::PotAwarded {
-                player: "Alice".to_string(),
+                player: pref("Alice"),
                 amount: 20,
                 hand: Some(pair),
                 pot: Some(PotKind::Side(1)),

@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 pub use crate::betting::{LegalAction, PlayerAction};
 use crate::events::GameEvent;
+use crate::games::texas_hold_em::SeatView;
 
 /// Which betting street is in progress.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -73,6 +74,14 @@ pub struct PlayerView {
     pub legal_actions: Vec<LegalAction>,
     /// The table's big blind amount.
     pub big_blind: u32,
+    /// The public table roster, in seat order — every seat's id, stack, this-street
+    /// commitment, and fold/all-in status (including the deciding player's own seat,
+    /// identified by [`you`](Self::you)). The objective table state an opponent
+    /// model keys off; carries no hole cards.
+    pub seats: Vec<SeatView>,
+    /// Seat index of the dealer button, or `None` before the first hand — the
+    /// reference point for reading position from `seats`.
+    pub button_seat: Option<usize>,
 }
 
 /// Derived, ready-to-display stats for the current decision — a front-end can
@@ -126,6 +135,8 @@ impl PlayerView {
                 players_remaining: 0,
                 legal_actions: Vec::new(),
                 big_blind: 0,
+                seats: Vec::new(),
+                button_seat: None,
             },
         }
     }
@@ -238,6 +249,16 @@ impl PlayerViewBuilder {
     /// Set the table's big blind amount.
     pub fn big_blind(mut self, big_blind: u32) -> Self {
         self.view.big_blind = big_blind;
+        self
+    }
+    /// Set the public table roster (defaults to empty).
+    pub fn seats(mut self, seats: Vec<SeatView>) -> Self {
+        self.view.seats = seats;
+        self
+    }
+    /// Set the dealer button's seat index (defaults to `None`).
+    pub fn button_seat(mut self, button_seat: Option<usize>) -> Self {
+        self.view.button_seat = button_seat;
         self
     }
 }

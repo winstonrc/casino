@@ -96,14 +96,22 @@ leak-safe to send on (re)connect. The button accessors `dealer()` / `set_dealer`
 read and place the dealer button. A `PokerAgent`
 need only implement `decide`; the `observe` (watch the `GameEvent` stream) and
 `session_ended` (persist learned state) hooks default to no-ops, so a stateful AI can
-learn and persist across hands and sessions without any engine change.
+learn and persist across hands and sessions without any engine change. Every
+player-bearing event carries a `PlayerRef` (a stable `Uuid` plus display name), so an
+agent can key a per-opponent model off the `id` rather than the (non-unique) name. The
+engine stays agent-agnostic: it records each hand's events, and `recent_events()`
+borrows that per-hand stream so a front-end can forward it into its agents' `observe`
+(e.g. once per completed hand) without the engine owning the agents.
 
 For a front-end training overlay, `PlayerView::metrics()` returns derived
 `HandMetrics` — pot odds (and the equity needed to call), stack-to-pot ratio, and
 stack/call sizes in big blinds — so a UI can render correct numbers without
-re-deriving them. `PlayerView` is `#[non_exhaustive]` (the engine builds it; use
-`PlayerView::builder()` to construct one in your own agent tests), and both it and
-`HandMetrics` can gain fields in a minor release.
+re-deriving them. `PlayerView` also carries `seats` (the public per-seat roster as
+`SeatView`s — id, stack, this-street commitment, fold/all-in status) and `button_seat`,
+so an agent sees the same objective table state a spectator does and can map a stored
+opponent model onto who is actually at the table. `PlayerView` is `#[non_exhaustive]`
+(the engine builds it; use `PlayerView::builder()` to construct one in your own agent
+tests), and both it and `HandMetrics` can gain fields in a minor release.
 
 ### Observing a hand
 
@@ -130,10 +138,13 @@ impl GameObserver for Printer {
 
 Notable events:
 
-- `HandStarted` carries the seat roster (`SeatInfo` with name + starting stack),
-  the button seat, and the blinds — the data a hand-history header needs.
+- Player-bearing events (`BlindPosted`, `ActionTaken`, `UncalledBetReturned`,
+  `ShowdownReveal`, `PotAwarded`) identify the player by a `PlayerRef` (stable `id` +
+  `name`); `PlayerRef` renders as its name, so it interpolates directly in display.
+- `HandStarted` carries the seat roster (`SeatInfo` with a `PlayerRef` + starting
+  stack), the button seat, and the blinds — the data a hand-history header needs.
 - `HoleCardsDealt` marks the start of betting; its `hero` field carries the
-  perspective player's name and cards (when a hero is set), else `None`.
+  perspective player (`PlayerRef`) and cards (when a hero is set), else `None`.
 - `ActionTaken` carries the `Street` and an `ActionView`; `Raised { by, to }`
   gives both the raise increment and the new total (PokerStars "raises by to to").
 - `Showdown` is emitted once before the reveals when two or more players reach a

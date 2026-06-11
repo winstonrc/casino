@@ -38,6 +38,30 @@ crate follows [Semantic Versioning](https://semver.org/).
   hand-so-far narration exactly (header, blinds, every action, board).
 - `set_blinds` (rising tournament blind levels) and `add_chips_to` (rebuy/top-up),
   each a no-op while a hand is in progress so it can't corrupt live pot accounting.
+- **Stable player identity in the event stream.** New `player::PlayerRef { id, name }`
+  (a `Uuid` plus display name; `Display`s as its name) now identifies the player on
+  every player-bearing `GameEvent` (`BlindPosted`, `ActionTaken`,
+  `UncalledBetReturned`, `ShowdownReveal`, `PotAwarded`, `HoleCardsDealt.hero`) and in
+  `SeatInfo`, so a consumer can key a per-opponent model off the stable `id` instead of
+  the non-unique name. `Player::to_ref()` builds one.
+- **Opponent roster on the decide-side view.** `PlayerView` gains `seats: Vec<SeatView>`
+  (the public per-seat roster — id, stack, this-street commitment, fold/all-in status)
+  and `button_seat`, so an agent's `decide` sees the same objective table state a
+  spectator does and can map a stored model onto the current table. Added via the
+  `#[non_exhaustive]` builder (`PlayerViewBuilder::seats`/`button_seat`), non-breaking
+  for existing `builder()` callers.
+- **`recent_events() -> &[GameEvent]`** borrows the current hand's recorded event
+  stream, so a front-end can forward it into its agents' `observe` (the engine stays
+  agent-agnostic — it never owns the agents).
+
+#### Changed
+
+- **Breaking:** player-bearing `GameEvent` variants and `SeatInfo` now carry a
+  `PlayerRef` where they previously carried a bare `String` name. Event consumers read
+  `event.player.name` (or rely on `PlayerRef`'s `Display`). `GameEvent`s are recorded in
+  the serialized `event_log`, so this changes the `SavedGame` wire layout: a pre-change
+  in-progress save fails to deserialize and is gracefully ignored (the engine starts
+  fresh) rather than crashing.
 
 ---
 

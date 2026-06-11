@@ -336,6 +336,17 @@ impl TexasHoldEm {
         }
     }
 
+    /// This hand's events so far, in emission order (cleared when a hand begins).
+    ///
+    /// The public, hole-card-free narration stream — identical for every player. A
+    /// front-end forwards these to its agents' [`observe`](crate::agent::PokerAgent::observe)
+    /// (e.g. once per completed hand) to drive opponent modeling without the engine
+    /// owning the agents. Borrowed, so it's allocation-free; use
+    /// [`client_view`](Self::client_view) when a per-player owned copy is wanted.
+    pub fn recent_events(&self) -> &[GameEvent] {
+        &self.event_log
+    }
+
     /// Create a new player with zero chips.
     pub fn new_player(&self, name: &str) -> Player {
         Player::new(name)
@@ -609,11 +620,12 @@ impl TexasHoldEm {
         build_pots(&self.contributed, &self.folded)
     }
 
-    /// A serializable snapshot of the public table state (no hole cards), for
-    /// spectator/lobby rendering or broadcasting to all seats. See [`TableView`].
-    pub fn table(&self) -> TableView {
-        let seats = self
-            .seats
+    /// The public per-seat roster in seat order (no hole cards): identity, stack,
+    /// this-street commitment, and fold/all-in status. Shared by [`table`](Self::table)
+    /// and the decide-side [`PlayerView`] so an agent sees the same opponents the
+    /// spectator view does.
+    fn seat_views(&self) -> Vec<SeatView> {
+        self.seats
             .iter()
             .map(|id| {
                 let player = self.players.get(id);
@@ -626,10 +638,14 @@ impl TexasHoldEm {
                     all_in: self.all_in.contains(id),
                 }
             })
-            .collect();
+            .collect()
+    }
 
+    /// A serializable snapshot of the public table state (no hole cards), for
+    /// spectator/lobby rendering or broadcasting to all seats. See [`TableView`].
+    pub fn table(&self) -> TableView {
         TableView {
-            seats,
+            seats: self.seat_views(),
             button_seat: self.button_seat(),
             street: self.betting.as_ref().map(|b| b.street),
             current_bet: self.current_bet(),
@@ -746,7 +762,7 @@ impl TexasHoldEm {
             .filter_map(|(i, id)| {
                 self.players.get(id).map(|p| SeatInfo {
                     seat_no: i + 1,
-                    name: p.name.clone(),
+                    player: p.to_ref(),
                     stack: p.chips,
                 })
             })
@@ -765,9 +781,9 @@ impl TexasHoldEm {
         self.deal_hands_to_all_players();
         // The marker always fires; carry the hero's cards for the `Dealt to …` line.
         let hero = self.hero.and_then(|id| {
-            let name = self.players.get(&id)?.name.clone();
+            let player = self.players.get(&id)?.to_ref();
             let hand = self.player_hands.get(&id)?;
-            Some((name, hand.cards.clone()))
+            Some((player, hand.cards.clone()))
         });
         self.emit(GameEvent::HoleCardsDealt { hero });
     }
@@ -801,9 +817,9 @@ impl TexasHoldEm {
             self.all_in.insert(id);
         }
 
-        if let Some(name) = self.players.get(&id).map(|p| p.name.clone()) {
+        if let Some(player) = self.players.get(&id).map(|p| p.to_ref()) {
             let event = GameEvent::BlindPosted {
-                player: name,
+                player,
                 blind: if is_small_blind {
                     Blind::Small
                 } else {
@@ -1283,6 +1299,8 @@ impl TexasHoldEm {
             players_remaining: self.live_count(),
             legal_actions: legal,
             big_blind: self.big_blind_amount,
+            seats: self.seat_views(),
+            button_seat: self.button_seat(),
         }
     }
 
@@ -1290,7 +1308,7 @@ impl TexasHoldEm {
     /// `current_bet` is the bet *before* this action, so a raise off a bet of zero
     /// is an opening bet and a raise's `by` is the increment over that prior bet.
     fn announce_action(&mut self, id: Uuid, resolved: &Resolved, current_bet: u32, street: Street) {
-        let Some(name) = self.players.get(&id).map(|p| p.name.clone()) else {
+        let Some(player) = self.players.get(&id).map(|p| p.to_ref()) else {
             return;
         };
         let all_in = resolved.all_in;
@@ -1315,7 +1333,7 @@ impl TexasHoldEm {
             }
         };
         self.emit(GameEvent::ActionTaken {
-            player: name,
+            player,
             street,
             action,
         });
@@ -1329,7 +1347,7 @@ impl TexasHoldEm {
                 if let Some(player) = self.players.get_mut(&id) {
                     player.add_chips(refund);
                 }
-                if let Some(player) = self.players.get(&id).map(|p| p.name.clone()) {
+                if let Some(player) = self.players.get(&id).map(|p| p.to_ref()) {
                     self.emit(GameEvent::UncalledBetReturned {
                         player,
                         amount: refund,
@@ -1353,7 +1371,7 @@ impl TexasHoldEm {
                 if let Some(player) = self.players.get_mut(&winner) {
                     player.add_chips(total);
                 }
-                if let Some(player) = self.players.get(&winner).map(|p| p.name.clone()) {
+                if let Some(player) = self.players.get(&winner).map(|p| p.to_ref()) {
                     self.emit(GameEvent::PotAwarded {
                         player,
                         amount: total,
@@ -1381,9 +1399,9 @@ impl TexasHoldEm {
             };
             let comparable = evaluate(&[hand.cards[0], hand.cards[1]], &self.board.cards);
             evaluated.insert(id, comparable);
-            if let Some(name) = self.players.get(&id).map(|p| p.name.clone()) {
+            if let Some(player) = self.players.get(&id).map(|p| p.to_ref()) {
                 self.emit(GameEvent::ShowdownReveal {
-                    player: name,
+                    player,
                     hole: hand.cards.clone(),
                     hand: comparable,
                 });
@@ -1409,7 +1427,7 @@ impl TexasHoldEm {
                     player.add_chips(amount);
                 }
                 let hand = evaluated.get(&id).copied();
-                if let Some(player) = self.players.get(&id).map(|p| p.name.clone()) {
+                if let Some(player) = self.players.get(&id).map(|p| p.to_ref()) {
                     self.emit(GameEvent::PotAwarded {
                         player,
                         amount,
@@ -2694,7 +2712,7 @@ mod tests {
         let events = log.borrow();
         let category = |name: &str| {
             events.iter().find_map(|e| match e {
-                GameEvent::ShowdownReveal { player, hand, .. } if player == name => {
+                GameEvent::ShowdownReveal { player, hand, .. } if player.name == *name => {
                     Some(hand.category)
                 }
                 _ => None,
