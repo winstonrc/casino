@@ -11,6 +11,7 @@
 use std::collections::{HashMap, HashSet};
 
 use rand::seq::SliceRandom;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use casino_cards::card::Card;
@@ -25,7 +26,7 @@ use crate::player::Player;
 use crate::pot::{build_pots, distribute_pots, refund_uncalled};
 
 /// The result of running a betting street.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum RoundOutcome {
     /// Betting completed normally; continue to the next street or showdown.
     Continue,
@@ -33,6 +34,36 @@ pub enum RoundOutcome {
     HandOver,
     /// A player asked to quit the game.
     Quit,
+}
+
+/// One step of driving a betting street without blocking on the caller.
+///
+/// The engine yields this from [`TexasHoldEm::begin_betting_round`] and
+/// [`TexasHoldEm::submit_action`]: it either pauses to ask a specific player to act
+/// (handing back an owned, serializable [`PlayerView`]) or reports that the street
+/// has finished. This is the resumable seam a non-blocking front-end (a network
+/// server, an async UI) drives; the terminal's blocking
+/// [`run_betting_round`](TexasHoldEm::run_betting_round) is a thin wrapper over it.
+#[non_exhaustive]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum BettingStep {
+    /// Paused: `player` must act. `view` is everything they need to decide.
+    AwaitingAction { player: Uuid, view: PlayerView },
+    /// The street is over; the outcome mirrors [`run_betting_round`]'s return.
+    ///
+    /// [`run_betting_round`]: TexasHoldEm::run_betting_round
+    RoundComplete(RoundOutcome),
+}
+
+/// The in-progress state of a single betting street, retained on the engine so the
+/// street can be paused (awaiting a player's action) and resumed across calls.
+struct ActiveBettingRound {
+    street: Street,
+    round: BettingRound,
+    /// Index into `seats` of the next seat to consider.
+    seat: usize,
+    /// The player whose action was requested while paused, if any.
+    awaiting: Option<Uuid>,
 }
 
 /// The core of the Texas hold 'em game.
@@ -71,6 +102,10 @@ pub struct TexasHoldEm {
     hero: Option<Uuid>,
     /// Receives the public narration of the hand. Defaults to a no-op sink.
     observer: Box<dyn GameObserver>,
+    /// The in-progress betting street, if one is paused or being driven. Holds the
+    /// per-street state so a street can be advanced action-by-action; `None`
+    /// between streets and hands. See [`TexasHoldEm::begin_betting_round`].
+    betting: Option<ActiveBettingRound>,
 }
 
 impl TexasHoldEm {
@@ -101,6 +136,7 @@ impl TexasHoldEm {
             hand_number: 0,
             hero: None,
             observer: Box::new(NullObserver),
+            betting: None,
         }
     }
 
@@ -460,7 +496,10 @@ impl TexasHoldEm {
 
     /// Run a betting round for the given street, asking each player's agent to act.
     ///
-    /// Returns [`RoundOutcome::HandOver`] if all but one player folds,
+    /// A thin, blocking wrapper over [`begin_betting_round`](Self::begin_betting_round)
+    /// and [`submit_action`](Self::submit_action): it pumps the resumable state
+    /// machine, sourcing each requested action from that player's agent. Returns
+    /// [`RoundOutcome::HandOver`] if all but one player folds,
     /// [`RoundOutcome::Quit`] if a player quits, and [`RoundOutcome::Continue`]
     /// when betting completes normally.
     pub fn run_betting_round(
@@ -468,9 +507,39 @@ impl TexasHoldEm {
         street: Street,
         agents: &mut HashMap<Uuid, Box<dyn PokerAgent>>,
     ) -> RoundOutcome {
+        let mut step = self.begin_betting_round(street);
+        loop {
+            match step {
+                BettingStep::AwaitingAction { player, view } => {
+                    let action = match agents.get_mut(&player).map(|agent| agent.decide(&view)) {
+                        Some(Ok(action)) => action,
+                        Some(Err(AgentError::Quit)) | Some(Err(AgentError::Eof)) => {
+                            self.abort_betting_round();
+                            return RoundOutcome::Quit;
+                        }
+                        None => PlayerAction::Fold,
+                    };
+                    step = self.submit_action(action);
+                }
+                BettingStep::RoundComplete(outcome) => return outcome,
+            }
+        }
+    }
+
+    /// Begin a betting street, returning the first [`BettingStep`].
+    ///
+    /// The non-blocking entry point: it sets up the street and advances to the
+    /// first player who must act (or straight to completion). Drive the street by
+    /// feeding each requested action back through
+    /// [`submit_action`](Self::submit_action); abandon it with
+    /// [`abort_betting_round`](Self::abort_betting_round).
+    ///
+    /// Precondition: a hand has been dealt up to this street (`begin_hand` plus the
+    /// street's `deal_*`), so every live seat holds hole cards.
+    pub fn begin_betting_round(&mut self, street: Street) -> BettingStep {
         let n = self.seats.len();
         if n == 0 {
-            return RoundOutcome::HandOver;
+            return BettingStep::RoundComplete(RoundOutcome::HandOver);
         }
 
         let actors: Vec<Uuid> = self
@@ -480,7 +549,7 @@ impl TexasHoldEm {
             .filter(|id| !self.folded.contains(id) && !self.all_in.contains(id))
             .collect();
 
-        let (current_bet, committed_seed, bb_option, mut seat) = if street == Street::Preflop {
+        let (current_bet, committed_seed, bb_option, seat) = if street == Street::Preflop {
             let bb_id = self.seats[self.get_big_blind_seat_index()];
             let bb_option = if self.all_in.contains(&bb_id) {
                 None
@@ -498,7 +567,7 @@ impl TexasHoldEm {
             (0, HashMap::new(), None, self.first_to_act_postflop_seat())
         };
 
-        let mut round = BettingRound::new(
+        let round = BettingRound::new(
             &actors,
             current_bet,
             self.big_blind_amount,
@@ -506,80 +575,130 @@ impl TexasHoldEm {
             bb_option,
         );
 
-        loop {
-            if self.live_count() <= 1 {
-                return RoundOutcome::HandOver;
+        // Unconditional assignment: a leftover round can never survive into a new one.
+        self.betting = Some(ActiveBettingRound {
+            street,
+            round,
+            seat,
+            awaiting: None,
+        });
+        self.advance()
+    }
+
+    /// Feed the awaited player's action into the active betting street, returning
+    /// the next [`BettingStep`].
+    ///
+    /// A no-op returning `RoundComplete(Continue)` when no action is actually
+    /// pending (no active round, or not awaiting one), so stale or duplicate input
+    /// — the first thing a network layer hits — cannot panic the engine.
+    pub fn submit_action(&mut self, action: PlayerAction) -> BettingStep {
+        // No active round: stale or duplicate input (the first thing a network
+        // client can get wrong). Define it as a no-op rather than panicking.
+        let Some(mut active) = self.betting.take() else {
+            return BettingStep::RoundComplete(RoundOutcome::Continue);
+        };
+        // Active but not paused on an action: same defensive no-op, round preserved.
+        let Some(id) = active.awaiting.take() else {
+            self.betting = Some(active);
+            return BettingStep::RoundComplete(RoundOutcome::Continue);
+        };
+
+        let chips = self.players.get(&id).map_or(0, |p| p.chips);
+        let resolved = resolve_action(
+            action,
+            chips,
+            active.round.committed(id),
+            active.round.current_bet,
+            active.round.last_raise_increment,
+        )
+        .unwrap_or_else(|_| {
+            // An agent should only return legal actions; treat anything else as a
+            // fold rather than panicking.
+            resolve_action(
+                PlayerAction::Fold,
+                chips,
+                active.round.committed(id),
+                active.round.current_bet,
+                active.round.last_raise_increment,
+            )
+            .expect("fold is always legal")
+        });
+
+        if let Some(player) = self.players.get_mut(&id) {
+            player.subtract_chips(resolved.paid);
+        }
+        *self.contributed.entry(id).or_insert(0) += resolved.paid;
+        self.announce_action(id, &resolved, active.round.current_bet, active.street);
+
+        if resolved.folded {
+            self.folded.insert(id);
+            if let Some(hand) = self.player_hands.remove(&id) {
+                for card in hand.cards {
+                    self.burned.push(card);
+                }
             }
-            if round.is_closed() {
-                break;
+        }
+        if resolved.all_in {
+            self.all_in.insert(id);
+        }
+
+        // Recompute the live set *after* the fold/all-in updates above so the
+        // reopening logic in `apply_action` sees who can still act.
+        let live_after: HashSet<Uuid> = self
+            .seats
+            .iter()
+            .copied()
+            .filter(|p| !self.folded.contains(p) && !self.all_in.contains(p))
+            .collect();
+        active.round.apply_action(id, &resolved, &live_after);
+
+        active.seat = (active.seat + 1) % self.seats.len();
+        self.betting = Some(active);
+        self.advance()
+    }
+
+    /// Discard any in-progress betting street, leaving the engine reusable. Used
+    /// when a hand is abandoned (e.g. a player quits) without awarding pots.
+    pub fn abort_betting_round(&mut self) {
+        self.betting = None;
+    }
+
+    /// Advance the active betting street to the next player who must act, or to
+    /// completion. On completion the active round is cleared (`betting` is left
+    /// `None`); on a pause it is stored back with the awaited player recorded.
+    fn advance(&mut self) -> BettingStep {
+        let n = self.seats.len();
+        let mut active = self
+            .betting
+            .take()
+            .expect("advance called without an active betting round");
+
+        loop {
+            // Order is parity-critical: a single action can both close the round and
+            // drop the table to one live (unfolded) player. Checking `live_count`
+            // first yields `HandOver` (which skips remaining streets), matching the
+            // original loop; flipping the two checks would wrongly return `Continue`.
+            if self.live_count() <= 1 {
+                return BettingStep::RoundComplete(RoundOutcome::HandOver);
+            }
+            if active.round.is_closed() {
+                return BettingStep::RoundComplete(RoundOutcome::Continue);
             }
 
-            let id = self.seats[seat];
-            if self.folded.contains(&id) || self.all_in.contains(&id) || !round.needs_to_act(id) {
-                seat = (seat + 1) % n;
+            let id = self.seats[active.seat];
+            if self.folded.contains(&id)
+                || self.all_in.contains(&id)
+                || !active.round.needs_to_act(id)
+            {
+                active.seat = (active.seat + 1) % n;
                 continue;
             }
 
-            let view = self.build_view(id, street, &round);
-            let action = match agents.get_mut(&id).map(|agent| agent.decide(&view)) {
-                Some(Ok(action)) => action,
-                Some(Err(AgentError::Quit)) | Some(Err(AgentError::Eof)) => {
-                    return RoundOutcome::Quit
-                }
-                None => PlayerAction::Fold,
-            };
-
-            let chips = self.players.get(&id).map_or(0, |p| p.chips);
-            let resolved = resolve_action(
-                action,
-                chips,
-                round.committed(id),
-                round.current_bet,
-                round.last_raise_increment,
-            )
-            .unwrap_or_else(|_| {
-                // An agent should only return legal actions; treat anything else
-                // as a fold rather than panicking.
-                resolve_action(
-                    PlayerAction::Fold,
-                    chips,
-                    round.committed(id),
-                    round.current_bet,
-                    round.last_raise_increment,
-                )
-                .expect("fold is always legal")
-            });
-
-            if let Some(player) = self.players.get_mut(&id) {
-                player.subtract_chips(resolved.paid);
-            }
-            *self.contributed.entry(id).or_insert(0) += resolved.paid;
-            self.announce_action(id, &resolved, round.current_bet, street);
-
-            if resolved.folded {
-                self.folded.insert(id);
-                if let Some(hand) = self.player_hands.remove(&id) {
-                    for card in hand.cards {
-                        self.burned.push(card);
-                    }
-                }
-            }
-            if resolved.all_in {
-                self.all_in.insert(id);
-            }
-
-            let live_after: HashSet<Uuid> = self
-                .seats
-                .iter()
-                .copied()
-                .filter(|p| !self.folded.contains(p) && !self.all_in.contains(p))
-                .collect();
-            round.apply_action(id, &resolved, &live_after);
-
-            seat = (seat + 1) % n;
+            let view = self.build_view(id, active.street, &active.round);
+            active.awaiting = Some(id);
+            self.betting = Some(active);
+            return BettingStep::AwaitingAction { player: id, view };
         }
-
-        RoundOutcome::Continue
     }
 
     /// Seat index of the first player to act pre-flop (under the gun, or the
@@ -798,6 +917,9 @@ impl TexasHoldEm {
         self.contributed.clear();
         self.folded.clear();
         self.all_in.clear();
+        // Defensively drop any in-progress street so an abandoned/partial round
+        // can never leak into the next hand.
+        self.betting = None;
     }
 
     /// Number of cards currently in the deck (used in tests).
@@ -1137,6 +1259,199 @@ mod tests {
         // The whole table was all-in for differing amounts, so someone holds it all.
         let max_stack = game.players.values().map(|p| p.chips).max().unwrap();
         assert!(max_stack >= 100, "a winner should have gathered chips");
+    }
+
+    // --- Resumable betting API (begin_betting_round / submit_action / advance) ---
+
+    /// A call-down decision made purely from the legal actions in the view, so it
+    /// is independent of the (randomly dealt) hole cards. Mirrors `CallingAgent`.
+    fn calling_policy(view: &PlayerView) -> PlayerAction {
+        use crate::betting::LegalAction;
+        if view
+            .legal_actions
+            .iter()
+            .any(|a| matches!(a, LegalAction::Check))
+        {
+            PlayerAction::Check
+        } else if view
+            .legal_actions
+            .iter()
+            .any(|a| matches!(a, LegalAction::Call(_)))
+        {
+            PlayerAction::Call
+        } else if view
+            .legal_actions
+            .iter()
+            .any(|a| matches!(a, LegalAction::AllIn(_)))
+        {
+            PlayerAction::AllIn
+        } else {
+            PlayerAction::Fold
+        }
+    }
+
+    /// Drive one betting street to completion through the resumable API, choosing
+    /// each action with `policy`. Returns the street's `RoundOutcome`.
+    fn drive_street(
+        game: &mut TexasHoldEm,
+        street: Street,
+        mut policy: impl FnMut(&PlayerView) -> PlayerAction,
+    ) -> RoundOutcome {
+        let mut step = game.begin_betting_round(street);
+        loop {
+            match step {
+                BettingStep::AwaitingAction { view, .. } => {
+                    let action = policy(&view);
+                    step = game.submit_action(action);
+                }
+                BettingStep::RoundComplete(outcome) => return outcome,
+            }
+        }
+    }
+
+    /// Per-seat (chips, contributed-this-hand) snapshot in seat order, for parity
+    /// comparisons that don't depend on each game's random player ids.
+    fn seat_snapshot(game: &TexasHoldEm) -> Vec<(u32, u32)> {
+        game.seats
+            .iter()
+            .map(|id| {
+                (
+                    game.players[id].chips,
+                    game.contributed.get(id).copied().unwrap_or(0),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn resumable_street_matches_run_betting_round() {
+        // Same setup driven two ways: the blocking wrapper vs. begin/submit. The
+        // call-down policy ignores hole cards, so the random deal can't diverge them.
+        let stacks = [100u32, 50, 75];
+
+        let mut wrapped = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut wrapped, &stacks);
+        let mut agents: HashMap<Uuid, Box<dyn PokerAgent>> = HashMap::new();
+        for &id in wrapped.seats() {
+            agents.insert(id, Box::new(CallingAgent));
+        }
+        wrapped.begin_hand();
+        let wrapped_outcome = wrapped.run_betting_round(Street::Preflop, &mut agents);
+
+        let mut resumable = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut resumable, &stacks);
+        resumable.begin_hand();
+        let resumable_outcome = drive_street(&mut resumable, Street::Preflop, calling_policy);
+
+        assert_eq!(wrapped_outcome, resumable_outcome);
+        assert_eq!(seat_snapshot(&wrapped), seat_snapshot(&resumable));
+        // The street settled, so no round is left in progress.
+        assert!(resumable.betting.is_none());
+    }
+
+    #[test]
+    fn action_that_closes_and_leaves_one_live_is_hand_over() {
+        // Ordering guard: the final fold both closes betting and drops the table to
+        // one unfolded player. `live_count <= 1` is checked before `is_closed`, so
+        // this must be `HandOver` (not `Continue`).
+        use crate::betting::LegalAction;
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100, 100]);
+        game.begin_hand();
+
+        let mut opened = false;
+        let outcome = drive_street(&mut game, Street::Preflop, |view| {
+            if !opened {
+                opened = true;
+                // First actor min-raises to open the betting.
+                if let Some(LegalAction::RaiseTo { min, .. }) = view
+                    .legal_actions
+                    .iter()
+                    .find(|a| matches!(a, LegalAction::RaiseTo { .. }))
+                {
+                    return PlayerAction::RaiseTo(*min);
+                }
+            }
+            // Everyone else folds.
+            PlayerAction::Fold
+        });
+
+        assert_eq!(outcome, RoundOutcome::HandOver);
+        assert!(game.betting.is_none());
+    }
+
+    #[test]
+    fn begin_betting_round_on_empty_table_is_hand_over() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let step = game.begin_betting_round(Street::Preflop);
+        assert!(matches!(
+            step,
+            BettingStep::RoundComplete(RoundOutcome::HandOver)
+        ));
+        assert!(game.betting.is_none());
+    }
+
+    #[test]
+    fn awaiting_action_yields_the_first_actor_and_serializes() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand();
+
+        let step = game.begin_betting_round(Street::Preflop);
+        let BettingStep::AwaitingAction { player, view } = &step else {
+            panic!("expected to pause awaiting the first actor");
+        };
+        assert!(game.seats.contains(player));
+        assert_eq!(view.you, *player);
+        assert!(
+            !view.legal_actions.is_empty(),
+            "an acting player always has legal actions"
+        );
+
+        // Server-ready: the whole step round-trips through JSON.
+        let json = serde_json::to_string(&step).expect("serialize");
+        let back: BettingStep = serde_json::from_str(&json).expect("deserialize");
+        let BettingStep::AwaitingAction {
+            player: p2,
+            view: v2,
+        } = back
+        else {
+            panic!("expected AwaitingAction after round-trip");
+        };
+        assert_eq!(p2, *player);
+        assert_eq!(v2.legal_actions, view.legal_actions);
+    }
+
+    #[test]
+    fn abort_and_end_hand_clear_an_in_progress_street() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand();
+
+        let _ = game.begin_betting_round(Street::Preflop);
+        assert!(game.betting.is_some(), "paused mid-street");
+        game.abort_betting_round();
+        assert!(game.betting.is_none());
+
+        // end_hand also defensively clears a partial street.
+        game.begin_hand();
+        let _ = game.begin_betting_round(Street::Preflop);
+        assert!(game.betting.is_some());
+        game.end_hand();
+        assert!(game.betting.is_none());
+    }
+
+    #[test]
+    fn submit_action_without_pending_is_a_noop() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        // No active round: defined as a no-op, no panic, state untouched.
+        let step = game.submit_action(PlayerAction::Fold);
+        assert!(matches!(
+            step,
+            BettingStep::RoundComplete(RoundOutcome::Continue)
+        ));
+        assert!(game.betting.is_none());
     }
 
     /// A `GameObserver` that records every event for assertions. Uses a shared
