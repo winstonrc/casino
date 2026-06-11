@@ -579,9 +579,17 @@ impl TexasHoldEm {
     /// Whether a hand is currently in progress (cards dealt but not yet ended).
     /// Mutators that must only run between hands gate on this — note `betting` is
     /// `None` *between streets* even though the hand is live, so checking it alone
-    /// is insufficient.
-    fn hand_in_progress(&self) -> bool {
+    /// is insufficient. Front-ends restoring a saved game use this to decide whether
+    /// to resume an in-progress hand or begin a fresh one.
+    pub fn hand_in_progress(&self) -> bool {
         self.betting.is_some() || !self.player_hands.is_empty()
+    }
+
+    /// The street whose betting round is currently in progress, or `None` when no
+    /// round is active (between streets/hands). Used when resuming a saved hand to
+    /// pick up on the correct street without re-dealing it.
+    pub fn current_street(&self) -> Option<Street> {
+        self.betting.as_ref().map(|b| b.street)
     }
 
     /// Number of players still in the current hand (seated and not folded).
@@ -778,19 +786,34 @@ impl TexasHoldEm {
     /// [`RoundOutcome::HandOver`] if all but one player folds,
     /// [`RoundOutcome::Quit`] if a player quits, and [`RoundOutcome::Continue`]
     /// when betting completes normally.
+    ///
+    /// Two resumption-related behaviors:
+    /// - If a betting round is **already in progress** on entry (e.g. one restored
+    ///   from a saved game), it is *continued* rather than restarted — so resuming a
+    ///   hand mid-street finishes the exact same street.
+    /// - On [`RoundOutcome::Quit`] the in-progress round is **left intact** (not
+    ///   aborted), so the caller can serialize the engine and resume the player on
+    ///   the clock later. Use [`abort_betting_round`](Self::abort_betting_round)
+    ///   explicitly to discard it instead.
     pub fn run_betting_round(
         &mut self,
         street: Street,
         agents: &mut HashMap<Uuid, Box<dyn PokerAgent>>,
     ) -> RoundOutcome {
-        let mut step = self.begin_betting_round(street);
+        let mut step = match self.current_view() {
+            // A round is already active (a resumed hand): continue from the player
+            // on the clock instead of restarting the street.
+            Some((player, view)) => BettingStep::AwaitingAction { player, view },
+            None => self.begin_betting_round(street),
+        };
         loop {
             match step {
                 BettingStep::AwaitingAction { player, view } => {
                     let action = match agents.get_mut(&player).map(|agent| agent.decide(&view)) {
                         Some(Ok(action)) => action,
                         Some(Err(AgentError::Quit)) | Some(Err(AgentError::Eof)) => {
-                            self.abort_betting_round();
+                            // Leave the round paused on this player so the caller can
+                            // serialize and resume here; don't abort.
                             return RoundOutcome::Quit;
                         }
                         None => PlayerAction::Fold,
@@ -1455,6 +1478,14 @@ mod tests {
         }
     }
 
+    /// An agent that always asks to quit — exercises the quit path.
+    struct QuitAgent;
+    impl PokerAgent for QuitAgent {
+        fn decide(&mut self, _view: &PlayerView) -> Result<PlayerAction, AgentError> {
+            Err(AgentError::Quit)
+        }
+    }
+
     /// An agent that always commits all its chips when able.
     struct ShoveAgent;
     impl PokerAgent for ShoveAgent {
@@ -1914,6 +1945,46 @@ mod tests {
         let mut idle = TexasHoldEm::new(0, 10, 1, 2);
         seat_players(&mut idle, &[100, 100]);
         assert!(idle.current_view().is_none());
+    }
+
+    #[test]
+    fn quit_preserves_the_round_and_run_betting_round_resumes_it() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 11);
+        seat_players(&mut game, &[100, 100, 100]);
+        game.begin_hand();
+
+        // The player on the clock quits: the round is left paused on them (not
+        // aborted), exactly the state a front-end would serialize to resume later.
+        let mut quitters: HashMap<Uuid, Box<dyn PokerAgent>> = HashMap::new();
+        for &id in game.seats() {
+            quitters.insert(id, Box::new(QuitAgent));
+        }
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut quitters),
+            RoundOutcome::Quit
+        );
+        assert!(game.hand_in_progress(), "the hand must survive a quit");
+        assert_eq!(game.current_street(), Some(Street::Preflop));
+        assert!(
+            game.current_view().is_some(),
+            "a player is still on the clock after a quit"
+        );
+
+        // Calling run_betting_round again *continues* the same round to completion
+        // rather than restarting the street.
+        let mut callers: HashMap<Uuid, Box<dyn PokerAgent>> = HashMap::new();
+        for &id in game.seats() {
+            callers.insert(id, Box::new(CallingAgent));
+        }
+        let outcome = game.run_betting_round(Street::Preflop, &mut callers);
+        assert!(matches!(
+            outcome,
+            RoundOutcome::Continue | RoundOutcome::HandOver
+        ));
+        assert!(
+            game.current_view().is_none(),
+            "the resumed round finished, so no one is on the clock"
+        );
     }
 
     /// A `GameObserver` that records every event for assertions. Uses a shared
