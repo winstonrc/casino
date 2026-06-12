@@ -160,3 +160,32 @@ To award winners yourself rather than from events, `pot::distribute_pots` return
 one `PotAward` per pot (main first, then side pots), each listing that pot's
 winners and the chips they receive.
 
+## Building on this
+
+Most front-ends only need `play_hand` and `evaluate`, but the engine exposes a few
+seams that aren't obvious from the happy path. If you're building a server, a UI, or
+a learning agent, these are the ones to reach for:
+
+- **Save / resume.** `TexasHoldEm` is `serde`-serializable, so you can persist a
+  game mid-hand and restore it to continue from the exact spot. A restored engine is
+  silent until you re-attach narration with `set_observer` (then `replay_log()` to
+  re-narrate the hand so far for catch-up rendering).
+- **Non-blocking play.** `play_hand` blocks and pulls from agents; under it sits a
+  resumable state machine. `drive_hand()` / `submit_hand_action(action)` yield a
+  `HandStep` (`AwaitingAction { player, view }` or `HandComplete`) so an async
+  front-end drives a whole hand action-by-action. The same shape exists one street
+  down (`begin_betting_round` / `submit_action` → `BettingStep`).
+- **Spectator / broadcast (no hero).** Run with **no hero** (leave `set_hero` unset)
+  and the public event stream leaks no hole cards, so it's safe to broadcast to every
+  seat. `table()` returns a `TableView` (no hole cards at all) for a spectator or
+  lobby; `client_view(player_id)` returns a `ClientView` — the same public view plus
+  only *that* player's own cards and pending decision — to send to one client on
+  (re)connect.
+- **Stable identity.** Every player-bearing event carries a `PlayerRef` (a stable
+  `Uuid` plus display name), so an agent can key a per-opponent model off the `id`
+  rather than the (non-unique) name, and re-find that opponent across hands and
+  reseatings.
+- **Derived metrics.** `PlayerView::metrics()` returns `HandMetrics` — pot odds (and
+  the equity needed to call), stack-to-pot ratio, and stack/call sizes in big blinds
+  — so a training overlay can render correct numbers without re-deriving them.
+

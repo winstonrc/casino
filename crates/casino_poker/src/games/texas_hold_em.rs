@@ -133,6 +133,13 @@ pub struct SeatView {
     pub chips: u32,
     /// Chips this player has committed on the current street.
     pub committed_this_street: u32,
+    /// Cumulative chips this seat has put into the pot across **all** streets of
+    /// the current hand. Distinct from the per-street [`committed_this_street`]:
+    /// this never resets mid-hand, accumulating every street's commitment until
+    /// the hand ends, and so reflects the seat's total stake in the live pot.
+    ///
+    /// [`committed_this_street`]: SeatView::committed_this_street
+    pub contributed_this_hand: u32,
     pub folded: bool,
     pub all_in: bool,
 }
@@ -634,6 +641,7 @@ impl TexasHoldEm {
                     name: player.map(|p| p.name.clone()).unwrap_or_default(),
                     chips: player.map_or(0, |p| p.chips),
                     committed_this_street: self.committed_this_street(id),
+                    contributed_this_hand: self.contributed.get(id).copied().unwrap_or(0),
                     folded: self.folded.contains(id),
                     all_in: self.all_in.contains(id),
                 }
@@ -1397,6 +1405,11 @@ impl TexasHoldEm {
             let Some(hand) = self.player_hands.get(&id) else {
                 continue;
             };
+            // Folded players' hands are drained into `burned` at fold time (see the
+            // fold handling around line 1180), so any `player_hands` entry still
+            // reachable here holds exactly its two dealt hole cards — which is what
+            // makes the two-card indexing below safe.
+            debug_assert!(hand.cards.len() == 2);
             let comparable = evaluate(&[hand.cards[0], hand.cards[1]], &self.board.cards);
             evaluated.insert(id, comparable);
             if let Some(player) = self.players.get(&id).map(|p| p.to_ref()) {
@@ -2135,6 +2148,67 @@ mod tests {
         // cards — the only cards it can ever hold are the public board (empty here).
         let json = serde_json::to_string(&view).expect("serialize table view");
         assert!(json.contains("committed_this_street"));
+    }
+
+    #[test]
+    fn seat_view_contributed_this_hand_accumulates_across_streets() {
+        // `contributed_this_hand` is the seat's running stake in the live pot; it
+        // must grow across streets, while `committed_this_street` resets each street.
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100, 100]);
+        game.begin_hand();
+
+        // Pre-flop: everyone calls/checks down to the big blind.
+        drive_street(&mut game, Street::Preflop, calling_policy);
+
+        // After the street settles, the running totals equal each seat's blind/call
+        // and the per-street commitment has been cleared (no round in progress).
+        let preflop: Vec<SeatView> = game.table().seats;
+        for seat in &preflop {
+            assert_eq!(
+                seat.committed_this_street, 0,
+                "committed_this_street resets once the street is no longer active"
+            );
+            assert_eq!(
+                seat.contributed_this_hand,
+                game.contributed.get(&seat.id).copied().unwrap_or(0),
+                "SeatView mirrors the engine's per-hand contribution map"
+            );
+        }
+        // The distinguishing property: every seat posted a blind or called preflop, so
+        // its cumulative stake is non-zero even though `committed_this_street` reset to
+        // 0 above. A field wrongly aliased to the per-street counter would read 0 here.
+        for seat in &preflop {
+            assert!(
+                seat.contributed_this_hand > 0,
+                "contributed_this_hand retains the preflop stake after the street settles"
+            );
+        }
+        let preflop_total: u32 = preflop.iter().map(|s| s.contributed_this_hand).sum();
+
+        // Second street: more chips go in, so the per-hand totals strictly grow.
+        game.deal_flop();
+        drive_street(&mut game, Street::Flop, calling_policy);
+
+        let flop: Vec<SeatView> = game.table().seats;
+        let flop_total: u32 = flop.iter().map(|s| s.contributed_this_hand).sum();
+        assert!(
+            flop_total >= preflop_total,
+            "contributed_this_hand never shrinks within a hand"
+        );
+        for seat in &flop {
+            assert_eq!(
+                seat.contributed_this_hand,
+                game.contributed.get(&seat.id).copied().unwrap_or(0),
+                "post-flop contributions still mirror the engine map across streets"
+            );
+        }
+        // The big blind covered the flop check, so the dealt blinds make the running
+        // total strictly exceed any single street's commitment.
+        assert!(
+            preflop_total > 0,
+            "blinds put chips into the per-hand total before any voluntary action"
+        );
     }
 
     #[test]

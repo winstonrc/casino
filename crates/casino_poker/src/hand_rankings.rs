@@ -859,6 +859,24 @@ mod comparable_hand_tests {
 
 #[cfg(test)]
 mod proptest_oracle {
+    //! Differential (oracle) testing for the hand evaluator.
+    //!
+    //! Rather than re-asserting hand-crafted expectations, these tests cross-check
+    //! the production evaluator against [`oracle_five`] — a deliberately *separate*,
+    //! naive 5-card evaluator written from scratch. Two independent implementations
+    //! of the same specification are unlikely to share the same bug, so any
+    //! disagreement on a randomly generated input localizes a real error to one of
+    //! the two code paths rather than to a flawed fixture.
+    //!
+    //! The three properties collectively pin down correctness:
+    //! - **5-card agreement**: for every 5-card hand, `score_five` equals the oracle
+    //!   (same category and tiebreak ranks).
+    //! - **7-card = best-5 subset**: a 7-card evaluation equals the maximum over its
+    //!   twenty-one 5-card subsets, tying the 7-card path back to the trusted 5-card
+    //!   one.
+    //! - **Comparison trichotomy**: ordering is total and consistent — exactly one of
+    //!   `<`, `==`, `>` holds for any pair, and it matches the oracle's verdict.
+
     use super::*;
 
     use std::collections::{BTreeMap, BTreeSet};

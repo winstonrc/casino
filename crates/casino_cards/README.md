@@ -1,4 +1,4 @@
-[![crates.io](https://img.shields.io/crates/v/casino_cards.svg)](https://crates.io/crates/casino_cards) [![Cards Test](https://github.com/winstonrc/casino/actions/workflows/casino_cards.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions/workflows/casino_cards.yml)
+[![crates.io](https://img.shields.io/crates/v/casino_cards.svg)](https://crates.io/crates/casino_cards) [![CI](https://github.com/winstonrc/casino/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions/workflows/ci.yml)
 
 # casino_cards
 

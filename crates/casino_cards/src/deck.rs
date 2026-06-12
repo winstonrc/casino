@@ -43,35 +43,28 @@ impl Deck {
     }
 
     /// Deals a card with the default face_up value.
+    ///
+    /// Returns `None` when the deck is exhausted.
     pub fn deal(&mut self) -> Option<Card> {
-        if let Some(card) = self.cards.pop() {
-            Some(card)
-        } else {
-            eprintln!("Deck is empty.");
-            None
-        }
+        self.cards.pop()
     }
 
     /// Deals a card face up with the Rank and Suit visible.
+    ///
+    /// Returns `None` when the deck is exhausted.
     pub fn deal_face_up(&mut self) -> Option<Card> {
-        if let Some(mut card) = self.cards.pop() {
-            card.face_up = true;
-            Some(card)
-        } else {
-            eprintln!("Deck is empty.");
-            None
-        }
+        let mut card = self.cards.pop()?;
+        card.face_up = true;
+        Some(card)
     }
 
     /// Deals a card face down with the Rank and Suit hidden.
+    ///
+    /// Returns `None` when the deck is exhausted.
     pub fn deal_face_down(&mut self) -> Option<Card> {
-        if let Some(mut card) = self.cards.pop() {
-            card.face_up = false;
-            Some(card)
-        } else {
-            eprintln!("Deck is empty.");
-            None
-        }
+        let mut card = self.cards.pop()?;
+        card.face_up = false;
+        Some(card)
     }
 
     /// Inserts a given card into the provided position in the deck.
@@ -217,6 +210,15 @@ mod tests {
         let json = serde_json::to_string(&deck).expect("serialize");
         let back: Deck = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(deck, back);
+    }
+
+    #[test]
+    fn dealing_from_empty_deck_returns_none() {
+        let mut deck = Deck::from_cards(Vec::new());
+        assert!(deck.is_empty());
+        assert_eq!(deck.deal(), None);
+        assert_eq!(deck.deal_face_up(), None);
+        assert_eq!(deck.deal_face_down(), None);
     }
 
     #[test]
