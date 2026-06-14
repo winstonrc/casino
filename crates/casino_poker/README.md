@@ -42,7 +42,7 @@ and supplies a `PokerAgent` per player to choose actions:
 use std::collections::HashMap;
 
 use casino_poker::agent::{AgentError, LegalAction, PlayerAction, PlayerView, PokerAgent, Street};
-use casino_poker::games::texas_hold_em::{RoundOutcome, TexasHoldEm};
+use casino_poker::games::texas_hold_em::TexasHoldEm;
 use casino_poker::uuid::Uuid;
 
 // A trivial agent that checks when possible, otherwise calls, otherwise folds.
@@ -76,16 +76,35 @@ for &id in game.seats() {
 
 // Play one hand: the engine deals each street, runs its betting, and awards the
 // pots, sourcing each action from that player's agent.
-game.play_hand(&mut agents);
+game.play_hand(&mut agents).unwrap();
 ```
 
 `play_hand` is the blocking convenience over the **resumable hand state machine**:
 `drive_hand()` (begin a fresh hand or resume the one in progress) and
-`submit_hand_action(action)` yield a `HandStep` (`AwaitingAction { player, view }` or
-`HandComplete`), so an async front-end (a network server, a UI) drives a whole hand
-action-by-action without re-implementing the deal/bet/award sequence. The same shape
-exists one level down for a single street (`begin_betting_round`/`submit_action` →
-`BettingStep`, with the blocking `run_betting_round` wrapper).
+`submit_hand_action(player, decision_id, action)` yield a `HandStep`
+(`AwaitingAction(PendingAction)` or `HandComplete`), so an async front-end drives a
+whole hand without re-implementing the deal/bet/award sequence:
+
+```rust
+use casino_poker::betting::PlayerAction;
+use casino_poker::games::texas_hold_em::{HandStep, TexasHoldEm};
+
+fn drive_one_action(game: &mut TexasHoldEm, action: PlayerAction) {
+    let HandStep::AwaitingAction(pending) = game.drive_hand() else {
+        return;
+    };
+    let next = game
+        .submit_hand_action(pending.player, pending.decision_id, action)
+        .expect("the action still matches the pending decision");
+    // Persist `game` and continue from `next`.
+}
+```
+
+Every prompt has a serialized `DecisionId`. Repeated reads and save/restore retain
+that ID; the engine accepts it once and rejects stale retries, wrong-player input,
+and illegal poker actions with `ActionSubmissionError` without changing state.
+The same identified submission contract exists one street down through
+`begin_betting_round` / `submit_action`.
 
 For **save/resume and reconnection**, `TexasHoldEm` is `serde`-serializable: persist
 it mid-hand and restore it to continue from the exact spot (re-attach an observer
@@ -99,9 +118,9 @@ need only implement `decide`; the `observe` (watch the `GameEvent` stream) and
 learn and persist across hands and sessions without any engine change. Every
 player-bearing event carries a `PlayerRef` (a stable `Uuid` plus display name), so an
 agent can key a per-opponent model off the `id` rather than the (non-unique) name. The
-engine stays agent-agnostic: it records each hand's events, and `recent_events()`
-borrows that per-hand stream so a front-end can forward it into its agents' `observe`
-(e.g. once per completed hand) without the engine owning the agents.
+engine stays agent-agnostic: `public_events()` returns an owned, hero-redacted copy
+that a front-end can forward into its agents' `observe` without exposing private
+cards.
 
 For a front-end training overlay, `PlayerView::metrics()` returns derived
 `HandMetrics` — pot odds (and the equity needed to call), stack-to-pot ratio, and
@@ -115,13 +134,12 @@ tests), and both it and `HandMetrics` can gain fields in a minor release.
 
 ### Observing a hand
 
-The engine does no I/O. Instead it emits **public** narration (only what every
-player at the table can see — opponents' hole cards are never broadcast mid-hand)
-as serializable `GameEvent`s to a `GameObserver`. Set one with `set_observer`;
-without one the engine runs silently. The stream carries everything a PokerStars
-hand history needs, so a front-end can render exactly that; render it in a terminal,
-log it, or forward it over a network. Designate the perspective
-player with `set_hero` so `HoleCardsDealt` carries their cards (for `Dealt to …`).
+The engine does no I/O. It emits serializable `GameEvent`s to a `GameObserver`.
+This direct observer stream is perspective-aware: `set_hero` makes
+`HoleCardsDealt` carry that player's private cards for a hand-history
+`Dealt to ...` line. Do not broadcast that raw stream. Use `public_events()` for a
+hero-redacted shared stream, or `client_view(player_id)` for a per-player reconnect
+snapshot that retains only that player's private cards.
 
 ```rust
 use casino_poker::events::{GameEvent, GameObserver};
@@ -170,17 +188,12 @@ a learning agent, these are the ones to reach for:
   game mid-hand and restore it to continue from the exact spot. A restored engine is
   silent until you re-attach narration with `set_observer` (then `replay_log()` to
   re-narrate the hand so far for catch-up rendering).
-- **Non-blocking play.** `play_hand` blocks and pulls from agents; under it sits a
-  resumable state machine. `drive_hand()` / `submit_hand_action(action)` yield a
-  `HandStep` (`AwaitingAction { player, view }` or `HandComplete`) so an async
-  front-end drives a whole hand action-by-action. The same shape exists one street
-  down (`begin_betting_round` / `submit_action` → `BettingStep`).
-- **Spectator / broadcast (no hero).** Run with **no hero** (leave `set_hero` unset)
-  and the public event stream leaks no hole cards, so it's safe to broadcast to every
-  seat. `table()` returns a `TableView` (no hole cards at all) for a spectator or
-  lobby; `client_view(player_id)` returns a `ClientView` — the same public view plus
-  only *that* player's own cards and pending decision — to send to one client on
-  (re)connect.
+- **Non-blocking play.** `drive_hand()` yields an identified `PendingAction`;
+  submit its player, decision ID, and chosen action together. Rejected submissions
+  are mutation-free, so a client can fetch `pending_action()` and resynchronize.
+- **Spectator / broadcast.** `public_events()` always redacts the optional hero
+  payload. `table()` contains no hole cards, while `client_view(player_id)` adds
+  only that player's cards and pending decision.
 - **Stable identity.** Every player-bearing event carries a `PlayerRef` (a stable
   `Uuid` plus display name), so an agent can key a per-opponent model off the `id`
   rather than the (non-unique) name, and re-find that opponent across hands and
@@ -188,4 +201,3 @@ a learning agent, these are the ones to reach for:
 - **Derived metrics.** `PlayerView::metrics()` returns `HandMetrics` — pot odds (and
   the equity needed to call), stack-to-pot ratio, and stack/call sizes in big blinds
   — so a training overlay can render correct numbers without re-deriving them.
-

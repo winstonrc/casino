@@ -2,12 +2,15 @@
 //!
 //! The [`TexasHoldEm`](crate::games::texas_hold_em::TexasHoldEm) engine is
 //! I/O-free: instead of printing, it emits [`GameEvent`]s to a [`GameObserver`].
-//! A terminal front-end renders them; a future TUI, GUI, or network layer can
-//! render or forward the same stream (events are serializable).
+//! A terminal front-end can render the direct observer stream. Network layers
+//! should instead use the filtered public or authenticated client copies below.
 //!
-//! Events carry only **public** information — what every player at the table
-//! would see. A player's own hole cards are private and are read separately via
-//! the engine's getters, never broadcast as an event.
+//! Most event data is public table narration. When a hero is configured,
+//! [`GameEvent::HoleCardsDealt`] carries that perspective player's private cards
+//! to the direct observer stream and [`TexasHoldEm::replay_log`](crate::games::texas_hold_em::TexasHoldEm::replay_log).
+//! Use [`TexasHoldEm::public_events`](crate::games::texas_hold_em::TexasHoldEm::public_events)
+//! or [`TexasHoldEm::client_view`](crate::games::texas_hold_em::TexasHoldEm::client_view)
+//! for redacted network/agent-facing copies.
 
 use serde::{Deserialize, Serialize};
 
@@ -69,7 +72,9 @@ pub enum ActionView {
     },
 }
 
-/// A piece of public narration emitted during a hand.
+/// A hand-narration event. Most variants are public; `HoleCardsDealt.hero` may
+/// contain the configured perspective player's private cards on the direct
+/// observer stream.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub enum GameEvent {
@@ -157,7 +162,9 @@ impl GameObserver for NullObserver {
 ///
 /// The engine holds a single observer, so this composes multiple sinks behind one
 /// `set_observer` call — e.g. a terminal renderer, a session logger, and a network
-/// broadcaster all receiving the same stream.
+/// broadcaster all receiving the same stream. The observer stream is
+/// perspective-aware: do not broadcast it to multiple players when a hero is set;
+/// use `public_events` or per-player `client_view` instead.
 pub struct BroadcastObserver {
     observers: Vec<Box<dyn GameObserver>>,
 }

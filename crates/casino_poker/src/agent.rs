@@ -277,12 +277,10 @@ impl PlayerViewBuilder {
 pub trait PokerAgent {
     fn decide(&mut self, view: &PlayerView) -> Result<PlayerAction, AgentError>;
 
-    /// Observe a public [`GameEvent`] as a hand unfolds. The default is a no-op, so
-    /// simple agents ignore it; a model-backed opponent uses it to update its model
-    /// of the table (action tendencies, [`ShowdownReveal`](GameEvent::ShowdownReveal)
-    /// holdings, pot outcomes). The engine emits this stream to its
-    /// [`GameObserver`](crate::events::GameObserver); a front-end that wants its
-    /// agents to learn fans the same events into them through this hook.
+    /// Observe a public [`GameEvent`] as a hand unfolds. The default is a no-op.
+    /// Front-ends should source agent events from
+    /// [`TexasHoldEm::public_events`](crate::games::texas_hold_em::TexasHoldEm::public_events),
+    /// which redacts the optional private hero payload.
     fn observe(&mut self, _event: &GameEvent) {}
 
     /// Called once when a play session ends, so a stateful agent can persist what it

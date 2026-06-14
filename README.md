@@ -29,13 +29,13 @@ $ cargo doc --no-deps --open  # browse the API docs
   cross-checked in tests against an independent brute-force oracle.
 - Players act through a `PokerAgent` trait that receives an owned `PlayerView`
   snapshot — including the opponent roster (`seats`) and button — and can `observe`
-  the public `GameEvent` stream, which keys players by a stable `PlayerRef` (`id` +
-  name) for per-opponent modeling. Humans and any AI — including a future model-backed
+  the hero-redacted `public_events()` stream, which keys players by a stable
+  `PlayerRef` (`id` + name) for per-opponent modeling. Humans and any AI — including a future model-backed
   opponent — implement the same trait, so a smarter agent can be swapped in without
   engine changes, and the owned/serializable view can be handed to an external model.
 - The engine is **I/O-free**: instead of printing, it emits serializable
-  `GameEvent`s to a `GameObserver`, so a terminal, TUI, GUI, or network layer can
-  render or forward the same stream.
+  `GameEvent`s to a perspective-aware `GameObserver`. Network callers use
+  `public_events()` or `client_view()` for enforced private-card filtering.
 
 ## Rules simplifications
 

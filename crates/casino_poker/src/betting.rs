@@ -16,6 +16,7 @@
 //!   already-acted players the right to re-raise (the incomplete-raise rule).
 
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -54,7 +55,7 @@ pub enum LegalAction {
 }
 
 /// Why an action could not be applied.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ActionError {
     /// Tried to check while owing chips.
     CannotCheck,
@@ -64,7 +65,24 @@ pub enum ActionError {
     InsufficientChips,
     /// Raise target did not exceed the current bet.
     NotARaise,
+    /// Betting was not reopened after an incomplete all-in raise.
+    RaiseNotAllowed,
 }
+
+impl fmt::Display for ActionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::CannotCheck => "cannot check while facing a bet",
+            Self::RaiseTooSmall => "raise is below the minimum",
+            Self::InsufficientChips => "insufficient chips for that raise",
+            Self::NotARaise => "raise target must exceed the current bet",
+            Self::RaiseNotAllowed => "betting was not reopened for this player",
+        };
+        f.write_str(message)
+    }
+}
+
+impl std::error::Error for ActionError {}
 
 /// The chip movement and state effects of applying a [`PlayerAction`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -261,8 +279,10 @@ pub struct BettingRound {
     committed_this_round: HashMap<Uuid, u32>,
     /// Live players who still owe an action this street.
     needs_to_act: HashSet<Uuid>,
-    /// Live players restricted to call/fold (no raise) due to an incomplete all-in.
-    raise_disallowed: HashSet<Uuid>,
+    /// Bet level each player faced when they last acted. A player may raise again
+    /// once subsequent incomplete all-ins cumulatively increase the bet by at
+    /// least `last_raise_increment`.
+    acted_at_bet: HashMap<Uuid, u32>,
     /// Pre-flop only: the big blind still has the option to check or raise.
     bb_option_pending: bool,
     /// The big blind's id (pre-flop), used to clear the option when they act.
@@ -291,7 +311,7 @@ impl BettingRound {
             last_raise_increment: big_blind_amount,
             committed_this_round: committed_seed,
             needs_to_act: actors.iter().copied().collect(),
-            raise_disallowed: HashSet::new(),
+            acted_at_bet: HashMap::new(),
             bb_option_pending: bb_option.is_some(),
             big_blind: bb_option,
         }
@@ -315,7 +335,9 @@ impl BettingRound {
     /// Whether the player may raise (vs. being restricted to call/fold by an
     /// incomplete all-in).
     pub fn may_raise(&self, id: Uuid) -> bool {
-        !self.raise_disallowed.contains(&id)
+        self.acted_at_bet.get(&id).is_none_or(|acted_at| {
+            self.current_bet.saturating_sub(*acted_at) >= self.last_raise_increment
+        })
     }
 
     /// Whether betting for this street is complete.
@@ -332,9 +354,8 @@ impl BettingRound {
     pub fn apply_action(&mut self, id: Uuid, resolved: &Resolved, live_after: &HashSet<Uuid>) {
         *self.committed_this_round.entry(id).or_insert(0) += resolved.paid;
 
-        // The actor has now acted; clear any prior restriction on them.
+        // The actor has now acted.
         self.needs_to_act.remove(&id);
-        self.raise_disallowed.remove(&id);
 
         if let Some(target) = resolved.raised_to {
             if target > self.current_bet {
@@ -345,21 +366,23 @@ impl BettingRound {
                     self.last_raise_increment = increment;
                     // Full reopening: everyone else still able to act must respond
                     // with full rights.
-                    self.raise_disallowed.clear();
                     self.needs_to_act = live_after.iter().copied().filter(|p| *p != id).collect();
                 } else {
                     // Incomplete all-in: players who already acted must respond
-                    // (to call the extra or fold) but may not re-raise. Players
-                    // who had not yet acted keep their full rights.
+                    // to the extra chips. Whether cumulative short raises have
+                    // restored their raise rights is derived by `may_raise`.
                     for &p in live_after {
-                        if p != id && !self.needs_to_act.contains(&p) {
+                        if p != id && self.acted_at_bet.contains_key(&p) {
                             self.needs_to_act.insert(p);
-                            self.raise_disallowed.insert(p);
                         }
                     }
                 }
             }
         }
+
+        // Record the level this action reached or called. Later incomplete raises
+        // are measured cumulatively from here.
+        self.acted_at_bet.insert(id, self.current_bet);
 
         // Any raise pre-flop, or the big blind acting on its option, ends the option.
         if resolved.raised_to.is_some() || self.big_blind == Some(id) {
@@ -537,5 +560,55 @@ mod tests {
         assert!(round.needs_to_act(b));
         assert!(!round.may_raise(a));
         assert!(!round.may_raise(b));
+    }
+
+    #[test]
+    fn cumulative_incomplete_all_ins_reopen_raising() {
+        let (a, b, c, d) = (id(1), id(2), id(3), id(4));
+        let actors = [a, b, c, d];
+        let mut round = BettingRound::new(&actors, 0, 2, HashMap::new(), None);
+        let all_live = HashSet::from([a, b, c, d]);
+
+        step(&mut round, a, PlayerAction::RaiseTo(10), 100, &all_live);
+        step(&mut round, b, PlayerAction::Call, 100, &all_live);
+        step(
+            &mut round,
+            c,
+            PlayerAction::AllIn,
+            15,
+            &HashSet::from([a, b, d]),
+        );
+        assert!(!round.may_raise(a));
+        step(
+            &mut round,
+            d,
+            PlayerAction::AllIn,
+            20,
+            &HashSet::from([a, b]),
+        );
+
+        assert_eq!(round.current_bet, 20);
+        assert!(round.may_raise(a));
+        assert!(round.may_raise(b));
+    }
+
+    #[test]
+    fn player_who_has_not_acted_keeps_raise_rights_after_short_all_in() {
+        let (a, b, c) = (id(1), id(2), id(3));
+        let actors = [a, b, c];
+        let mut round = BettingRound::new(&actors, 0, 2, HashMap::new(), None);
+        let all_live = HashSet::from([a, b, c]);
+
+        step(&mut round, a, PlayerAction::RaiseTo(10), 100, &all_live);
+        step(
+            &mut round,
+            b,
+            PlayerAction::AllIn,
+            15,
+            &HashSet::from([a, c]),
+        );
+
+        assert!(round.needs_to_act(c));
+        assert!(round.may_raise(c));
     }
 }

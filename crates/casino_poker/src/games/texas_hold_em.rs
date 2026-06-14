@@ -9,6 +9,7 @@
 //! Side pots are computed at showdown from total contributions (see [`crate::pot`]).
 
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
@@ -21,7 +22,9 @@ use casino_cards::deck::Deck;
 use casino_cards::hand::Hand;
 
 use crate::agent::{AgentError, PlayerView, PokerAgent, Street};
-use crate::betting::{legal_actions, resolve_action, BettingRound, PlayerAction, Resolved};
+use crate::betting::{
+    legal_actions, resolve_action, ActionError, BettingRound, PlayerAction, Resolved,
+};
 use crate::events::{ActionView, Blind, GameEvent, GameObserver, NullObserver, PotKind, SeatInfo};
 use crate::hand_rankings::{evaluate, ComparableHand};
 use crate::player::Player;
@@ -36,6 +39,97 @@ pub enum RoundOutcome {
     HandOver,
     /// A player asked to quit the game.
     Quit,
+    /// The agent's input ended unexpectedly.
+    Eof,
+}
+
+/// Stable identity for one pending decision.
+///
+/// It survives serialization and changes only when the engine advances to a new
+/// player decision, allowing retrying or asynchronous clients to reject stale input.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub struct DecisionId(u64);
+
+/// One identified player decision yielded by either state machine.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PendingAction {
+    pub decision_id: DecisionId,
+    pub player: Uuid,
+    pub view: PlayerView,
+}
+
+/// Why a submitted action was rejected.
+///
+/// Rejection is transactional: the engine is not mutated and the same
+/// [`PendingAction`] remains current. Decision identity is checked before player
+/// identity, so a submission with both values wrong reports `StaleDecision`.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ActionSubmissionError {
+    NoActionPending,
+    WrongPlayer {
+        expected: Uuid,
+        submitted: Uuid,
+    },
+    StaleDecision {
+        expected: DecisionId,
+        submitted: DecisionId,
+    },
+    IllegalAction(ActionError),
+}
+
+impl fmt::Display for ActionSubmissionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoActionPending => f.write_str("no action is pending"),
+            Self::WrongPlayer {
+                expected,
+                submitted,
+            } => write!(f, "expected player {expected}, received {submitted}"),
+            Self::StaleDecision {
+                expected,
+                submitted,
+            } => write!(
+                f,
+                "expected decision {:?}, received {:?}",
+                expected, submitted
+            ),
+            Self::IllegalAction(error) => write!(f, "illegal action: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for ActionSubmissionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::IllegalAction(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+/// Failure from an agent-driven blocking wrapper.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum PlayError {
+    MissingAgent(Uuid),
+    Submission(ActionSubmissionError),
+}
+
+impl fmt::Display for PlayError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingAgent(player) => write!(f, "no agent registered for player {player}"),
+            Self::Submission(error) => write!(f, "action submission failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for PlayError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Submission(error) => Some(error),
+            Self::MissingAgent(_) => None,
+        }
+    }
 }
 
 /// One step of driving a betting street without blocking on the caller.
@@ -49,8 +143,8 @@ pub enum RoundOutcome {
 #[non_exhaustive]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BettingStep {
-    /// Paused: `player` must act. `view` is everything they need to decide.
-    AwaitingAction { player: Uuid, view: PlayerView },
+    /// Paused on one identified decision.
+    AwaitingAction(PendingAction),
     /// The street is over; the outcome mirrors [`run_betting_round`]'s return.
     ///
     /// [`run_betting_round`]: TexasHoldEm::run_betting_round
@@ -67,18 +161,20 @@ pub enum BettingStep {
 #[non_exhaustive]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum HandStep {
-    /// Paused: `player` must act. `view` is everything they need to decide.
-    AwaitingAction { player: Uuid, view: PlayerView },
+    /// Paused on one identified decision.
+    AwaitingAction(PendingAction),
     /// The hand is fully played, awarded, and ended.
     HandComplete,
 }
 
 /// The result of driving a whole hand with [`play_hand`](TexasHoldEm::play_hand):
-/// either it completed, or a player quit (leaving the hand paused for resumption).
+/// completion or a resumable interruption, preserving whether the player chose to
+/// quit or their input ended unexpectedly.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum HandOutcome {
     Complete,
     Quit,
+    Eof,
 }
 
 /// The in-progress state of a single betting street, retained on the engine so the
@@ -89,8 +185,8 @@ struct ActiveBettingRound {
     round: BettingRound,
     /// Index into `seats` of the next seat to consider.
     seat: usize,
-    /// The player whose action was requested while paused, if any.
-    awaiting: Option<Uuid>,
+    /// The identified decision currently awaiting input, if any.
+    awaiting: Option<(Uuid, DecisionId)>,
 }
 
 /// A serializable, read-only snapshot of the **public** table state — the
@@ -148,13 +244,9 @@ pub struct SeatView {
 /// public [`TableView`], that player's own private state, and the hand's narration
 /// so far. Produced by [`TexasHoldEm::client_view`].
 ///
-/// Leak-safe by construction: `hole` and `view` carry only the *requesting* player's
-/// cards, and `recent_events` is the public event stream — which contains opponents'
-/// hole cards only at showdown (`ShowdownReveal`) or, via `HoleCardsDealt`, the
-/// single designated hero. A server broadcasting to multiple players must therefore
-/// run with **no hero** (`set_hero` unset) so the shared event stream leaks nothing;
-/// per-player cards then travel only in `hole`/`view`. (A single-player terminal
-/// keeps the human as hero, which only ever exposes that human's own cards.)
+/// Leak-safe by construction: `hole` and `pending_action` carry only the requesting
+/// player's cards, while `recent_events` redacts another configured hero's private
+/// deal. Public showdown reveals remain visible.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ClientView {
@@ -164,10 +256,8 @@ pub struct ClientView {
     pub you: Uuid,
     /// Your two hole cards, or `None` if you have folded/mucked or hold no hand.
     pub hole: Option<[Card; 2]>,
-    /// Whether it is your turn to act.
-    pub to_act: bool,
-    /// Your decision view (legal actions, amounts, …) — `Some` only on your turn.
-    pub view: Option<PlayerView>,
+    /// Your pending decision, when it is your turn.
+    pub pending_action: Option<PendingAction>,
     /// This hand's narration so far, in order, for catch-up rendering.
     pub recent_events: Vec<GameEvent>,
 }
@@ -222,8 +312,10 @@ pub struct TexasHoldEm {
     /// The perspective player whose hole cards appear in the hand history's
     /// `Dealt to …` line. `None` runs with no perspective (e.g. all-bot tables).
     hero: Option<Uuid>,
-    /// Receives the public narration of the hand. Defaults to a no-op sink. Not
-    /// serialized (a trait object); re-attach with [`set_observer`] after restore.
+    /// Receives perspective-aware hand narration. Defaults to a no-op sink. When a
+    /// hero is configured this stream contains that player's private deal; use
+    /// [`public_events`](Self::public_events) for broadcast. Not serialized (a trait
+    /// object); re-attach with [`set_observer`] after restore.
     ///
     /// [`set_observer`]: TexasHoldEm::set_observer
     #[serde(skip, default = "default_observer")]
@@ -232,6 +324,12 @@ pub struct TexasHoldEm {
     /// per-street state so a street can be advanced action-by-action; `None`
     /// between streets and hands. See [`TexasHoldEm::begin_betting_round`].
     betting: Option<ActiveBettingRound>,
+    /// Most recently completed street when its successor has not started yet.
+    #[serde(default)]
+    completed_betting_street: Option<Street>,
+    /// Monotonic source for decision identities. Incremented only for a new prompt.
+    #[serde(default)]
+    next_decision_id: u64,
     /// The RNG driving shuffles and seat randomization. Not serialized; restored
     /// engines re-seed from entropy (see [`default_rng`] and [`reseed`]).
     ///
@@ -275,6 +373,8 @@ impl TexasHoldEm {
             hero: None,
             observer: Box::new(NullObserver),
             betting: None,
+            completed_betting_street: None,
+            next_decision_id: 0,
             rng: default_rng(),
             event_log: Vec::new(),
         }
@@ -309,8 +409,11 @@ impl TexasHoldEm {
         self.rng = StdRng::seed_from_u64(seed);
     }
 
-    /// Designate the perspective player for hand histories (their hole cards show
-    /// in the `Dealt to …` line). Typically the human at a terminal.
+    /// Designate the private perspective used by newly emitted observer events and
+    /// [`replay_log`](Self::replay_log). Replay retains recorded hole cards only
+    /// when they belong to the current hero, so changing perspective cannot expose
+    /// the previous hero's cards. Filtered public/client event access never exposes
+    /// private cards to another player.
     pub fn set_hero(&mut self, hero: Uuid) {
         self.hero = Some(hero);
     }
@@ -337,21 +440,32 @@ impl TexasHoldEm {
     /// grow the log).
     pub fn replay_log(&mut self) {
         // Clone so we can borrow the observer mutably while reading the log.
-        let events = self.event_log.clone();
+        let events = self.events_for(self.hero);
         for event in &events {
             self.observer.notify(event);
         }
     }
 
-    /// This hand's events so far, in emission order (cleared when a hand begins).
+    /// Return an owned, public copy of this hand's events in emission order.
     ///
-    /// The public, hole-card-free narration stream — identical for every player. A
-    /// front-end forwards these to its agents' [`observe`](crate::agent::PokerAgent::observe)
-    /// (e.g. once per completed hand) to drive opponent modeling without the engine
-    /// owning the agents. Borrowed, so it's allocation-free; use
-    /// [`client_view`](Self::client_view) when a per-player owned copy is wanted.
-    pub fn recent_events(&self) -> &[GameEvent] {
-        &self.event_log
+    /// The optional private hero payload is always redacted; publicly revealed
+    /// showdown cards remain. This is the stream to broadcast or pass to agents.
+    pub fn public_events(&self) -> Vec<GameEvent> {
+        self.events_for(None)
+    }
+
+    fn events_for(&self, player_id: Option<Uuid>) -> Vec<GameEvent> {
+        self.event_log
+            .iter()
+            .cloned()
+            .map(|event| match event {
+                GameEvent::HoleCardsDealt { hero } => {
+                    let hero = hero.filter(|(player, _)| Some(player.id) == player_id);
+                    GameEvent::HoleCardsDealt { hero }
+                }
+                event => event,
+            })
+            .collect()
     }
 
     /// Create a new player with zero chips.
@@ -590,7 +704,9 @@ impl TexasHoldEm {
     /// no betting round is paused on a decision (between streets/hands, or while
     /// the engine is skipping folded/all-in seats).
     pub fn to_act(&self) -> Option<Uuid> {
-        self.betting.as_ref().and_then(|b| b.awaiting)
+        self.betting
+            .as_ref()
+            .and_then(|b| b.awaiting.map(|(player, _)| player))
     }
 
     /// The amount to match on the current street, or `0` when no round is active.
@@ -664,10 +780,9 @@ impl TexasHoldEm {
         }
     }
 
-    /// The player currently on the clock and the [`PlayerView`] they need to act,
-    /// or `None` when no decision is pending. Unlike [`begin_betting_round`] /
-    /// [`submit_action`], this is **read-only** — it does not advance or reset the
-    /// round.
+    /// The identified decision currently on the clock, or `None` when no action is
+    /// pending. This is read-only: repeated calls return the same [`DecisionId`] and
+    /// do not advance or reset the round.
     ///
     /// This is the reconnection seam: after deserializing a game paused mid-street,
     /// call it to re-derive the awaited player's prompt (to render their UI or feed
@@ -675,23 +790,23 @@ impl TexasHoldEm {
     ///
     /// [`begin_betting_round`]: Self::begin_betting_round
     /// [`submit_action`]: Self::submit_action
-    pub fn current_view(&self) -> Option<(Uuid, PlayerView)> {
+    pub fn pending_action(&self) -> Option<PendingAction> {
         let active = self.betting.as_ref()?;
-        let id = active.awaiting?;
-        Some((id, self.build_view(id, active.street, &active.round)))
+        let (player, decision_id) = active.awaiting?;
+        Some(PendingAction {
+            decision_id,
+            player,
+            view: self.build_view(player, active.street, &active.round),
+        })
     }
 
     /// Build the [`ClientView`] for one player — the public table, that player's own
     /// private state, and the hand's events so far — for (re)joining a game. See
     /// [`ClientView`] for the hidden-information guarantees.
     pub fn client_view(&self, player_id: Uuid) -> ClientView {
-        let to_act = self.to_act() == Some(player_id);
-        // Their decision view only when it's their turn (so it's their own cards).
-        let view = if to_act {
-            self.current_view().map(|(_, view)| view)
-        } else {
-            None
-        };
+        let pending_action = self
+            .pending_action()
+            .filter(|pending| pending.player == player_id);
         let hole = self
             .player_hands
             .get(&player_id)
@@ -700,9 +815,8 @@ impl TexasHoldEm {
             table: self.table(),
             you: player_id,
             hole,
-            to_act,
-            view,
-            recent_events: self.event_log.clone(),
+            pending_action,
+            recent_events: self.events_for(Some(player_id)),
         }
     }
 
@@ -761,6 +875,7 @@ impl TexasHoldEm {
         // Fresh hand: drop the previous hand's narration so the log holds only this
         // hand. (Resume goes through `drive_hand`, not here, so it keeps the log.)
         self.event_log.clear();
+        self.completed_betting_street = None;
         self.hand_number += 1;
         // Emitted before blinds are posted, so the seat stacks are pre-blind.
         let seats: Vec<SeatInfo> = self
@@ -820,7 +935,10 @@ impl TexasHoldEm {
             player.subtract_chips(posted);
         }
         *self.contributed.entry(id).or_insert(0) += posted;
-        let all_in = posted < blind_amount;
+        let all_in = self
+            .players
+            .get(&id)
+            .is_some_and(|player| player.chips == 0);
         if all_in {
             self.all_in.insert(id);
         }
@@ -857,6 +975,7 @@ impl TexasHoldEm {
 
     /// Burn a card, then deal the three flop cards to the board.
     pub fn deal_flop(&mut self) {
+        self.completed_betting_street = None;
         if let Some(card) = self.deal_card() {
             self.burned.push(card);
         }
@@ -870,12 +989,14 @@ impl TexasHoldEm {
 
     /// Burn a card, then deal the turn card to the board.
     pub fn deal_turn(&mut self) {
+        self.completed_betting_street = None;
         self.deal_single_board_card();
         self.emit_street_dealt(Street::Turn);
     }
 
     /// Burn a card, then deal the river card to the board.
     pub fn deal_river(&mut self) {
+        self.completed_betting_street = None;
         self.deal_single_board_card();
         self.emit_street_dealt(Street::River);
     }
@@ -917,43 +1038,49 @@ impl TexasHoldEm {
     /// and [`submit_action`](Self::submit_action): it pumps the resumable state
     /// machine, sourcing each requested action from that player's agent. Returns
     /// [`RoundOutcome::HandOver`] if all but one player folds,
-    /// [`RoundOutcome::Quit`] if a player quits, and [`RoundOutcome::Continue`]
-    /// when betting completes normally.
+    /// [`RoundOutcome::Quit`] if a player quits, [`RoundOutcome::Eof`] if input
+    /// ends unexpectedly, and [`RoundOutcome::Continue`] when betting completes.
     ///
     /// Two resumption-related behaviors:
     /// - If a betting round is **already in progress** on entry (e.g. one restored
     ///   from a saved game), it is *continued* rather than restarted — so resuming a
     ///   hand mid-street finishes the exact same street.
-    /// - On [`RoundOutcome::Quit`] the in-progress round is **left intact** (not
-    ///   aborted), so the caller can serialize the engine and resume the player on
-    ///   the clock later. Use [`abort_betting_round`](Self::abort_betting_round)
-    ///   explicitly to discard it instead.
+    /// - On [`RoundOutcome::Quit`] or [`RoundOutcome::Eof`] the in-progress round
+    ///   is left intact, so the caller can serialize and resume the player on the
+    ///   clock later. Use [`abort_betting_round`](Self::abort_betting_round)
+    ///   explicitly to discard it.
     pub fn run_betting_round(
         &mut self,
         street: Street,
         agents: &mut HashMap<Uuid, Box<dyn PokerAgent>>,
-    ) -> RoundOutcome {
-        let mut step = match self.current_view() {
+    ) -> Result<RoundOutcome, PlayError> {
+        let mut step = match self.pending_action() {
             // A round is already active (a resumed hand): continue from the player
             // on the clock instead of restarting the street.
-            Some((player, view)) => BettingStep::AwaitingAction { player, view },
+            Some(pending) => BettingStep::AwaitingAction(pending),
             None => self.begin_betting_round(street),
         };
         loop {
             match step {
-                BettingStep::AwaitingAction { player, view } => {
-                    let action = match agents.get_mut(&player).map(|agent| agent.decide(&view)) {
+                BettingStep::AwaitingAction(pending) => {
+                    let action = match agents
+                        .get_mut(&pending.player)
+                        .map(|agent| agent.decide(&pending.view))
+                    {
                         Some(Ok(action)) => action,
-                        Some(Err(AgentError::Quit)) | Some(Err(AgentError::Eof)) => {
+                        Some(Err(AgentError::Quit)) => {
                             // Leave the round paused on this player so the caller can
                             // serialize and resume here; don't abort.
-                            return RoundOutcome::Quit;
+                            return Ok(RoundOutcome::Quit);
                         }
-                        None => PlayerAction::Fold,
+                        Some(Err(AgentError::Eof)) => return Ok(RoundOutcome::Eof),
+                        None => return Err(PlayError::MissingAgent(pending.player)),
                     };
-                    step = self.submit_action(action);
+                    step = self
+                        .submit_action(pending.player, pending.decision_id, action)
+                        .map_err(PlayError::Submission)?;
                 }
-                BettingStep::RoundComplete(outcome) => return outcome,
+                BettingStep::RoundComplete(outcome) => return Ok(outcome),
             }
         }
     }
@@ -974,48 +1101,68 @@ impl TexasHoldEm {
             return self.drive_hand_from(Street::Preflop, step);
         }
         // Resume an in-progress hand.
-        if let Some((player, view)) = self.current_view() {
-            return HandStep::AwaitingAction { player, view };
+        if let Some(pending) = self.pending_action() {
+            return HandStep::AwaitingAction(pending);
         }
-        // Defensive: a hand is in progress but no betting round is active (e.g. a
-        // legacy save taken between streets). Re-open the street implied by the board
-        // — `begin_betting_round` never deals, so the existing board is untouched.
+        if let Some(street) = self.completed_betting_street {
+            return self
+                .drive_hand_from(street, BettingStep::RoundComplete(RoundOutcome::Continue));
+        }
+        // Defensive legacy-save path: a hand is in progress but no betting round
+        // or completed-street marker is active. Re-open the street implied by the
+        // board; `begin_betting_round` never deals.
         let street = self.street_for_board();
         let step = self.begin_betting_round(street);
         self.drive_hand_from(street, step)
     }
 
-    /// Feed the awaited player's action into the hand, returning the next
-    /// [`HandStep`]. When the action closes a betting round, the engine deals the
-    /// next street (or awards the pot at the river / when all but one have folded)
-    /// before yielding the next decision or [`HandComplete`](HandStep::HandComplete).
-    pub fn submit_hand_action(&mut self, action: PlayerAction) -> HandStep {
+    /// Submit the player, decision identity, and action yielded by
+    /// [`drive_hand`](Self::drive_hand), returning the next [`HandStep`].
+    ///
+    /// A stale ID, wrong player, or illegal poker action returns an error without
+    /// changing any engine state. When a valid action closes a round, the engine
+    /// advances through dealing or awards before yielding again.
+    pub fn submit_hand_action(
+        &mut self,
+        player: Uuid,
+        decision_id: DecisionId,
+        action: PlayerAction,
+    ) -> Result<HandStep, ActionSubmissionError> {
         // The street being bet, captured before `submit_action` closes it (which
         // nulls `betting`, so `current_street()` would then read `None`).
-        let street = self.current_street().unwrap_or(Street::Preflop);
-        let step = self.submit_action(action);
-        self.drive_hand_from(street, step)
+        let street = self
+            .current_street()
+            .ok_or(ActionSubmissionError::NoActionPending)?;
+        let step = self.submit_action(player, decision_id, action)?;
+        Ok(self.drive_hand_from(street, step))
     }
 
-    /// Blocking convenience over [`drive_hand`]/[`submit_hand_action`]: plays the
-    /// hand to completion, sourcing each action from that player's agent. Mirrors
-    /// [`run_betting_round`](Self::run_betting_round) one level up. `Quit`/`Eof`
-    /// leaves the hand paused (resumable) and returns [`HandOutcome::Quit`].
-    pub fn play_hand(&mut self, agents: &mut HashMap<Uuid, Box<dyn PokerAgent>>) -> HandOutcome {
+    /// Blocking convenience over [`Self::drive_hand`]/[`Self::submit_hand_action`]:
+    /// plays the hand to completion, sourcing each action from that player's agent. Mirrors
+    /// [`run_betting_round`](Self::run_betting_round) one level up. `Quit` and
+    /// `Eof` leave the hand paused and remain distinct resumable outcomes.
+    pub fn play_hand(
+        &mut self,
+        agents: &mut HashMap<Uuid, Box<dyn PokerAgent>>,
+    ) -> Result<HandOutcome, PlayError> {
         let mut step = self.drive_hand();
         loop {
             match step {
-                HandStep::AwaitingAction { player, view } => {
-                    let action = match agents.get_mut(&player).map(|agent| agent.decide(&view)) {
+                HandStep::AwaitingAction(pending) => {
+                    let action = match agents
+                        .get_mut(&pending.player)
+                        .map(|agent| agent.decide(&pending.view))
+                    {
                         Some(Ok(action)) => action,
-                        Some(Err(AgentError::Quit)) | Some(Err(AgentError::Eof)) => {
-                            return HandOutcome::Quit;
-                        }
-                        None => PlayerAction::Fold,
+                        Some(Err(AgentError::Quit)) => return Ok(HandOutcome::Quit),
+                        Some(Err(AgentError::Eof)) => return Ok(HandOutcome::Eof),
+                        None => return Err(PlayError::MissingAgent(pending.player)),
                     };
-                    step = self.submit_hand_action(action);
+                    step = self
+                        .submit_hand_action(pending.player, pending.decision_id, action)
+                        .map_err(PlayError::Submission)?;
                 }
-                HandStep::HandComplete => return HandOutcome::Complete,
+                HandStep::HandComplete => return Ok(HandOutcome::Complete),
             }
         }
     }
@@ -1027,8 +1174,8 @@ impl TexasHoldEm {
     fn drive_hand_from(&mut self, mut street: Street, mut step: BettingStep) -> HandStep {
         loop {
             match step {
-                BettingStep::AwaitingAction { player, view } => {
-                    return HandStep::AwaitingAction { player, view };
+                BettingStep::AwaitingAction(pending) => {
+                    return HandStep::AwaitingAction(pending);
                 }
                 BettingStep::RoundComplete(RoundOutcome::HandOver) => {
                     self.award_pots();
@@ -1038,6 +1185,9 @@ impl TexasHoldEm {
                 BettingStep::RoundComplete(RoundOutcome::Quit) => {
                     // Unreachable: this path never sources agent quits.
                     unreachable!("drive_hand_from does not source Quit")
+                }
+                BettingStep::RoundComplete(RoundOutcome::Eof) => {
+                    unreachable!("drive_hand_from does not source Eof")
                 }
                 BettingStep::RoundComplete(RoundOutcome::Continue) => match street {
                     Street::Preflop => {
@@ -1086,8 +1236,21 @@ impl TexasHoldEm {
     /// [`abort_betting_round`](Self::abort_betting_round).
     ///
     /// Precondition: a hand has been dealt up to this street (`begin_hand` plus the
-    /// street's `deal_*`), so every live seat holds hole cards.
+    /// street's `deal_*`), so every live seat holds hole cards. If a decision is
+    /// already pending, this method returns it unchanged rather than resetting the
+    /// active street.
+    ///
+    /// If a round is already awaiting action, this method is idempotent: it returns
+    /// the existing [`PendingAction`] without resetting commitments or allocating a
+    /// new [`DecisionId`].
     pub fn begin_betting_round(&mut self, street: Street) -> BettingStep {
+        if let Some(pending) = self.pending_action() {
+            return BettingStep::AwaitingAction(pending);
+        }
+        if self.completed_betting_street == Some(street) {
+            return BettingStep::RoundComplete(RoundOutcome::Continue);
+        }
+
         let n = self.seats.len();
         if n == 0 {
             return BettingStep::RoundComplete(RoundOutcome::HandOver);
@@ -1133,27 +1296,44 @@ impl TexasHoldEm {
             seat,
             awaiting: None,
         });
+        self.completed_betting_street = None;
         self.advance()
     }
 
-    /// Feed the awaited player's action into the active betting street, returning
-    /// the next [`BettingStep`].
+    /// Submit the player, decision identity, and action yielded by
+    /// [`begin_betting_round`](Self::begin_betting_round) or
+    /// [`pending_action`](Self::pending_action).
     ///
-    /// A no-op returning `RoundComplete(Continue)` when no action is actually
-    /// pending (no active round, or not awaiting one), so stale or duplicate input
-    /// — the first thing a network layer hits — cannot panic the engine.
-    pub fn submit_action(&mut self, action: PlayerAction) -> BettingStep {
-        // No active round: stale or duplicate input (the first thing a network
-        // client can get wrong). Define it as a no-op rather than panicking.
-        let Some(mut active) = self.betting.take() else {
-            return BettingStep::RoundComplete(RoundOutcome::Continue);
-        };
-        // Active but not paused on an action: same defensive no-op, round preserved.
-        let Some(id) = active.awaiting.take() else {
-            self.betting = Some(active);
-            return BettingStep::RoundComplete(RoundOutcome::Continue);
-        };
+    /// Validation happens before mutation. No pending action, a stale ID, the wrong
+    /// player, or an illegal poker action returns [`ActionSubmissionError`] and
+    /// preserves the current decision exactly.
+    pub fn submit_action(
+        &mut self,
+        player: Uuid,
+        decision_id: DecisionId,
+        action: PlayerAction,
+    ) -> Result<BettingStep, ActionSubmissionError> {
+        let active = self
+            .betting
+            .as_ref()
+            .ok_or(ActionSubmissionError::NoActionPending)?;
+        let (expected_player, expected_decision) = active
+            .awaiting
+            .ok_or(ActionSubmissionError::NoActionPending)?;
+        if decision_id != expected_decision {
+            return Err(ActionSubmissionError::StaleDecision {
+                expected: expected_decision,
+                submitted: decision_id,
+            });
+        }
+        if player != expected_player {
+            return Err(ActionSubmissionError::WrongPlayer {
+                expected: expected_player,
+                submitted: player,
+            });
+        }
 
+        let id = player;
         let chips = self.players.get(&id).map_or(0, |p| p.chips);
         let resolved = resolve_action(
             action,
@@ -1162,21 +1342,21 @@ impl TexasHoldEm {
             active.round.current_bet,
             active.round.last_raise_increment,
         )
-        .unwrap_or_else(|_| {
-            // An agent should only return legal actions; treat anything else as a
-            // fold rather than panicking.
-            resolve_action(
-                PlayerAction::Fold,
-                chips,
-                active.round.committed(id),
-                active.round.current_bet,
-                active.round.last_raise_increment,
-            )
-            .expect("fold is always legal")
-        });
+        .map_err(ActionSubmissionError::IllegalAction)?;
+        if resolved.raised_to.is_some() && !active.round.may_raise(id) {
+            return Err(ActionSubmissionError::IllegalAction(
+                ActionError::RaiseNotAllowed,
+            ));
+        }
 
-        if let Some(player) = self.players.get_mut(&id) {
-            player.subtract_chips(resolved.paid);
+        let mut active = self
+            .betting
+            .take()
+            .expect("validated active betting round disappeared");
+        active.awaiting = None;
+
+        if let Some(player_state) = self.players.get_mut(&id) {
+            player_state.subtract_chips(resolved.paid);
         }
         *self.contributed.entry(id).or_insert(0) += resolved.paid;
         self.announce_action(id, &resolved, active.round.current_bet, active.street);
@@ -1205,13 +1385,14 @@ impl TexasHoldEm {
 
         active.seat = (active.seat + 1) % self.seats.len();
         self.betting = Some(active);
-        self.advance()
+        Ok(self.advance())
     }
 
     /// Discard any in-progress betting street, leaving the engine reusable. Used
     /// when a hand is abandoned (e.g. a player quits) without awarding pots.
     pub fn abort_betting_round(&mut self) {
         self.betting = None;
+        self.completed_betting_street = None;
     }
 
     /// Advance the active betting street to the next player who must act, or to
@@ -1232,7 +1413,20 @@ impl TexasHoldEm {
             if self.live_count() <= 1 {
                 return BettingStep::RoundComplete(RoundOutcome::HandOver);
             }
+            let actionable: Vec<Uuid> = self
+                .seats
+                .iter()
+                .copied()
+                .filter(|id| !self.folded.contains(id) && !self.all_in.contains(id))
+                .collect();
+            if actionable.is_empty()
+                || (actionable.len() == 1 && active.round.owed(actionable[0]) == 0)
+            {
+                self.completed_betting_street = Some(active.street);
+                return BettingStep::RoundComplete(RoundOutcome::Continue);
+            }
             if active.round.is_closed() {
+                self.completed_betting_street = Some(active.street);
                 return BettingStep::RoundComplete(RoundOutcome::Continue);
             }
 
@@ -1246,9 +1440,18 @@ impl TexasHoldEm {
             }
 
             let view = self.build_view(id, active.street, &active.round);
-            active.awaiting = Some(id);
+            self.next_decision_id = self
+                .next_decision_id
+                .checked_add(1)
+                .expect("decision id space exhausted");
+            let decision_id = DecisionId(self.next_decision_id);
+            active.awaiting = Some((id, decision_id));
             self.betting = Some(active);
-            return BettingStep::AwaitingAction { player: id, view };
+            return BettingStep::AwaitingAction(PendingAction {
+                decision_id,
+                player: id,
+                view,
+            });
         }
     }
 
@@ -1478,6 +1681,7 @@ impl TexasHoldEm {
         // Defensively drop any in-progress street so an abandoned/partial round
         // can never leak into the next hand.
         self.betting = None;
+        self.completed_betting_street = None;
     }
 
     /// Number of cards currently in the deck (used in tests).
@@ -1745,6 +1949,20 @@ mod tests {
         }
     }
 
+    struct EofAgent;
+    impl PokerAgent for EofAgent {
+        fn decide(&mut self, _view: &PlayerView) -> Result<PlayerAction, AgentError> {
+            Err(AgentError::Eof)
+        }
+    }
+
+    struct IllegalAgent;
+    impl PokerAgent for IllegalAgent {
+        fn decide(&mut self, _view: &PlayerView) -> Result<PlayerAction, AgentError> {
+            Ok(PlayerAction::Check)
+        }
+    }
+
     /// An agent that always commits all its chips when able.
     struct ShoveAgent;
     impl PokerAgent for ShoveAgent {
@@ -1787,7 +2005,7 @@ mod tests {
                 Street::Turn => game.deal_turn(),
                 Street::River => game.deal_river(),
             }
-            if game.run_betting_round(street, &mut agents) == RoundOutcome::HandOver {
+            if game.run_betting_round(street, &mut agents).unwrap() == RoundOutcome::HandOver {
                 break;
             }
         }
@@ -1866,9 +2084,11 @@ mod tests {
         let mut step = game.begin_betting_round(street);
         loop {
             match step {
-                BettingStep::AwaitingAction { view, .. } => {
-                    let action = policy(&view);
-                    step = game.submit_action(action);
+                BettingStep::AwaitingAction(pending) => {
+                    let action = policy(&pending.view);
+                    step = game
+                        .submit_action(pending.player, pending.decision_id, action)
+                        .unwrap();
                 }
                 BettingStep::RoundComplete(outcome) => return outcome,
             }
@@ -1909,7 +2129,7 @@ mod tests {
         resumable.begin_hand();
         let resumable_outcome = drive_street(&mut resumable, Street::Preflop, calling_policy);
 
-        assert_eq!(wrapped_outcome, resumable_outcome);
+        assert_eq!(wrapped_outcome, Ok(resumable_outcome));
         assert_eq!(seat_snapshot(&wrapped), seat_snapshot(&resumable));
         // The street settled, so no round is left in progress.
         assert!(resumable.betting.is_none());
@@ -1964,28 +2184,25 @@ mod tests {
         game.begin_hand();
 
         let step = game.begin_betting_round(Street::Preflop);
-        let BettingStep::AwaitingAction { player, view } = &step else {
+        let BettingStep::AwaitingAction(pending) = &step else {
             panic!("expected to pause awaiting the first actor");
         };
-        assert!(game.seats.contains(player));
-        assert_eq!(view.you, *player);
+        assert!(game.seats.contains(&pending.player));
+        assert_eq!(pending.view.you, pending.player);
         assert!(
-            !view.legal_actions.is_empty(),
+            !pending.view.legal_actions.is_empty(),
             "an acting player always has legal actions"
         );
 
         // Server-ready: the whole step round-trips through JSON.
         let json = serde_json::to_string(&step).expect("serialize");
         let back: BettingStep = serde_json::from_str(&json).expect("deserialize");
-        let BettingStep::AwaitingAction {
-            player: p2,
-            view: v2,
-        } = back
-        else {
+        let BettingStep::AwaitingAction(back_pending) = back else {
             panic!("expected AwaitingAction after round-trip");
         };
-        assert_eq!(p2, *player);
-        assert_eq!(v2.legal_actions, view.legal_actions);
+        assert_eq!(back_pending.player, pending.player);
+        assert_eq!(back_pending.decision_id, pending.decision_id);
+        assert_eq!(back_pending.view.legal_actions, pending.view.legal_actions);
     }
 
     #[test]
@@ -2008,16 +2225,370 @@ mod tests {
     }
 
     #[test]
-    fn submit_action_without_pending_is_a_noop() {
+    fn submit_action_without_pending_is_rejected() {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         seat_players(&mut game, &[100, 100]);
-        // No active round: defined as a no-op, no panic, state untouched.
-        let step = game.submit_action(PlayerAction::Fold);
+        let result = game.submit_action(Uuid::nil(), DecisionId(1), PlayerAction::Fold);
+        assert!(matches!(
+            result,
+            Err(ActionSubmissionError::NoActionPending)
+        ));
+        assert!(game.betting.is_none());
+    }
+
+    #[test]
+    fn rejected_submission_preserves_state() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 17);
+        seat_players(&mut game, &[100, 100, 100]);
+        game.begin_hand();
+        let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
+            panic!("expected a pending decision");
+        };
+        let before = serde_json::to_string(&game).unwrap();
+
+        let wrong_player = *game
+            .seats()
+            .iter()
+            .find(|&&id| id != pending.player)
+            .unwrap();
+        assert!(matches!(
+            game.submit_action(wrong_player, pending.decision_id, PlayerAction::Fold),
+            Err(ActionSubmissionError::WrongPlayer { .. })
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+
+        assert!(matches!(
+            game.submit_action(
+                pending.player,
+                DecisionId(pending.decision_id.0 + 1),
+                PlayerAction::Fold
+            ),
+            Err(ActionSubmissionError::StaleDecision { .. })
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+        assert!(matches!(
+            game.submit_action(
+                wrong_player,
+                DecisionId(pending.decision_id.0 + 1),
+                PlayerAction::Fold
+            ),
+            Err(ActionSubmissionError::StaleDecision { .. })
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+        assert_eq!(
+            game.pending_action().unwrap().decision_id,
+            pending.decision_id
+        );
+    }
+
+    #[test]
+    fn exact_blind_stacks_are_all_in_and_never_prompted() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[1, 2]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        game.begin_hand();
+
+        assert!(ids.iter().all(|id| game.is_all_in(id)));
+        assert!(ids.iter().all(|id| game.player(id).unwrap().chips == 0));
+        assert!(
+            log.borrow()
+                .iter()
+                .filter(|event| matches!(event, GameEvent::BlindPosted { all_in: true, .. }))
+                .count()
+                == 2
+        );
+        assert!(matches!(
+            game.begin_betting_round(Street::Preflop),
+            BettingStep::RoundComplete(RoundOutcome::Continue)
+        ));
+        assert!(game.pending_action().is_none());
+    }
+
+    #[test]
+    fn zero_stack_blinds_are_all_in_and_never_prompted() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[0, 0]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        game.begin_hand();
+
+        assert!(ids.iter().all(|id| game.is_all_in(id)));
+        assert_eq!(
+            log.borrow()
+                .iter()
+                .filter(|event| matches!(
+                    event,
+                    GameEvent::BlindPosted {
+                        amount: 0,
+                        all_in: true,
+                        ..
+                    }
+                ))
+                .count(),
+            2
+        );
+        assert!(matches!(
+            game.begin_betting_round(Street::Preflop),
+            BettingStep::RoundComplete(RoundOutcome::Continue)
+        ));
+    }
+
+    #[test]
+    fn short_big_blind_keeps_configured_bring_in() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 1]);
+        game.begin_hand();
+        assert!(game.is_all_in(&ids[1]));
+
+        let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
+            panic!("the button should still act");
+        };
+        assert_eq!(pending.view.current_bet, 2);
+        assert_eq!(pending.view.amount_owed, 1);
+    }
+
+    #[test]
+    fn multiway_short_big_blind_preserves_action_order_and_bring_in() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 100, 1]);
+        game.begin_hand();
+        assert!(game.is_all_in(&ids[2]));
+
+        let BettingStep::AwaitingAction(under_the_gun) = game.begin_betting_round(Street::Preflop)
+        else {
+            panic!("expected under-the-gun action");
+        };
+        assert_eq!(under_the_gun.player, ids[0]);
+        assert_eq!(under_the_gun.view.current_bet, 2);
+        assert_eq!(under_the_gun.view.amount_owed, 2);
+
+        let BettingStep::AwaitingAction(small_blind) = game
+            .submit_action(
+                under_the_gun.player,
+                under_the_gun.decision_id,
+                PlayerAction::Call,
+            )
+            .unwrap()
+        else {
+            panic!("expected small-blind action");
+        };
+        assert_eq!(small_blind.player, ids[1]);
+        assert_eq!(small_blind.view.amount_owed, 1);
+    }
+
+    fn reach_incomplete_raise(game: &mut TexasHoldEm) -> (PendingAction, PendingAction) {
+        game.begin_hand();
+        drive_street(game, Street::Preflop, calling_policy);
+        game.deal_flop();
+
+        let BettingStep::AwaitingAction(opener) = game.begin_betting_round(Street::Flop) else {
+            panic!("expected opener");
+        };
+        let step = game
+            .submit_action(opener.player, opener.decision_id, PlayerAction::RaiseTo(10))
+            .unwrap();
+        let BettingStep::AwaitingAction(caller) = step else {
+            panic!("expected caller");
+        };
+        let step = game
+            .submit_action(caller.player, caller.decision_id, PlayerAction::Call)
+            .unwrap();
+        let BettingStep::AwaitingAction(shover) = step else {
+            panic!("expected shover");
+        };
+        let step = game
+            .submit_action(shover.player, shover.decision_id, PlayerAction::AllIn)
+            .unwrap();
+        let BettingStep::AwaitingAction(reopened) = step else {
+            panic!("prior actors must respond to the incomplete raise");
+        };
+        (reopened, shover)
+    }
+
+    #[test]
+    fn incomplete_raise_rejects_reraise_without_mutation() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[17, 100, 100]);
+        let (pending, _) = reach_incomplete_raise(&mut game);
+        assert!(!pending
+            .view
+            .legal_actions
+            .iter()
+            .any(|action| matches!(action, crate::betting::LegalAction::RaiseTo { .. })));
+        let before = serde_json::to_string(&game).unwrap();
+
+        assert_eq!(
+            game.submit_action(
+                pending.player,
+                pending.decision_id,
+                PlayerAction::RaiseTo(30),
+            )
+            .unwrap_err(),
+            ActionSubmissionError::IllegalAction(ActionError::RaiseNotAllowed)
+        );
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+
+        assert_eq!(
+            game.submit_action(pending.player, pending.decision_id, PlayerAction::AllIn)
+                .unwrap_err(),
+            ActionSubmissionError::IllegalAction(ActionError::RaiseNotAllowed)
+        );
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn repeated_begin_returns_the_same_pending_decision_without_resetting() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100, 100]);
+        game.begin_hand();
+        let BettingStep::AwaitingAction(first) = game.begin_betting_round(Street::Preflop) else {
+            panic!("expected a decision");
+        };
+        let before = serde_json::to_string(&game).unwrap();
+        let BettingStep::AwaitingAction(repeated) = game.begin_betting_round(Street::Preflop)
+        else {
+            panic!("expected the existing decision");
+        };
+
+        assert_eq!(repeated.decision_id, first.decision_id);
+        assert_eq!(repeated.player, first.player);
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn repeated_begin_after_completion_does_not_reopen_the_street() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 33);
+        seat_players(&mut game, &[100, 100, 100]);
+        game.begin_hand();
+        assert_eq!(
+            drive_street(&mut game, Street::Preflop, calling_policy),
+            RoundOutcome::Continue
+        );
+        let before = serde_json::to_string(&game).unwrap();
+
+        assert!(matches!(
+            game.begin_betting_round(Street::Preflop),
+            BettingStep::RoundComplete(RoundOutcome::Continue)
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn lone_actionable_player_is_not_prompted_when_nothing_is_owed() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 1, 2]);
+        game.begin_hand();
+        let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
+            panic!("the remaining player must respond to the blinds");
+        };
+        let step = game
+            .submit_action(pending.player, pending.decision_id, PlayerAction::Call)
+            .unwrap();
         assert!(matches!(
             step,
             BettingStep::RoundComplete(RoundOutcome::Continue)
         ));
-        assert!(game.betting.is_none());
+
+        game.deal_flop();
+        assert!(matches!(
+            game.begin_betting_round(Street::Flop),
+            BettingStep::RoundComplete(RoundOutcome::Continue)
+        ));
+    }
+
+    #[test]
+    fn completed_street_survives_serde_and_advances_instead_of_reopening() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 31);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand();
+        assert_eq!(
+            drive_street(&mut game, Street::Preflop, calling_policy),
+            RoundOutcome::Continue
+        );
+        assert_eq!(game.board().cards.len(), 0);
+
+        let json = serde_json::to_string(&game).unwrap();
+        let mut restored: TexasHoldEm = serde_json::from_str(&json).unwrap();
+        let step = restored.drive_hand();
+
+        assert_eq!(restored.board().cards.len(), 3);
+        assert!(matches!(step, HandStep::AwaitingAction(_)));
+        assert_eq!(restored.current_street(), Some(Street::Flop));
+    }
+
+    #[test]
+    fn incomplete_raise_allows_short_calling_all_in() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[17, 17, 100]);
+        let (pending, _) = reach_incomplete_raise(&mut game);
+
+        let result = game.submit_action(pending.player, pending.decision_id, PlayerAction::AllIn);
+        assert!(result.is_ok());
+        assert!(game.is_all_in(&pending.player));
+        assert_eq!(game.committed_this_street(&pending.player), 15);
+        let stacks: u32 = game.players.values().map(|player| player.chips).sum();
+        assert_eq!(stacks + game.pot_total(), 134);
+    }
+
+    #[test]
+    fn cumulative_short_all_ins_reopen_raising_through_engine() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let total = 239;
+        let ids = seat_players(&mut game, &[100, 100, 17, 22]);
+        game.begin_hand();
+        drive_street(&mut game, Street::Preflop, calling_policy);
+        game.deal_flop();
+
+        let BettingStep::AwaitingAction(opener) = game.begin_betting_round(Street::Flop) else {
+            panic!("expected opener");
+        };
+        assert_eq!(opener.player, ids[1]);
+        let BettingStep::AwaitingAction(first_shover) = game
+            .submit_action(opener.player, opener.decision_id, PlayerAction::RaiseTo(10))
+            .unwrap()
+        else {
+            panic!("expected first short stack");
+        };
+        let BettingStep::AwaitingAction(second_shover) = game
+            .submit_action(
+                first_shover.player,
+                first_shover.decision_id,
+                PlayerAction::AllIn,
+            )
+            .unwrap()
+        else {
+            panic!("expected second short stack");
+        };
+        let BettingStep::AwaitingAction(not_yet_acted) = game
+            .submit_action(
+                second_shover.player,
+                second_shover.decision_id,
+                PlayerAction::AllIn,
+            )
+            .unwrap()
+        else {
+            panic!("expected the player who has not acted");
+        };
+        let BettingStep::AwaitingAction(reopened) = game
+            .submit_action(
+                not_yet_acted.player,
+                not_yet_acted.decision_id,
+                PlayerAction::Call,
+            )
+            .unwrap()
+        else {
+            panic!("expected action to return to the opener");
+        };
+
+        assert_eq!(reopened.player, opener.player);
+        assert!(reopened
+            .view
+            .legal_actions
+            .iter()
+            .any(|action| matches!(action, crate::betting::LegalAction::RaiseTo { .. })));
+        let stacks: u32 = game.players.values().map(|player| player.chips).sum();
+        assert_eq!(stacks + game.pot_total(), total);
     }
 
     // --- Capability additions: serde, determinism, observability, robustness ---
@@ -2037,12 +2608,14 @@ mod tests {
         seat_players(&mut subject, &[100, 100, 100]);
         subject.begin_hand();
         let mut step = subject.begin_betting_round(Street::Preflop);
-        if let BettingStep::AwaitingAction { view, .. } = &step {
-            let action = calling_policy(view);
-            step = subject.submit_action(action);
+        if let BettingStep::AwaitingAction(pending) = &step {
+            let action = calling_policy(&pending.view);
+            step = subject
+                .submit_action(pending.player, pending.decision_id, action)
+                .unwrap();
         }
         assert!(
-            matches!(step, BettingStep::AwaitingAction { .. }),
+            matches!(step, BettingStep::AwaitingAction(_)),
             "expected to be paused mid-street before serializing"
         );
 
@@ -2053,8 +2626,15 @@ mod tests {
         // Reconnection path: re-derive the awaited player's view from the RESTORED
         // engine (not the pre-serialization step) and finish the street.
         let mut outcome = None;
-        while let Some((_, view)) = restored.current_view() {
-            if let BettingStep::RoundComplete(o) = restored.submit_action(calling_policy(&view)) {
+        while let Some(pending) = restored.pending_action() {
+            if let BettingStep::RoundComplete(o) = restored
+                .submit_action(
+                    pending.player,
+                    pending.decision_id,
+                    calling_policy(&pending.view),
+                )
+                .unwrap()
+            {
                 outcome = Some(o);
             }
         }
@@ -2244,27 +2824,50 @@ mod tests {
     }
 
     #[test]
-    fn current_view_re_derives_the_prompt_without_mutating() {
+    fn pending_action_re_derives_the_prompt_without_mutating() {
         let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 3);
         seat_players(&mut game, &[100, 100, 100]);
         game.begin_hand();
         let step = game.begin_betting_round(Street::Preflop);
 
-        let BettingStep::AwaitingAction { player, view } = &step else {
+        let BettingStep::AwaitingAction(pending) = &step else {
             panic!("expected to pause awaiting an actor");
         };
-        // current_view re-derives the same prompt, read-only (callable repeatedly).
-        let (id1, v1) = game.current_view().expect("a decision is pending");
-        let (id2, _) = game.current_view().expect("still pending (no mutation)");
-        assert_eq!(id1, *player);
-        assert_eq!(id2, *player);
-        assert_eq!(v1.you, view.you);
-        assert_eq!(v1.legal_actions, view.legal_actions);
+        let p1 = game.pending_action().expect("a decision is pending");
+        let p2 = game.pending_action().expect("still pending (no mutation)");
+        assert_eq!(p1.player, pending.player);
+        assert_eq!(p2.player, pending.player);
+        assert_eq!(p1.decision_id, pending.decision_id);
+        assert_eq!(p2.decision_id, pending.decision_id);
+        assert_eq!(p1.view.legal_actions, pending.view.legal_actions);
+
+        let json = serde_json::to_string(&game).unwrap();
+        let mut restored: TexasHoldEm = serde_json::from_str(&json).unwrap();
+        let restored_pending = restored.pending_action().unwrap();
+        assert_eq!(restored_pending.decision_id, pending.decision_id);
+        assert!(matches!(
+            restored
+                .submit_action(
+                    restored_pending.player,
+                    restored_pending.decision_id,
+                    calling_policy(&restored_pending.view),
+                )
+                .unwrap(),
+            BettingStep::AwaitingAction(_)
+        ));
+        assert!(matches!(
+            restored.submit_action(
+                restored_pending.player,
+                restored_pending.decision_id,
+                PlayerAction::Fold
+            ),
+            Err(ActionSubmissionError::StaleDecision { .. })
+        ));
 
         // Between hands there is no pending decision.
         let mut idle = TexasHoldEm::new(0, 10, 1, 2);
         seat_players(&mut idle, &[100, 100]);
-        assert!(idle.current_view().is_none());
+        assert!(idle.pending_action().is_none());
     }
 
     #[test]
@@ -2281,12 +2884,12 @@ mod tests {
         }
         assert_eq!(
             game.run_betting_round(Street::Preflop, &mut quitters),
-            RoundOutcome::Quit
+            Ok(RoundOutcome::Quit)
         );
         assert!(game.hand_in_progress(), "the hand must survive a quit");
         assert_eq!(game.current_street(), Some(Street::Preflop));
         assert!(
-            game.current_view().is_some(),
+            game.pending_action().is_some(),
             "a player is still on the clock after a quit"
         );
 
@@ -2296,15 +2899,109 @@ mod tests {
         for &id in game.seats() {
             callers.insert(id, Box::new(CallingAgent));
         }
-        let outcome = game.run_betting_round(Street::Preflop, &mut callers);
+        let outcome = game
+            .run_betting_round(Street::Preflop, &mut callers)
+            .unwrap();
         assert!(matches!(
             outcome,
             RoundOutcome::Continue | RoundOutcome::HandOver
         ));
         assert!(
-            game.current_view().is_none(),
+            game.pending_action().is_none(),
             "the resumed round finished, so no one is on the clock"
         );
+    }
+
+    #[test]
+    fn run_betting_round_preserves_pending_decision_on_failures() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 13);
+        seat_players(&mut game, &[100, 100, 100]);
+        game.begin_hand();
+        let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
+            panic!("expected a pending decision");
+        };
+        let before = serde_json::to_string(&game).unwrap();
+
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut HashMap::new()),
+            Err(PlayError::MissingAgent(pending.player))
+        );
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+
+        let mut eof_agents: HashMap<Uuid, Box<dyn PokerAgent>> =
+            HashMap::from([(pending.player, Box::new(EofAgent) as Box<dyn PokerAgent>)]);
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut eof_agents),
+            Ok(RoundOutcome::Eof)
+        );
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+
+        let mut illegal_agents: HashMap<Uuid, Box<dyn PokerAgent>> = HashMap::from([(
+            pending.player,
+            Box::new(IllegalAgent) as Box<dyn PokerAgent>,
+        )]);
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut illegal_agents),
+            Err(PlayError::Submission(ActionSubmissionError::IllegalAction(
+                ActionError::CannotCheck
+            )))
+        );
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+        assert_eq!(
+            game.pending_action().unwrap().decision_id,
+            pending.decision_id
+        );
+    }
+
+    #[test]
+    fn blocking_wrappers_preserve_pending_decision_on_failures() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 41);
+        seat_players(&mut game, &[100, 100, 100]);
+
+        let missing = game.play_hand(&mut HashMap::new());
+        let pending = game
+            .pending_action()
+            .expect("missing agent leaves prompt intact");
+        assert_eq!(missing, Err(PlayError::MissingAgent(pending.player)));
+
+        let before = serde_json::to_string(&game).unwrap();
+        let mut illegal: HashMap<Uuid, Box<dyn PokerAgent>> = HashMap::new();
+        illegal.insert(pending.player, Box::new(IllegalAgent));
+        assert_eq!(
+            game.play_hand(&mut illegal),
+            Err(PlayError::Submission(ActionSubmissionError::IllegalAction(
+                ActionError::CannotCheck
+            )))
+        );
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+        assert_eq!(
+            game.pending_action().unwrap().decision_id,
+            pending.decision_id
+        );
+    }
+
+    #[test]
+    fn quit_and_eof_are_distinct_resumable_outcomes() {
+        for (agent, expected) in [
+            (
+                Box::new(QuitAgent) as Box<dyn PokerAgent>,
+                HandOutcome::Quit,
+            ),
+            (Box::new(EofAgent) as Box<dyn PokerAgent>, HandOutcome::Eof),
+        ] {
+            let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 43);
+            seat_players(&mut game, &[100, 100]);
+            let first = game.drive_hand();
+            let HandStep::AwaitingAction(pending) = first else {
+                panic!("expected decision");
+            };
+            let mut agents = HashMap::from([(pending.player, agent)]);
+            assert_eq!(game.play_hand(&mut agents), Ok(expected));
+            assert_eq!(
+                game.pending_action().unwrap().decision_id,
+                pending.decision_id
+            );
+        }
     }
 
     /// A `GameObserver` that records every event for assertions. Uses a shared
@@ -2391,7 +3088,7 @@ mod tests {
         seat_players(&mut game, &[100, 50, 75]);
         let before: u32 = game.players.values().map(|p| p.chips).sum();
         let mut agents = agents_all(&game, || Box::new(CallingAgent));
-        assert_eq!(game.play_hand(&mut agents), HandOutcome::Complete);
+        assert_eq!(game.play_hand(&mut agents), Ok(HandOutcome::Complete));
         let after: u32 = game.players.values().map(|p| p.chips).sum();
         assert_eq!(before, after, "chips conserved over a full driven hand");
         assert_eq!(game.deck_len(), 52, "all cards returned to the deck");
@@ -2404,7 +3101,7 @@ mod tests {
         seat_players(&mut game, &[100, 100]);
         let before: u32 = game.players.values().map(|p| p.chips).sum();
         let mut agents = agents_all(&game, || Box::new(CallingAgent));
-        assert_eq!(game.play_hand(&mut agents), HandOutcome::Complete);
+        assert_eq!(game.play_hand(&mut agents), Ok(HandOutcome::Complete));
         assert_eq!(before, game.players.values().map(|p| p.chips).sum::<u32>());
         assert_eq!(game.deck_len(), 52);
     }
@@ -2417,7 +3114,7 @@ mod tests {
         let before: u32 = game.players.values().map(|p| p.chips).sum();
         game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
         let mut agents = agents_all(&game, || Box::new(ShoveAgent));
-        assert_eq!(game.play_hand(&mut agents), HandOutcome::Complete);
+        assert_eq!(game.play_hand(&mut agents), Ok(HandOutcome::Complete));
 
         let events = log.borrow();
         let streets = events
@@ -2451,7 +3148,7 @@ mod tests {
         seat_players(&mut game, &[100, 100, 100]);
         game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
         let mut agents = agents_all(&game, || Box::new(FoldAgent));
-        assert_eq!(game.play_hand(&mut agents), HandOutcome::Complete);
+        assert_eq!(game.play_hand(&mut agents), Ok(HandOutcome::Complete));
         let events = log.borrow();
         assert!(
             !events
@@ -2470,8 +3167,14 @@ mod tests {
         // Drive a hand to completion with the call-down policy.
         fn finish(game: &mut TexasHoldEm) {
             let mut step = game.drive_hand();
-            while let HandStep::AwaitingAction { view, .. } = step {
-                step = game.submit_hand_action(calling_policy(&view));
+            while let HandStep::AwaitingAction(pending) = step {
+                step = game
+                    .submit_hand_action(
+                        pending.player,
+                        pending.decision_id,
+                        calling_policy(&pending.view),
+                    )
+                    .unwrap();
             }
         }
         let chips = |g: &TexasHoldEm| -> Vec<u32> {
@@ -2493,10 +3196,12 @@ mod tests {
             "betting is active right after drive_hand opens pre-flop"
         );
         for _ in 0..2 {
-            if let HandStep::AwaitingAction { view, .. } = &step {
-                let action = calling_policy(view);
-                step = subject.submit_hand_action(action);
-                if matches!(step, HandStep::AwaitingAction { .. }) {
+            if let HandStep::AwaitingAction(pending) = &step {
+                let action = calling_policy(&pending.view);
+                step = subject
+                    .submit_hand_action(pending.player, pending.decision_id, action)
+                    .unwrap();
+                if matches!(step, HandStep::AwaitingAction(_)) {
                     assert!(
                         subject.betting.is_some(),
                         "resume invariant: betting=Some at every paused boundary"
@@ -2524,12 +3229,12 @@ mod tests {
         game.begin_hand();
         game.deal_flop();
         game.abort_betting_round();
-        assert!(game.current_view().is_none());
+        assert!(game.pending_action().is_none());
         let deck_before = game.deck_len();
         let board_before = game.board().cards.clone();
 
         let step = game.drive_hand();
-        assert!(matches!(step, HandStep::AwaitingAction { .. }));
+        assert!(matches!(step, HandStep::AwaitingAction(_)));
         assert_eq!(
             game.current_street(),
             Some(Street::Flop),
@@ -2544,22 +3249,22 @@ mod tests {
         let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 9);
         let ids = seat_players(&mut game, &[100, 100, 100]);
         // No hero set → the broadcast event stream carries no hole cards.
-        let HandStep::AwaitingAction { player: actor, .. } = game.drive_hand() else {
+        let HandStep::AwaitingAction(pending) = game.drive_hand() else {
             panic!("expected a pre-flop decision");
         };
+        let actor = pending.player;
         let other = *ids.iter().find(|&&id| id != actor).unwrap();
 
         let actor_cv = game.client_view(actor);
-        assert!(actor_cv.to_act);
+        assert!(actor_cv.pending_action.is_some());
         assert!(
-            actor_cv.view.is_some(),
+            actor_cv.pending_action.is_some(),
             "the acting player gets their decision view"
         );
         assert!(actor_cv.hole.is_some());
 
         let other_cv = game.client_view(other);
-        assert!(!other_cv.to_act);
-        assert!(other_cv.view.is_none());
+        assert!(other_cv.pending_action.is_none());
         assert_ne!(
             actor_cv.hole, other_cv.hole,
             "each sees only their own cards"
@@ -2576,11 +3281,70 @@ mod tests {
         assert!(!actor_cv.table.seats.is_empty());
 
         // After the actor folds, their hole is mucked.
-        game.submit_hand_action(PlayerAction::Fold);
+        game.submit_hand_action(actor, pending.decision_id, PlayerAction::Fold)
+            .unwrap();
         assert!(
             game.client_view(actor).hole.is_none(),
             "folded cards are mucked"
         );
+    }
+
+    #[test]
+    fn public_and_client_events_redact_private_hero_cards() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 23);
+        let ids = seat_players(&mut game, &[100, 100, 100]);
+        let hero = ids[0];
+        let other = ids[1];
+        game.set_hero(hero);
+        game.begin_hand();
+
+        let public = game.public_events();
+        assert!(public
+            .iter()
+            .all(|event| !matches!(event, GameEvent::HoleCardsDealt { hero: Some(_) })));
+
+        let hero_events = game.client_view(hero).recent_events;
+        assert!(hero_events.iter().any(|event| matches!(
+            event,
+            GameEvent::HoleCardsDealt {
+                hero: Some((player, cards))
+            } if player.id == hero && cards.len() == 2
+        )));
+
+        let other_events = game.client_view(other).recent_events;
+        assert!(other_events
+            .iter()
+            .all(|event| !matches!(event, GameEvent::HoleCardsDealt { hero: Some(_) })));
+    }
+
+    #[test]
+    fn accepted_decision_is_exactly_once_and_post_hand_input_is_rejected() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 29);
+        seat_players(&mut game, &[100, 100]);
+        let HandStep::AwaitingAction(first) = game.drive_hand() else {
+            panic!("expected first decision");
+        };
+        let next = game
+            .submit_hand_action(first.player, first.decision_id, PlayerAction::Call)
+            .unwrap();
+        let HandStep::AwaitingAction(_) = next else {
+            panic!("expected another decision");
+        };
+        let before = serde_json::to_string(&game).unwrap();
+        assert!(matches!(
+            game.submit_hand_action(first.player, first.decision_id, PlayerAction::Call),
+            Err(ActionSubmissionError::StaleDecision { .. })
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+
+        let mut agents = agents_all(&game, || Box::new(CallingAgent));
+        assert_eq!(game.play_hand(&mut agents), Ok(HandOutcome::Complete));
+        let after = serde_json::to_string(&game).unwrap();
+        assert!(matches!(
+            game.submit_hand_action(first.player, first.decision_id, PlayerAction::Fold),
+            Err(ActionSubmissionError::NoActionPending)
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), after);
     }
 
     #[test]
@@ -2590,9 +3354,11 @@ mod tests {
         seat_players(&mut game, &[100, 100, 100]);
         let mut step = game.drive_hand();
         for _ in 0..2 {
-            if let HandStep::AwaitingAction { view, .. } = &step {
-                let action = calling_policy(view);
-                step = game.submit_hand_action(action);
+            if let HandStep::AwaitingAction(pending) = &step {
+                let action = calling_policy(&pending.view);
+                step = game
+                    .submit_hand_action(pending.player, pending.decision_id, action)
+                    .unwrap();
             }
         }
         let expected = game.event_log.clone();
@@ -2619,11 +3385,50 @@ mod tests {
     }
 
     #[test]
+    fn replay_and_event_copies_enforce_the_full_privacy_matrix() {
+        fn dealt_hero(events: &[GameEvent]) -> Option<Uuid> {
+            events.iter().find_map(|event| match event {
+                GameEvent::HoleCardsDealt { hero } => hero.as_ref().map(|(player, _)| player.id),
+                _ => None,
+            })
+        }
+
+        let live_log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let replay_log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 37);
+        let ids = seat_players(&mut game, &[100, 100, 100]);
+        game.set_hero(ids[0]);
+        game.set_observer(Box::new(RecordingObserver {
+            log: live_log.clone(),
+        }));
+        let _ = game.drive_hand();
+
+        assert_eq!(dealt_hero(&live_log.borrow()), Some(ids[0]));
+        assert_eq!(dealt_hero(&game.public_events()), None);
+        assert_eq!(
+            dealt_hero(&game.client_view(ids[0]).recent_events),
+            Some(ids[0])
+        );
+        assert_eq!(dealt_hero(&game.client_view(ids[1]).recent_events), None);
+
+        game.set_hero(ids[1]);
+        game.set_observer(Box::new(RecordingObserver {
+            log: replay_log.clone(),
+        }));
+        game.replay_log();
+        assert_eq!(
+            dealt_hero(&replay_log.borrow()),
+            None,
+            "changing perspective must not replay the former hero's cards"
+        );
+    }
+
+    #[test]
     fn event_log_holds_one_hand_and_clears_at_next_hand_start() {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         seat_players(&mut game, &[100, 100, 100]);
         let mut agents = agents_all(&game, || Box::new(CallingAgent));
-        game.play_hand(&mut agents);
+        game.play_hand(&mut agents).unwrap();
         // Between hands the log still holds the finished hand (incl. HandComplete).
         assert!(matches!(
             game.event_log.last(),

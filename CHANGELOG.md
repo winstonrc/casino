@@ -6,12 +6,14 @@ crate follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## casino_poker 1.0.0 — 2026-06-12
+## 2026-06-14
+
+### casino_poker 1.0.0
 
 First stable release. The backend now drives complete Texas Hold'em hands with
 correct betting, all-ins, and side pots, and exposes a stable public API.
 
-### Added
+#### Added
 
 - `hand_rankings::evaluate(hole, board) -> ComparableHand` — picks the best
   5-card hand and returns a fully-ordered, kicker-correct value (`HandCategory`
@@ -55,15 +57,16 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   `Deck` rather than shuffling, for fixed-board scenarios and tests.
 - Read-only table accessors for rendering and snapshotting without driving the
   hand: `to_act`, `current_bet`, `committed_this_street`, `has_folded`,
-  `is_all_in`, `button_seat`, `pots`, and `current_view`. `table()` returns a
+  `is_all_in`, `button_seat`, `pots`, and `pending_action`. `table()` returns a
   single owned, serializable `TableView` (with per-seat `SeatView`s); both are
   `#[non_exhaustive]`.
-- `events` module: the engine is **I/O-free** and emits public narration as
+- `events` module: the engine is **I/O-free** and emits perspective-aware narration as
   serializable `GameEvent`s (`HandStarted`, `HoleCardsDealt`, `BlindPosted`,
   `ActionTaken`, `StreetDealt`, `UncalledBetReturned`, `Showdown`,
   `ShowdownReveal`, `PotAwarded`, `HandComplete`) to a `GameObserver` set via
-  `TexasHoldEm::set_observer` (default `NullObserver`) — render them, log them, or
-  forward them over a network. The events carry exactly what a PokerStars-format
+  `TexasHoldEm::set_observer` (default `NullObserver`) — render or privately log
+  them. Network consumers must use `public_events` or an authenticated
+  `client_view`. The events carry exactly what a PokerStars-format
   hand history needs: `HandStarted` the seat roster (`SeatInfo`), button, and
   blinds; `ActionTaken` the `Street` and `ActionView::Raised { by, to }`;
   `ShowdownReveal`/`PotAwarded` the full `ComparableHand` (call `describe()` to
@@ -80,8 +83,10 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   continue from the precise spot. `hand_in_progress` and `current_street` report
   where a restored hand stands.
 - **Betting-street state machine** (the non-blocking driving seam):
-  `begin_betting_round`, `submit_action`, `abort_betting_round`, and `BettingStep`
-  (`AwaitingAction { player, view }` / `RoundComplete(RoundOutcome)`). The blocking
+  `begin_betting_round`, identified `submit_action`, `abort_betting_round`, and
+  `BettingStep` (`AwaitingAction(PendingAction)` / `RoundComplete(RoundOutcome)`).
+  Each serializable `PendingAction` carries a `DecisionId`; stale, wrong-player, and
+  illegal submissions return `ActionSubmissionError` without mutating the engine. The blocking
   `run_betting_round` is a thin wrapper over it and, on a quit, leaves the round
   paused (resumable) rather than aborting.
 - **Hand-level state machine.** `drive_hand` begins a fresh hand or resumes the one
@@ -89,14 +94,14 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   `HandStep` (`AwaitingAction` / `HandComplete`). The engine owns the whole
   deal → bet → deal → award sequence, pausing only for player decisions, so a
   front-end need not re-implement hand orchestration.
-  `play_hand(agents) -> HandOutcome` (`Complete` / `Quit`) is the blocking wrapper.
+  `play_hand(agents) -> Result<HandOutcome, PlayError>` is the blocking wrapper.
 - **Reconnect support.** `client_view(player_id) -> ClientView` bundles everything
   one player needs to (re)join a game: the public `TableView`, that player's own
-  hole cards and decision view, and the hand's events so far — leak-safe by
-  construction (opponents' hole cards never appear; a multiplayer server
-  broadcasting one stream must run with no hero set). `replay_log` re-emits the
-  current hand's recorded `GameEvent`s to a freshly-attached observer, replaying the
-  hand-so-far narration exactly (header, blinds, every action, board).
+  hole cards and identified pending decision, and the hand's events so far —
+  leak-safe by construction. Another configured hero's private deal is redacted.
+  `replay_log` re-emits the current hand's recorded `GameEvent`s to a
+  freshly-attached observer, replaying the hand-so-far narration for the current
+  perspective (header, blinds, every action, board).
 - `set_blinds` (rising tournament blind levels) and `add_chips_to` (rebuy/top-up),
   each a no-op while a hand is in progress so it can't corrupt live pot accounting.
 - **Stable player identity in the event stream.** `player::PlayerRef { id, name }`
@@ -110,11 +115,11 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   and `button_seat`, so an agent's `decide` sees the same objective table state a
   spectator does and can map a stored model onto the current table (set via the
   `#[non_exhaustive]` builder `PlayerViewBuilder::seats`/`button_seat`).
-- **`recent_events() -> &[GameEvent]`** borrows the current hand's recorded event
-  stream, so a front-end can forward it into its agents' `observe` (the engine stays
-  agent-agnostic — it never owns the agents).
+- **`public_events() -> Vec<GameEvent>`** returns an owned public copy of the current
+  hand's event stream with the private hero payload redacted, suitable for agents
+  and network broadcast.
 
-### Changed
+#### Changed
 
 - `PlayerAction` is now `Fold` / `Check` / `Call` / `RaiseTo(u32)` / `AllIn`
   (raise-to semantics) instead of the previous unit-style variants.
@@ -127,26 +132,30 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 - `HandCategory`/`ComparableHand` print without articles (e.g. `Pair`, `Flush`).
 - `Player::add_chips`/`subtract_chips` now saturate instead of overflowing.
 
-### Removed
+#### Removed
 
 - `HandRank`, `rank_hand`, `get_high_card_value`, and the `check_for_*` helpers.
   **Migration:** call `evaluate(hole, board)` and compare the returned
   `ComparableHand` values directly with `>`, `<`, and `==` — these handle hand
   category, kickers, and ties correctly.
 
-### Fixed
+#### Fixed
 
 - All-ins and side pots: a short stack used to be force-folded and side pots were
   never paid. Unequal all-ins now resolve into correct main/side pots.
 - Calling no longer double-charges — a player owes only the delta over what they
   have already committed this street (blinds and prior calls are credited).
+- Exact-stack blind posters are marked all-in and skipped for action.
+- Incomplete all-in raises are enforced at submission time: players whose action
+  was not reopened cannot reraise, while a short all-in call remains legal.
+- Public and per-player event copies cannot leak a configured hero's private cards.
 - Straight-flush ties are no longer (incorrectly) broken by suit.
 
 ---
 
-## casino_cards 2.0.0 — 2026-06-12
+### casino_cards 2.0.0
 
-### Added
+#### Added
 
 - `Serialize`/`Deserialize` (serde) for `Card`, `Rank`, `Suit`, `Hand`, and `Deck`.
 - `Card::glyph()` returns the single Unicode playing-card glyph (e.g. `🂡`).
@@ -166,7 +175,7 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   gives a deterministic shuffle for reproducible simulations, replays, and
   tests (`shuffle` keeps using a thread-local RNG).
 
-### Changed
+#### Changed
 
 - **Breaking:** `Card`'s text `Display` now renders the PokerStars two-character
   code (e.g. `As`, `Td`, `Ten` → `T`, lowercase suit) instead of the Unicode
