@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use casino_poker::casino_cards::card::{Card, Rank, Suit};
-use casino_poker::hand_rankings::{best_five, best_omaha, evaluate};
+use casino_poker::hand_rankings::{evaluate_five, evaluate_holdem, evaluate_omaha};
 use criterion::{criterion_group, criterion_main, Criterion};
 
 fn card(rank: Rank, suit: Suit) -> Card {
@@ -17,7 +17,7 @@ fn benchmark_hand_rankings(criterion: &mut Criterion) {
         card(Rank::Ten, Suit::Spade),
     ];
     criterion.bench_function("evaluate five cards", |bencher| {
-        bencher.iter(|| best_five(black_box(&five)))
+        bencher.iter(|| evaluate_five(black_box(five)).unwrap())
     });
 
     let holdem_hole = [card(Rank::Ace, Suit::Spade), card(Rank::King, Suit::Spade)];
@@ -29,7 +29,7 @@ fn benchmark_hand_rankings(criterion: &mut Criterion) {
         card(Rank::Two, Suit::Heart),
     ];
     criterion.bench_function("evaluate seven-card holdem", |bencher| {
-        bencher.iter(|| evaluate(black_box(&holdem_hole), black_box(&holdem_board)))
+        bencher.iter(|| evaluate_holdem(black_box(holdem_hole), black_box(&holdem_board)).unwrap())
     });
 
     let omaha_hole = [
@@ -46,7 +46,7 @@ fn benchmark_hand_rankings(criterion: &mut Criterion) {
         card(Rank::Three, Suit::Club),
     ];
     criterion.bench_function("evaluate omaha", |bencher| {
-        bencher.iter(|| best_omaha(black_box(&omaha_hole), black_box(&omaha_board)))
+        bencher.iter(|| evaluate_omaha(black_box(omaha_hole), black_box(&omaha_board)).unwrap())
     });
 
     let showdown_hands = [
@@ -89,7 +89,11 @@ fn benchmark_hand_rankings(criterion: &mut Criterion) {
         bencher.iter(|| {
             showdown_hands
                 .iter()
-                .map(|hole| evaluate(black_box(hole), black_box(&showdown_board)))
+                .map(|hole| {
+                    evaluate_holdem(black_box(*hole), black_box(&showdown_board))
+                        .unwrap()
+                        .value
+                })
                 .max()
         })
     });

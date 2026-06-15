@@ -74,12 +74,12 @@ impl fmt::Display for HandCategory {
 /// - `FourOfAKind`: `[quad, kicker, 0, 0, 0]`.
 ///
 /// ```
-/// use casino_poker::hand_rankings::{evaluate, HandCategory};
+/// use casino_poker::hand_rankings::{evaluate_holdem, HandCategory};
 /// use casino_poker::casino_cards::card::{Card, Rank, Suit};
 ///
 /// // A flush beats a pair.
-/// let flush = evaluate(
-///     &[Card::new(Rank::Ace, Suit::Heart), Card::new(Rank::Two, Suit::Heart)],
+/// let flush = evaluate_holdem(
+///     [Card::new(Rank::Ace, Suit::Heart), Card::new(Rank::Two, Suit::Heart)],
 ///     &[
 ///         Card::new(Rank::Five, Suit::Heart),
 ///         Card::new(Rank::Nine, Suit::Heart),
@@ -87,8 +87,9 @@ impl fmt::Display for HandCategory {
 ///         Card::new(Rank::King, Suit::Spade),
 ///         Card::new(Rank::Three, Suit::Club),
 ///     ],
-/// );
-/// assert_eq!(flush.category, HandCategory::Flush);
+/// )?;
+/// assert_eq!(flush.value.category, HandCategory::Flush);
+/// # Ok::<(), casino_poker::hand_rankings::HandEvaluationError>(())
 /// ```
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct ComparableHand {
@@ -136,6 +137,57 @@ impl fmt::Display for ComparableHand {
         write!(f, "{}", self.category)
     }
 }
+
+/// A ranked poker hand together with the five physical cards that form it.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EvaluatedHand {
+    /// The comparable category and tiebreak value.
+    pub value: ComparableHand,
+    /// The five cards selected for the hand.
+    pub cards: [Card; 5],
+}
+
+/// An error returned when cards cannot form a valid supported evaluation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum HandEvaluationError {
+    /// The number of cards is outside the range accepted by the operation.
+    InvalidCardCount {
+        /// The smallest accepted card count.
+        minimum: usize,
+        /// The largest accepted card count.
+        maximum: usize,
+        /// The card count supplied by the caller.
+        actual: usize,
+    },
+    /// The input contains the same rank and suit more than once.
+    DuplicateCard,
+}
+
+impl fmt::Display for HandEvaluationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidCardCount {
+                minimum,
+                maximum,
+                actual,
+            } if minimum == maximum => {
+                write!(f, "expected exactly {minimum} cards, got {actual}")
+            }
+            Self::InvalidCardCount {
+                minimum,
+                maximum,
+                actual,
+            } => write!(
+                f,
+                "expected between {minimum} and {maximum} cards, got {actual}"
+            ),
+            Self::DuplicateCard => write!(f, "the same physical card appears more than once"),
+        }
+    }
+}
+
+impl std::error::Error for HandEvaluationError {}
 
 /// The low-to-high span of a straight (or straight flush) by its high-card value,
 /// PokerStars style: `Five to Nine`. The wheel (5-high) plays the Ace low and
@@ -189,64 +241,104 @@ fn rank_plural(value: u8) -> &'static str {
     }
 }
 
-/// Evaluates the best 5-card hand a player can make from their hole cards and the
-/// shared board, returning a [`ComparableHand`] that is correct to compare with
-/// any other player's `ComparableHand`.
+/// Evaluates exactly five cards.
 ///
-/// Intended for the flop onward / at showdown (pre-flop strength, with only two
-/// hole cards, must be estimated separately).
+/// # Errors
 ///
-/// # Panics
-///
-/// Panics if `hole.len() + board.len() < 5`, since no 5-card hand can be formed.
-pub fn evaluate(hole: &[Card], board: &[Card]) -> ComparableHand {
-    evaluate_with_cards(hole, board).0
+/// Returns [`HandEvaluationError::DuplicateCard`] when the same rank and suit
+/// appears more than once. Card visibility is ignored when detecting duplicates.
+pub fn evaluate_five(cards: [Card; 5]) -> Result<EvaluatedHand, HandEvaluationError> {
+    validate_unique(cards.iter())?;
+    Ok(EvaluatedHand {
+        value: score_five(&cards),
+        cards,
+    })
 }
 
-/// Like [`evaluate`], but also returns the exact five cards that form the best
-/// hand, so a caller can show *which* cards make a player's hand (e.g. to
-/// distinguish playing the board from using hole cards).
+/// Returns the strongest five-card hand from five to seven cards.
 ///
-/// # Panics
+/// At seven cards this evaluates the 21 possible five-card subsets. Among
+/// equally ranked subsets, the first subset in input enumeration order is
+/// selected.
 ///
-/// Panics if `hole.len() + board.len() < 5`.
-pub fn evaluate_with_cards(hole: &[Card], board: &[Card]) -> (ComparableHand, [Card; 5]) {
-    let mut cards: Vec<Card> = Vec::with_capacity(hole.len() + board.len());
-    cards.extend_from_slice(hole);
-    cards.extend_from_slice(board);
-    best_five_with_cards(&cards)
+/// # Errors
+///
+/// Returns an error for card counts outside `5..=7` or duplicate physical cards.
+pub fn best_five(cards: &[Card]) -> Result<EvaluatedHand, HandEvaluationError> {
+    validate_count(cards.len(), 5, 7)?;
+    validate_unique(cards.iter())?;
+    best_five_validated(cards).ok_or(HandEvaluationError::InvalidCardCount {
+        minimum: 5,
+        maximum: 7,
+        actual: cards.len(),
+    })
 }
 
-/// Returns the strongest [`ComparableHand`] over every 5-card subset of `cards`.
+/// Evaluates a Texas Hold'em hand using two hole cards and three to five board
+/// cards.
 ///
-/// With at most 7 cards this is at most `C(7,5) = 21` subsets, so the brute-force
-/// enumeration is trivial and keeps the logic obviously correct.
+/// # Errors
 ///
-/// # Panics
-///
-/// Panics if `cards.len() < 5`.
-pub fn best_five(cards: &[Card]) -> ComparableHand {
-    best_five_with_cards(cards).0
+/// Returns an error unless the board contains `3..=5` cards or when any physical
+/// card is duplicated between the hole cards and board.
+pub fn evaluate_holdem(
+    hole: [Card; 2],
+    board: &[Card],
+) -> Result<EvaluatedHand, HandEvaluationError> {
+    validate_count(board.len(), 3, 5)?;
+    validate_unique(hole.iter().chain(board))?;
+
+    let mut cards = [hole[0]; 7];
+    cards[1] = hole[1];
+    cards[2..(board.len() + 2)].copy_from_slice(board);
+    best_five_validated(&cards[..(board.len() + 2)]).ok_or(HandEvaluationError::InvalidCardCount {
+        minimum: 3,
+        maximum: 5,
+        actual: board.len(),
+    })
 }
 
-/// Like [`best_five`], but also returns the exact five cards forming the hand.
+/// Evaluates an Omaha hand using exactly two of four hole cards and exactly three
+/// of three to five board cards.
 ///
-/// Among equally-ranked 5-card subsets the choice is unspecified but
-/// deterministic (the first encountered in enumeration order). Use the returned
-/// [`ComparableHand`], not the card identities, to reason about ties.
+/// # Errors
 ///
-/// # Panics
-///
-/// Panics if `cards.len() < 5`.
-pub fn best_five_with_cards(cards: &[Card]) -> (ComparableHand, [Card; 5]) {
-    assert!(
-        cards.len() >= 5,
-        "best_five requires at least 5 cards, got {}",
-        cards.len()
-    );
+/// Returns an error unless the board contains `3..=5` cards or when any physical
+/// card is duplicated between the hole cards and board.
+pub fn evaluate_omaha(
+    hole: [Card; 4],
+    board: &[Card],
+) -> Result<EvaluatedHand, HandEvaluationError> {
+    validate_count(board.len(), 3, 5)?;
+    validate_unique(hole.iter().chain(board))?;
 
+    let mut best: Option<EvaluatedHand> = None;
+    for h1 in 0..3 {
+        for h2 in (h1 + 1)..4 {
+            for b1 in 0..(board.len() - 2) {
+                for b2 in (b1 + 1)..(board.len() - 1) {
+                    for b3 in (b2 + 1)..board.len() {
+                        let cards = [hole[h1], hole[h2], board[b1], board[b2], board[b3]];
+                        let value = score_five(&cards);
+                        if best.is_none_or(|current| value > current.value) {
+                            best = Some(EvaluatedHand { value, cards });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    best.ok_or(HandEvaluationError::InvalidCardCount {
+        minimum: 3,
+        maximum: 5,
+        actual: board.len(),
+    })
+}
+
+fn best_five_validated(cards: &[Card]) -> Option<EvaluatedHand> {
     let n = cards.len();
-    let mut best: Option<(ComparableHand, [Card; 5])> = None;
+    let mut best: Option<EvaluatedHand> = None;
     for a in 0..n {
         for b in (a + 1)..n {
             for c in (b + 1)..n {
@@ -254,57 +346,50 @@ pub fn best_five_with_cards(cards: &[Card]) -> (ComparableHand, [Card; 5]) {
                     for e in (d + 1)..n {
                         let five = [cards[a], cards[b], cards[c], cards[d], cards[e]];
                         let score = score_five(&five);
-                        if best.is_none_or(|(current, _)| score > current) {
-                            best = Some((score, five));
+                        if best.is_none_or(|current| score > current.value) {
+                            best = Some(EvaluatedHand {
+                                value: score,
+                                cards: five,
+                            });
                         }
                     }
                 }
             }
         }
     }
-
-    best.expect("best_five always finds at least one 5-card hand")
+    best
 }
 
-/// Evaluates an Omaha hand: the best five cards using **exactly two** of the four
-/// `hole` cards and **exactly three** of the `board` cards — the Omaha
-/// constraint — returning a [`ComparableHand`] comparable with any other.
-///
-/// Unlike [`evaluate`] (which pools all cards and picks any best five, correct for
-/// hold'em), this enforces the 2-from-hand / 3-from-board rule.
-///
-/// # Panics
-///
-/// Panics unless `hole.len() == 4` and `board.len()` is between 3 and 5.
-pub fn best_omaha(hole: &[Card], board: &[Card]) -> ComparableHand {
-    assert!(
-        hole.len() == 4 && (3..=5).contains(&board.len()),
-        "best_omaha requires exactly 4 hole cards and 3-5 board cards, got {} and {}",
-        hole.len(),
-        board.len()
-    );
-
-    let n = board.len();
-    let mut best: Option<ComparableHand> = None;
-    // Exactly two of the four hole cards...
-    for h1 in 0..hole.len() {
-        for h2 in (h1 + 1)..hole.len() {
-            // ...with exactly three of the board cards.
-            for b1 in 0..n {
-                for b2 in (b1 + 1)..n {
-                    for b3 in (b2 + 1)..n {
-                        let five = [hole[h1], hole[h2], board[b1], board[b2], board[b3]];
-                        let score = score_five(&five);
-                        if best.is_none_or(|current| score > current) {
-                            best = Some(score);
-                        }
-                    }
-                }
-            }
-        }
+fn validate_count(
+    actual: usize,
+    minimum: usize,
+    maximum: usize,
+) -> Result<(), HandEvaluationError> {
+    if (minimum..=maximum).contains(&actual) {
+        Ok(())
+    } else {
+        Err(HandEvaluationError::InvalidCardCount {
+            minimum,
+            maximum,
+            actual,
+        })
     }
+}
 
-    best.expect("best_omaha always finds at least one 5-card hand")
+fn validate_unique<'a>(
+    cards: impl IntoIterator<Item = &'a Card>,
+) -> Result<(), HandEvaluationError> {
+    let mut seen = [false; 52];
+    for card in cards {
+        let rank = usize::from(card.rank.value() - 2);
+        let suit = usize::from(card.suit.value());
+        let index = rank * 4 + suit;
+        if seen[index] {
+            return Err(HandEvaluationError::DuplicateCard);
+        }
+        seen[index] = true;
+    }
+    Ok(())
 }
 
 /// Scores exactly five cards into a [`ComparableHand`].
@@ -331,33 +416,44 @@ fn score_five(cards: &[Card; 5]) -> ComparableHand {
         }
     }
 
-    // Group equal ranks: Vec of (count, rank), then order by count desc, rank desc.
-    let mut groups: Vec<(u8, u8)> = Vec::new();
-    let mut i = 0;
-    while i < 5 {
-        let rank = ranks[i];
-        let mut count = 1usize;
-        while i + count < 5 && ranks[i + count] == rank {
-            count += 1;
-        }
-        groups.push((count as u8, rank));
-        i += count;
+    let mut rank_counts = [0u8; 15];
+    for rank in ranks {
+        rank_counts[usize::from(rank)] += 1;
     }
-    groups.sort_unstable_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
 
-    let counts: Vec<u8> = groups.iter().map(|g| g.0).collect();
+    let mut four = 0;
+    let mut three = 0;
+    let mut pairs = [0u8; 2];
+    let mut pair_count = 0;
+    let mut singles = [0u8; 5];
+    let mut single_count = 0;
+    for rank in (2u8..=14).rev() {
+        match rank_counts[usize::from(rank)] {
+            4 => four = rank,
+            3 => three = rank,
+            2 => {
+                pairs[pair_count] = rank;
+                pair_count += 1;
+            }
+            1 => {
+                singles[single_count] = rank;
+                single_count += 1;
+            }
+            _ => {}
+        }
+    }
 
-    if counts[0] == 4 {
+    if four != 0 {
         return ComparableHand {
             category: HandCategory::FourOfAKind,
-            tiebreak: pad(&[groups[0].1, groups[1].1]),
+            tiebreak: [four, singles[0], 0, 0, 0],
         };
     }
 
-    if counts[0] == 3 && counts.get(1) == Some(&2) {
+    if three != 0 && pair_count == 1 {
         return ComparableHand {
             category: HandCategory::FullHouse,
-            tiebreak: pad(&[groups[0].1, groups[1].1]),
+            tiebreak: [three, pairs[0], 0, 0, 0],
         };
     }
 
@@ -375,24 +471,24 @@ fn score_five(cards: &[Card; 5]) -> ComparableHand {
         };
     }
 
-    if counts[0] == 3 {
+    if three != 0 {
         return ComparableHand {
             category: HandCategory::ThreeOfAKind,
-            tiebreak: pad(&[groups[0].1, groups[1].1, groups[2].1]),
+            tiebreak: [three, singles[0], singles[1], 0, 0],
         };
     }
 
-    if counts[0] == 2 && counts.get(1) == Some(&2) {
+    if pair_count == 2 {
         return ComparableHand {
             category: HandCategory::TwoPair,
-            tiebreak: pad(&[groups[0].1, groups[1].1, groups[2].1]),
+            tiebreak: [pairs[0], pairs[1], singles[0], 0, 0],
         };
     }
 
-    if counts[0] == 2 {
+    if pair_count == 1 {
         return ComparableHand {
             category: HandCategory::Pair,
-            tiebreak: pad(&[groups[0].1, groups[1].1, groups[2].1, groups[3].1]),
+            tiebreak: [pairs[0], singles[0], singles[1], singles[2], 0],
         };
     }
 
@@ -425,13 +521,6 @@ fn straight_high(ranks_desc: &[u8; 5]) -> Option<u8> {
     None
 }
 
-/// Copies `vals` into a zero-padded `[u8; 5]` tiebreak array.
-fn pad(vals: &[u8]) -> [u8; 5] {
-    let mut out = [0u8; 5];
-    out[..vals.len()].copy_from_slice(vals);
-    out
-}
-
 #[cfg(test)]
 mod comparable_hand_tests {
     use super::*;
@@ -442,9 +531,9 @@ mod comparable_hand_tests {
         Card::new(rank, suit)
     }
 
-    /// Convenience: evaluate a flat list of cards (hole empty, all on "board").
+    /// Convenience: evaluate a flat list of five to seven cards.
     fn eval(cards: &[Card]) -> ComparableHand {
-        evaluate(&[], cards)
+        best_five(cards).unwrap().value
     }
 
     #[test]
@@ -464,8 +553,12 @@ mod comparable_hand_tests {
             c(Rank::Three, Suit::Diamond),
         ];
 
-        let pooled = evaluate(&hole, &board);
-        let omaha = best_omaha(&hole, &board);
+        let pooled = best_five(&[
+            hole[0], hole[1], hole[2], hole[3], board[0], board[1], board[2],
+        ])
+        .unwrap()
+        .value;
+        let omaha = evaluate_omaha(hole, &board).unwrap().value;
         assert_eq!(pooled.category, HandCategory::StraightFlush);
         assert!(
             omaha < pooled,
@@ -488,8 +581,128 @@ mod comparable_hand_tests {
             c(Rank::Two, Suit::Spade),
         ];
         assert_eq!(
-            best_omaha(&hole, &board).category,
+            evaluate_omaha(hole, &board).unwrap().value.category,
             HandCategory::FourOfAKind
+        );
+    }
+
+    #[test]
+    fn evaluators_reject_unsupported_card_counts() {
+        let cards = [
+            c(Rank::Ace, Suit::Spade),
+            c(Rank::King, Suit::Heart),
+            c(Rank::Queen, Suit::Diamond),
+            c(Rank::Jack, Suit::Club),
+            c(Rank::Ten, Suit::Spade),
+            c(Rank::Nine, Suit::Heart),
+            c(Rank::Eight, Suit::Diamond),
+            c(Rank::Seven, Suit::Club),
+        ];
+
+        assert_eq!(
+            best_five(&cards[..4]),
+            Err(HandEvaluationError::InvalidCardCount {
+                minimum: 5,
+                maximum: 7,
+                actual: 4,
+            })
+        );
+        assert_eq!(
+            best_five(&cards),
+            Err(HandEvaluationError::InvalidCardCount {
+                minimum: 5,
+                maximum: 7,
+                actual: 8,
+            })
+        );
+        assert_eq!(
+            evaluate_holdem([cards[0], cards[1]], &cards[2..4]),
+            Err(HandEvaluationError::InvalidCardCount {
+                minimum: 3,
+                maximum: 5,
+                actual: 2,
+            })
+        );
+        assert_eq!(
+            evaluate_holdem([cards[0], cards[1]], &cards[2..8]),
+            Err(HandEvaluationError::InvalidCardCount {
+                minimum: 3,
+                maximum: 5,
+                actual: 6,
+            })
+        );
+        assert_eq!(
+            evaluate_omaha([cards[0], cards[1], cards[2], cards[3]], &cards[4..6]),
+            Err(HandEvaluationError::InvalidCardCount {
+                minimum: 3,
+                maximum: 5,
+                actual: 2,
+            })
+        );
+        assert_eq!(
+            evaluate_omaha(
+                [cards[0], cards[1], cards[2], cards[3]],
+                &[
+                    cards[4],
+                    cards[5],
+                    cards[6],
+                    cards[7],
+                    c(Rank::Six, Suit::Spade),
+                    c(Rank::Five, Suit::Heart),
+                ],
+            ),
+            Err(HandEvaluationError::InvalidCardCount {
+                minimum: 3,
+                maximum: 5,
+                actual: 6,
+            })
+        );
+    }
+
+    #[test]
+    fn evaluators_reject_duplicate_physical_cards_regardless_of_visibility() {
+        let ace = c(Rank::Ace, Suit::Spade);
+        let mut hidden_ace = ace;
+        hidden_ace.face_up = false;
+        let cards = [
+            ace,
+            hidden_ace,
+            c(Rank::King, Suit::Heart),
+            c(Rank::Queen, Suit::Diamond),
+            c(Rank::Jack, Suit::Club),
+        ];
+
+        assert_eq!(
+            evaluate_five(cards),
+            Err(HandEvaluationError::DuplicateCard)
+        );
+        assert_eq!(best_five(&cards), Err(HandEvaluationError::DuplicateCard));
+        assert_eq!(
+            evaluate_holdem(
+                [ace, c(Rank::King, Suit::Heart)],
+                &[
+                    hidden_ace,
+                    c(Rank::Queen, Suit::Diamond),
+                    c(Rank::Jack, Suit::Club),
+                ],
+            ),
+            Err(HandEvaluationError::DuplicateCard)
+        );
+        assert_eq!(
+            evaluate_omaha(
+                [
+                    ace,
+                    c(Rank::King, Suit::Heart),
+                    c(Rank::Queen, Suit::Diamond),
+                    c(Rank::Jack, Suit::Club),
+                ],
+                &[
+                    hidden_ace,
+                    c(Rank::Ten, Suit::Heart),
+                    c(Rank::Nine, Suit::Diamond),
+                ],
+            ),
+            Err(HandEvaluationError::DuplicateCard)
         );
     }
 
@@ -585,13 +798,13 @@ mod comparable_hand_tests {
     }
 
     #[test]
-    fn best_five_with_cards_returns_the_forming_cards() {
+    fn evaluated_hand_returns_the_forming_cards() {
         // Board pair of Queens plus three low cards; the best five is the two
         // Queens and the three highest kickers, regardless of input order.
         let qc = c(Rank::Queen, Suit::Club);
         let qs = c(Rank::Queen, Suit::Spade);
-        let (hand, five) = evaluate_with_cards(
-            &[c(Rank::Three, Suit::Heart), c(Rank::Two, Suit::Diamond)],
+        let evaluated = evaluate_holdem(
+            [c(Rank::Three, Suit::Heart), c(Rank::Two, Suit::Diamond)],
             &[
                 qc,
                 c(Rank::Jack, Suit::Spade),
@@ -599,12 +812,13 @@ mod comparable_hand_tests {
                 qs,
                 c(Rank::Ten, Suit::Club),
             ],
-        );
-        assert_eq!(hand.category, HandCategory::Pair);
-        assert!(five.contains(&qc) && five.contains(&qs));
+        )
+        .unwrap();
+        assert_eq!(evaluated.value.category, HandCategory::Pair);
+        assert!(evaluated.cards.contains(&qc) && evaluated.cards.contains(&qs));
         // The low hole cards (3, 2) are worse kickers than the board's J/10/4.
-        assert!(!five.contains(&c(Rank::Three, Suit::Heart)));
-        assert!(!five.contains(&c(Rank::Two, Suit::Diamond)));
+        assert!(!evaluated.cards.contains(&c(Rank::Three, Suit::Heart)));
+        assert!(!evaluated.cards.contains(&c(Rank::Two, Suit::Diamond)));
     }
 
     #[test]
@@ -817,8 +1031,8 @@ mod comparable_hand_tests {
     #[test]
     fn picks_best_five_of_seven() {
         // Seven cards containing a flush; evaluate must find it.
-        let hand = evaluate(
-            &[c(Rank::Ace, Suit::Club), c(Rank::King, Suit::Club)],
+        let hand = evaluate_holdem(
+            [c(Rank::Ace, Suit::Club), c(Rank::King, Suit::Club)],
             &[
                 c(Rank::Ten, Suit::Club),
                 c(Rank::Five, Suit::Club),
@@ -826,7 +1040,9 @@ mod comparable_hand_tests {
                 c(Rank::Nine, Suit::Diamond),
                 c(Rank::Nine, Suit::Heart),
             ],
-        );
+        )
+        .unwrap()
+        .value;
         assert_eq!(hand.category, HandCategory::Flush);
         assert_eq!(hand.tiebreak, [14, 13, 10, 5, 2]);
     }
@@ -978,7 +1194,7 @@ mod proptest_oracle {
     }
 
     proptest! {
-        /// `evaluate` of an exact 5-card hand matches the independent oracle.
+        /// `evaluate_five` matches the independent oracle.
         #[test]
         fn evaluate_matches_oracle_on_five(
             indices in proptest::sample::subsequence((0u8..52).collect::<Vec<_>>(), 5)
@@ -986,20 +1202,20 @@ mod proptest_oracle {
             let deck = full_deck();
             let five: Vec<Card> = indices.iter().map(|&i| deck[i as usize]).collect();
             let arr = [five[0], five[1], five[2], five[3], five[4]];
-            let got = evaluate(&[], &five);
+            let got = evaluate_five(arr).unwrap().value;
             let (category, tiebreak) = oracle_five(&arr);
             prop_assert_eq!(got.category as u8, category);
             prop_assert_eq!(got.tiebreak, pad5(tiebreak));
         }
 
-        /// `evaluate` of 7 cards equals the best 5-card subset per the oracle.
+        /// `best_five` of 7 cards equals the best 5-card subset per the oracle.
         #[test]
         fn evaluate_picks_best_five_of_seven(
             indices in proptest::sample::subsequence((0u8..52).collect::<Vec<_>>(), 7)
         ) {
             let deck = full_deck();
             let seven: Vec<Card> = indices.iter().map(|&i| deck[i as usize]).collect();
-            let got = evaluate(&seven[0..2], &seven[2..7]);
+            let got = best_five(&seven).unwrap().value;
 
             let mut best: Option<(u8, [u8; 5])> = None;
             for a in 0..7 {
@@ -1032,8 +1248,8 @@ mod proptest_oracle {
             ib in proptest::sample::subsequence((0u8..52).collect::<Vec<_>>(), 5),
         ) {
             let deck = full_deck();
-            let a = evaluate(&[], &ia.iter().map(|&i| deck[i as usize]).collect::<Vec<_>>());
-            let b = evaluate(&[], &ib.iter().map(|&i| deck[i as usize]).collect::<Vec<_>>());
+            let a = best_five(&ia.iter().map(|&i| deck[i as usize]).collect::<Vec<_>>()).unwrap().value;
+            let b = best_five(&ib.iter().map(|&i| deck[i as usize]).collect::<Vec<_>>()).unwrap().value;
             // Exactly one ordering relation holds.
             let relations = [a < b, a == b, a > b];
             prop_assert_eq!(relations.iter().filter(|&&r| r).count(), 1);

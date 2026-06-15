@@ -1,8 +1,9 @@
 //! Poker hand evaluation, betting and pot logic, and a resumable Texas Hold'em
 //! engine.
 //!
-//! Most applications start with [`hand_rankings::evaluate`] for hand comparison
-//! or [`games::texas_hold_em::TexasHoldEm`] for complete game management.
+//! Most applications start with [`hand_rankings::evaluate_holdem`] for hand
+//! comparison or [`games::texas_hold_em::TexasHoldEm`] for complete game
+//! management.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 

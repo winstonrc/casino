@@ -266,7 +266,7 @@ mod tests {
     fn hand(strength: u8) -> ComparableHand {
         // Five distinct cards whose top card encodes `strength`, so a higher
         // `strength` yields a strictly stronger high-card hand.
-        use crate::hand_rankings::evaluate;
+        use crate::hand_rankings::best_five;
         let board = [
             Card::new(rank_from(strength), Suit::Club),
             Card::new(Rank::Seven, Suit::Diamond),
@@ -274,7 +274,7 @@ mod tests {
             Card::new(Rank::Three, Suit::Spade),
             Card::new(Rank::Two, Suit::Club),
         ];
-        evaluate(&[], &board)
+        best_five(&board).unwrap().value
     }
 
     /// Sums each player's chips across all pot awards, for assertions that only

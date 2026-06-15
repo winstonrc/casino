@@ -26,7 +26,7 @@ use crate::betting::{
     legal_actions, resolve_action, ActionError, BettingRound, PlayerAction, Resolved,
 };
 use crate::events::{ActionView, Blind, GameEvent, GameObserver, NullObserver, PotKind, SeatInfo};
-use crate::hand_rankings::{evaluate, ComparableHand};
+use crate::hand_rankings::{evaluate_holdem, ComparableHand};
 use crate::player::Player;
 use crate::pot::{build_pots, distribute_pots, refund_uncalled, Pot};
 
@@ -1997,18 +1997,18 @@ impl TexasHoldEm {
             let Some(hand) = self.player_hands.get(&id) else {
                 continue;
             };
-            // Folded players' hands are drained into `burned` at fold time (see the
-            // fold handling around line 1180), so any `player_hands` entry still
-            // reachable here holds exactly its two dealt hole cards — which is what
-            // makes the two-card indexing below safe.
-            debug_assert!(hand.cards.len() == 2);
-            let comparable = evaluate(&[hand.cards[0], hand.cards[1]], &self.board.cards);
-            evaluated.insert(id, comparable);
+            let [first, second] = hand.cards.as_slice() else {
+                continue;
+            };
+            let Ok(evaluated_hand) = evaluate_holdem([*first, *second], &self.board.cards) else {
+                continue;
+            };
+            evaluated.insert(id, evaluated_hand.value);
             if let Some(player) = self.players.get(&id).map(|p| p.to_ref()) {
                 self.emit(GameEvent::ShowdownReveal {
                     player,
                     hole: hand.cards.clone(),
-                    hand: comparable,
+                    hand: evaluated_hand.value,
                 });
             }
         }

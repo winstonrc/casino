@@ -15,17 +15,15 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 
 #### Added
 
-- `hand_rankings::evaluate(hole, board) -> ComparableHand` — picks the best
-  5-card hand and returns a fully-ordered, kicker-correct value (`HandCategory`
-  - tiebreak ranks). Handles the wheel (A-2-3-4-5) and is cross-checked in tests
-    against an independent brute-force oracle. `evaluate_with_cards` additionally
-    returns the exact five cards that form the hand, and `ComparableHand::describe`
-    names a hand in PokerStars wording ("two pair, Jacks and Fives", "a flush, Ace
-    high", "a full house, Kings full of Threes", "a straight, Five to Nine").
-    `ComparableHand` derives serde.
-- `hand_rankings::best_omaha(hole, board) -> ComparableHand` — Omaha
-  evaluation, which must use exactly two of the four hole cards plus three
-  board cards (panics unless `hole.len() == 4` and `board.len()` is 3–5).
+- Fallible hand evaluation through `evaluate_five`, `best_five`,
+  `evaluate_holdem`, and `evaluate_omaha`. Each returns an `EvaluatedHand`
+  containing the fully ordered, kicker-correct `ComparableHand` value and the
+  exact five physical cards forming it. Invalid card counts and duplicate cards
+  return `HandEvaluationError` rather than panicking. Omaha evaluation uses
+  exactly two of four hole cards and three board cards. The evaluator handles
+  the wheel (A-2-3-4-5) and is cross-checked against an independent brute-force
+  oracle. `ComparableHand::describe` names hands in PokerStars wording, and
+  `ComparableHand` derives serde.
 - `agent` module: the `PokerAgent` trait — `decide`, plus default-no-op `observe`
   (receive the `GameEvent` stream to update a player model) and `session_ended`
   (persist what was learned) lifecycle hooks — an owned (serializable) `PlayerView`,
@@ -151,9 +149,8 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 #### Removed
 
 - `HandRank`, `rank_hand`, `get_high_card_value`, and the `check_for_*` helpers.
-  **Migration:** call `evaluate(hole, board)` and compare the returned
-  `ComparableHand` values directly with `>`, `<`, and `==` — these handle hand
-  category, kickers, and ties correctly.
+  Hand comparison is provided by the fallible `evaluate_holdem`, `best_five`,
+  `evaluate_five`, and `evaluate_omaha` APIs described above.
 
 #### Fixed
 
