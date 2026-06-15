@@ -148,6 +148,9 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 
 #### Removed
 
+- Pre-release evaluator names `evaluate`, `evaluate_with_cards`,
+  `best_five_with_cards`, and `best_omaha`. Use the checked evaluator functions
+  documented above.
 - `HandRank`, `rank_hand`, `get_high_card_value`, and the `check_for_*` helpers.
   Hand comparison is provided by the fallible `evaluate_holdem`, `best_five`,
   `evaluate_five`, and `evaluate_omaha` APIs described above.

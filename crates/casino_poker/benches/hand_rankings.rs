@@ -92,7 +92,7 @@ fn benchmark_hand_rankings(criterion: &mut Criterion) {
                 .map(|hole| {
                     evaluate_holdem(black_box(*hole), black_box(&showdown_board))
                         .unwrap()
-                        .value
+                        .value()
                 })
                 .max()
         })

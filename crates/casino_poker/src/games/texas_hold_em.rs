@@ -26,7 +26,7 @@ use crate::betting::{
     legal_actions, resolve_action, ActionError, BettingRound, PlayerAction, Resolved,
 };
 use crate::events::{ActionView, Blind, GameEvent, GameObserver, NullObserver, PotKind, SeatInfo};
-use crate::hand_rankings::{evaluate_holdem, ComparableHand};
+use crate::hand_rankings::evaluate_holdem;
 use crate::player::Player;
 use crate::pot::{build_pots, distribute_pots, refund_uncalled, Pot};
 
@@ -200,6 +200,13 @@ impl std::error::Error for ActionSubmissionError {
 pub enum PlayError {
     /// No agent was registered for the player on the clock.
     MissingAgent(Uuid),
+    /// An agent could not act on the supplied player snapshot.
+    Agent {
+        /// Player whose agent returned the error.
+        player: Uuid,
+        /// Error reported by the agent.
+        error: AgentError,
+    },
     /// The hand or betting round could not start.
     HandStart(HandStartError),
     /// An agent-selected action could not be submitted.
@@ -210,6 +217,9 @@ impl fmt::Display for PlayError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::MissingAgent(player) => write!(f, "no agent registered for player {player}"),
+            Self::Agent { player, error } => {
+                write!(f, "agent for player {player} could not act: {error:?}")
+            }
             Self::HandStart(error) => write!(f, "hand could not start: {error}"),
             Self::Submission(error) => write!(f, "action submission failed: {error}"),
         }
@@ -221,7 +231,7 @@ impl std::error::Error for PlayError {
         match self {
             Self::Submission(error) => Some(error),
             Self::HandStart(error) => Some(error),
-            Self::MissingAgent(_) => None,
+            Self::MissingAgent(_) | Self::Agent { .. } => None,
         }
     }
 }
@@ -1421,6 +1431,12 @@ impl TexasHoldEm {
                             return Ok(RoundOutcome::Quit);
                         }
                         Some(Err(AgentError::Eof)) => return Ok(RoundOutcome::Eof),
+                        Some(Err(error)) => {
+                            return Err(PlayError::Agent {
+                                player: pending.player,
+                                error,
+                            });
+                        }
                         None => return Err(PlayError::MissingAgent(pending.player)),
                     };
                     step = self
@@ -1510,6 +1526,12 @@ impl TexasHoldEm {
                         Some(Ok(action)) => action,
                         Some(Err(AgentError::Quit)) => return Ok(HandOutcome::Quit),
                         Some(Err(AgentError::Eof)) => return Ok(HandOutcome::Eof),
+                        Some(Err(error)) => {
+                            return Err(PlayError::Agent {
+                                player: pending.player,
+                                error,
+                            });
+                        }
                         None => return Err(PlayError::MissingAgent(pending.player)),
                     };
                     step = self
@@ -1533,7 +1555,9 @@ impl TexasHoldEm {
                     return HandStep::AwaitingAction(pending);
                 }
                 BettingStep::RoundComplete(RoundOutcome::HandOver) => {
-                    self.award_pots();
+                    if let Err(error) = self.award_pots() {
+                        return HandStep::CannotStart(error);
+                    }
                     self.end_hand();
                     return HandStep::HandComplete;
                 }
@@ -1561,7 +1585,9 @@ impl TexasHoldEm {
                         step = self.begin_betting_round(street);
                     }
                     Street::River => {
-                        self.award_pots();
+                        if let Err(error) = self.award_pots() {
+                            return HandStep::CannotStart(error);
+                        }
                         self.end_hand();
                         return HandStep::HandComplete;
                     }
@@ -1940,7 +1966,48 @@ impl TexasHoldEm {
 
     /// Award the pot(s) at the end of a hand: refund any uncalled bet, build the
     /// main and side pots, and pay the best eligible hand(s).
-    fn award_pots(&mut self) {
+    fn award_pots(&mut self) -> Result<(), HandStartError> {
+        let live: Vec<Uuid> = self
+            .seats
+            .iter()
+            .copied()
+            .filter(|id| !self.folded.contains(id))
+            .collect();
+        let evaluated = if live.len() > 1 {
+            let mut seen: HashSet<(casino_cards::card::Rank, casino_cards::card::Suit)> =
+                HashSet::new();
+            if self
+                .board
+                .cards
+                .iter()
+                .any(|card| !seen.insert((card.rank, card.suit)))
+            {
+                return Err(HandStartError::InvalidHandState);
+            }
+            let mut evaluated = HashMap::with_capacity(live.len());
+            for &id in &live {
+                let hand = self
+                    .player_hands
+                    .get(&id)
+                    .ok_or(HandStartError::InvalidHandState)?;
+                let [first, second] = hand.cards.as_slice() else {
+                    return Err(HandStartError::InvalidHandState);
+                };
+                if [first, second]
+                    .into_iter()
+                    .any(|card| !seen.insert((card.rank, card.suit)))
+                {
+                    return Err(HandStartError::InvalidHandState);
+                }
+                let evaluated_hand = evaluate_holdem([*first, *second], &self.board.cards)
+                    .map_err(|_| HandStartError::InvalidHandState)?;
+                evaluated.insert(id, evaluated_hand.value());
+            }
+            evaluated
+        } else {
+            HashMap::new()
+        };
+
         if let Some((id, refund)) = refund_uncalled(&mut self.contributed, &self.folded) {
             if refund > 0 {
                 if let Some(player) = self.players.get_mut(&id) {
@@ -1955,15 +2022,9 @@ impl TexasHoldEm {
             }
         }
 
-        let live: Vec<Uuid> = self
-            .seats
-            .iter()
-            .copied()
-            .filter(|id| !self.folded.contains(id))
-            .collect();
         let pots = build_pots(&self.contributed, &self.folded);
         let total: u64 = pots.iter().map(|p| p.amount).sum();
-        let total = u32::try_from(total).expect("validated table bankroll must fit in u32");
+        let total = u32::try_from(total).map_err(|_| HandStartError::ChipTotalTooLarge)?;
 
         // Uncontested: everyone else folded.
         if live.len() <= 1 {
@@ -1980,7 +2041,7 @@ impl TexasHoldEm {
                     });
                 }
             }
-            return;
+            return Ok(());
         }
 
         // Re-show the final board (it has scrolled past during betting) before any
@@ -1992,23 +2053,14 @@ impl TexasHoldEm {
 
         // Evaluate each live hand once, recording its value for pot distribution
         // and emitting its showdown reveal.
-        let mut evaluated: HashMap<Uuid, ComparableHand> = HashMap::new();
         for &id in &live {
-            let Some(hand) = self.player_hands.get(&id) else {
-                continue;
-            };
-            let [first, second] = hand.cards.as_slice() else {
-                continue;
-            };
-            let Ok(evaluated_hand) = evaluate_holdem([*first, *second], &self.board.cards) else {
-                continue;
-            };
-            evaluated.insert(id, evaluated_hand.value);
+            let hand = &self.player_hands[&id];
+            let value = evaluated[&id];
             if let Some(player) = self.players.get(&id).map(|p| p.to_ref()) {
                 self.emit(GameEvent::ShowdownReveal {
                     player,
                     hole: hand.cards.clone(),
-                    hand: evaluated_hand.value,
+                    hand: value,
                 });
             }
         }
@@ -2029,7 +2081,7 @@ impl TexasHoldEm {
                     continue;
                 }
                 let amount =
-                    u32::try_from(amount).expect("validated table bankroll must fit in u32");
+                    u32::try_from(amount).map_err(|_| HandStartError::ChipTotalTooLarge)?;
                 if let Some(player) = self.players.get_mut(&id) {
                     player.add_chips(amount);
                 }
@@ -2044,6 +2096,7 @@ impl TexasHoldEm {
                 }
             }
         }
+        Ok(())
     }
 
     /// Return every card from hands, board, and burn pile to the deck and clear
@@ -2230,7 +2283,7 @@ mod tests {
             ]),
         );
 
-        game.award_pots();
+        game.award_pots().unwrap();
 
         // C wins main (60) + side (80) = 140; started this assertion with 40 in stack.
         assert_eq!(game.players[&c].chips, 40 + 140);
@@ -2277,7 +2330,7 @@ mod tests {
             ]),
         );
 
-        game.award_pots();
+        game.award_pots().unwrap();
 
         assert_eq!(game.players[&a].chips, 60); // main pot only
         assert_eq!(game.players[&b].chips, 80); // side pot
@@ -2302,7 +2355,7 @@ mod tests {
             ]),
         );
 
-        game.award_pots();
+        game.award_pots().unwrap();
         // Refund returns B's uncalled 8; remaining pot of 4 (2+2) goes to B.
         assert_eq!(game.players[&b].chips, 8 + 4);
         // No one reached a showdown, so neither a header nor a reveal is emitted.
@@ -2348,7 +2401,7 @@ mod tests {
             ]),
         );
 
-        game.award_pots();
+        game.award_pots().unwrap();
 
         let events = log.borrow();
         let showdown = events
@@ -2360,6 +2413,39 @@ mod tests {
             .expect("a contested hand emits a showdown header");
         assert_eq!(showdown.0.len(), 5, "the full board is reported");
         assert_eq!(showdown.1, 80, "pot is the post-refund total (40 + 40)");
+    }
+
+    #[test]
+    fn invalid_showdown_state_is_rejected_without_awarding_or_refunding() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[0, 0]);
+        let (a, b) = (ids[0], ids[1]);
+        game.contributed = HashMap::from([(a, 40), (b, 60)]);
+        game.board = Hand::new_from_cards(vec![
+            card(Rank::Two, Suit::Club),
+            card(Rank::Seven, Suit::Diamond),
+            card(Rank::Nine, Suit::Heart),
+            card(Rank::Jack, Suit::Spade),
+            card(Rank::King, Suit::Club),
+        ]);
+        game.player_hands.insert(
+            a,
+            Hand::new_from_cards(vec![
+                card(Rank::Ace, Suit::Club),
+                card(Rank::Ace, Suit::Diamond),
+            ]),
+        );
+        game.player_hands.insert(
+            b,
+            Hand::new_from_cards(vec![
+                card(Rank::Ace, Suit::Club),
+                card(Rank::Queen, Suit::Diamond),
+            ]),
+        );
+        let before = serde_json::to_string(&game).unwrap();
+
+        assert_eq!(game.award_pots(), Err(HandStartError::InvalidHandState));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
     }
 
     /// An agent that checks when it can, otherwise calls, otherwise shoves, and
@@ -2404,6 +2490,13 @@ mod tests {
     impl PokerAgent for EofAgent {
         fn decide(&mut self, _view: &PlayerView) -> Result<PlayerAction, AgentError> {
             Err(AgentError::Eof)
+        }
+    }
+
+    struct InvalidViewAgent;
+    impl PokerAgent for InvalidViewAgent {
+        fn decide(&mut self, _view: &PlayerView) -> Result<PlayerAction, AgentError> {
+            Err(AgentError::InvalidView)
         }
     }
 
@@ -2460,7 +2553,7 @@ mod tests {
                 break;
             }
         }
-        game.award_pots();
+        game.award_pots().unwrap();
         game.end_hand();
     }
 
@@ -3405,6 +3498,19 @@ mod tests {
         );
         assert_eq!(serde_json::to_string(&game).unwrap(), before);
 
+        let mut invalid_view_agents: HashMap<Uuid, Box<dyn PokerAgent>> = HashMap::from([(
+            pending.player,
+            Box::new(InvalidViewAgent) as Box<dyn PokerAgent>,
+        )]);
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut invalid_view_agents),
+            Err(PlayError::Agent {
+                player: pending.player,
+                error: AgentError::InvalidView,
+            })
+        );
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+
         let mut illegal_agents: HashMap<Uuid, Box<dyn PokerAgent>> = HashMap::from([(
             pending.player,
             Box::new(IllegalAgent) as Box<dyn PokerAgent>,
@@ -3434,6 +3540,17 @@ mod tests {
         assert_eq!(missing, Err(PlayError::MissingAgent(pending.player)));
 
         let before = serde_json::to_string(&game).unwrap();
+        let mut invalid_view: HashMap<Uuid, Box<dyn PokerAgent>> = HashMap::new();
+        invalid_view.insert(pending.player, Box::new(InvalidViewAgent));
+        assert_eq!(
+            game.play_hand(&mut invalid_view),
+            Err(PlayError::Agent {
+                player: pending.player,
+                error: AgentError::InvalidView,
+            })
+        );
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+
         let mut illegal: HashMap<Uuid, Box<dyn PokerAgent>> = HashMap::new();
         illegal.insert(pending.player, Box::new(IllegalAgent));
         assert_eq!(
@@ -3956,7 +4073,7 @@ mod tests {
             ]),
         );
 
-        game.award_pots();
+        game.award_pots().unwrap();
 
         let events = log.borrow();
         let awards: Vec<(u32, Option<crate::events::PotKind>)> = events
@@ -4005,7 +4122,7 @@ mod tests {
             ]),
         );
 
-        game.award_pots();
+        game.award_pots().unwrap();
 
         let events = log.borrow();
         let award = events
@@ -4052,7 +4169,7 @@ mod tests {
             ]),
         );
 
-        game.award_pots();
+        game.award_pots().unwrap();
 
         let name_a = game.players[&a].name.clone();
         let name_b = game.players[&b].name.clone();
@@ -4120,7 +4237,7 @@ mod tests {
             ]),
         );
 
-        game.award_pots();
+        game.award_pots().unwrap();
 
         let events = log.borrow();
         let awards: Vec<(u32, Option<crate::events::PotKind>)> = events
@@ -4172,7 +4289,7 @@ mod tests {
             ]),
         );
 
-        game.award_pots();
+        game.award_pots().unwrap();
 
         let events = log.borrow();
         let pots: Vec<Option<crate::events::PotKind>> = events

@@ -274,7 +274,7 @@ mod tests {
             Card::new(Rank::Three, Suit::Spade),
             Card::new(Rank::Two, Suit::Club),
         ];
-        best_five(&board).unwrap().value
+        best_five(&board).unwrap().value()
     }
 
     /// Sums each player's chips across all pot awards, for assertions that only

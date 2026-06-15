@@ -32,12 +32,15 @@ pub enum Street {
 }
 
 /// An error returned by an agent that prevents it from producing an action.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 pub enum AgentError {
     /// The player chose to quit the game.
     Quit,
     /// Input ended unexpectedly (e.g. EOF on stdin).
     Eof,
+    /// The supplied player snapshot is internally inconsistent.
+    InvalidView,
 }
 
 /// An owned, read-only snapshot of everything an agent needs to decide.

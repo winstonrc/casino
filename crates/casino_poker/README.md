@@ -14,8 +14,8 @@ transitions as the stable API.
 
 `evaluate_holdem` returns an `EvaluatedHand` containing the best five physical
 cards and a kicker-correct, fully ordered `ComparableHand` value. Compare
-players' `hand.value`s directly with `<`, `>`, and `==` (equal values chop the
-pot). Call `hand.value.describe()` for a PokerStars-style name ("two pair, Jacks
+players' `hand.value()`s directly with `<`, `>`, and `==` (equal values chop the
+pot). Call `hand.value().describe()` for a PokerStars-style name ("two pair, Jacks
 and Fives", "a flush, Ace high", "a full house, Kings full of Threes").
 
 Evaluation is fallible: unsupported card counts and duplicate physical cards
@@ -37,7 +37,7 @@ fn main() -> Result<(), casino_poker::hand_rankings::HandEvaluationError> {
         Card::new(Rank::Three, Suit::Club),
     ];
     let hand = evaluate_holdem(hole, &board)?;
-    assert_eq!(hand.value.category, HandCategory::Flush);
+    assert_eq!(hand.value().category, HandCategory::Flush);
     Ok(())
 }
 ```

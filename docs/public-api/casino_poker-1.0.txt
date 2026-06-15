@@ -1,0 +1,839 @@
+pub mod casino_poker
+pub use casino_poker::casino_cards
+pub use casino_poker::uuid
+pub mod casino_poker::agent
+#[non_exhaustive] pub enum casino_poker::agent::AgentError
+pub casino_poker::agent::AgentError::Eof
+pub casino_poker::agent::AgentError::InvalidView
+pub casino_poker::agent::AgentError::Quit
+impl core::clone::Clone for casino_poker::agent::AgentError
+pub fn casino_poker::agent::AgentError::clone(&self) -> casino_poker::agent::AgentError
+impl core::cmp::Eq for casino_poker::agent::AgentError
+impl core::cmp::PartialEq for casino_poker::agent::AgentError
+pub fn casino_poker::agent::AgentError::eq(&self, &casino_poker::agent::AgentError) -> bool
+impl core::fmt::Debug for casino_poker::agent::AgentError
+pub fn casino_poker::agent::AgentError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::agent::AgentError
+impl core::marker::StructuralPartialEq for casino_poker::agent::AgentError
+impl serde_core::ser::Serialize for casino_poker::agent::AgentError
+pub fn casino_poker::agent::AgentError::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::agent::AgentError
+pub fn casino_poker::agent::AgentError::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub enum casino_poker::agent::LegalAction
+pub casino_poker::agent::LegalAction::AllIn(u32)
+pub casino_poker::agent::LegalAction::Call(u32)
+pub casino_poker::agent::LegalAction::Check
+pub casino_poker::agent::LegalAction::Fold
+pub casino_poker::agent::LegalAction::RaiseTo
+pub casino_poker::agent::LegalAction::RaiseTo::max: u32
+pub casino_poker::agent::LegalAction::RaiseTo::min: u32
+impl core::clone::Clone for casino_poker::betting::LegalAction
+pub fn casino_poker::betting::LegalAction::clone(&self) -> casino_poker::betting::LegalAction
+impl core::cmp::Eq for casino_poker::betting::LegalAction
+impl core::cmp::PartialEq for casino_poker::betting::LegalAction
+pub fn casino_poker::betting::LegalAction::eq(&self, &casino_poker::betting::LegalAction) -> bool
+impl core::fmt::Debug for casino_poker::betting::LegalAction
+pub fn casino_poker::betting::LegalAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::betting::LegalAction
+impl core::marker::StructuralPartialEq for casino_poker::betting::LegalAction
+impl serde_core::ser::Serialize for casino_poker::betting::LegalAction
+pub fn casino_poker::betting::LegalAction::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::betting::LegalAction
+pub fn casino_poker::betting::LegalAction::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub enum casino_poker::agent::PlayerAction
+pub casino_poker::agent::PlayerAction::AllIn
+pub casino_poker::agent::PlayerAction::Call
+pub casino_poker::agent::PlayerAction::Check
+pub casino_poker::agent::PlayerAction::Fold
+pub casino_poker::agent::PlayerAction::RaiseTo(u32)
+impl core::clone::Clone for casino_poker::betting::PlayerAction
+pub fn casino_poker::betting::PlayerAction::clone(&self) -> casino_poker::betting::PlayerAction
+impl core::cmp::Eq for casino_poker::betting::PlayerAction
+impl core::cmp::PartialEq for casino_poker::betting::PlayerAction
+pub fn casino_poker::betting::PlayerAction::eq(&self, &casino_poker::betting::PlayerAction) -> bool
+impl core::fmt::Debug for casino_poker::betting::PlayerAction
+pub fn casino_poker::betting::PlayerAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::betting::PlayerAction
+impl core::marker::StructuralPartialEq for casino_poker::betting::PlayerAction
+impl serde_core::ser::Serialize for casino_poker::betting::PlayerAction
+pub fn casino_poker::betting::PlayerAction::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::betting::PlayerAction
+pub fn casino_poker::betting::PlayerAction::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub enum casino_poker::agent::Street
+pub casino_poker::agent::Street::Flop
+pub casino_poker::agent::Street::Preflop
+pub casino_poker::agent::Street::River
+pub casino_poker::agent::Street::Turn
+impl core::clone::Clone for casino_poker::agent::Street
+pub fn casino_poker::agent::Street::clone(&self) -> casino_poker::agent::Street
+impl core::cmp::Eq for casino_poker::agent::Street
+impl core::cmp::PartialEq for casino_poker::agent::Street
+pub fn casino_poker::agent::Street::eq(&self, &casino_poker::agent::Street) -> bool
+impl core::fmt::Debug for casino_poker::agent::Street
+pub fn casino_poker::agent::Street::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::agent::Street
+impl core::marker::StructuralPartialEq for casino_poker::agent::Street
+impl serde_core::ser::Serialize for casino_poker::agent::Street
+pub fn casino_poker::agent::Street::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::agent::Street
+pub fn casino_poker::agent::Street::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct casino_poker::agent::HandMetrics
+pub casino_poker::agent::HandMetrics::call_in_bb: f64
+pub casino_poker::agent::HandMetrics::players_remaining: usize
+pub casino_poker::agent::HandMetrics::pot: u32
+pub casino_poker::agent::HandMetrics::pot_odds: core::option::Option<f64>
+pub casino_poker::agent::HandMetrics::spr: core::option::Option<f64>
+pub casino_poker::agent::HandMetrics::stack_in_bb: f64
+pub casino_poker::agent::HandMetrics::to_call: u32
+impl core::clone::Clone for casino_poker::agent::HandMetrics
+pub fn casino_poker::agent::HandMetrics::clone(&self) -> casino_poker::agent::HandMetrics
+impl core::cmp::PartialEq for casino_poker::agent::HandMetrics
+pub fn casino_poker::agent::HandMetrics::eq(&self, &casino_poker::agent::HandMetrics) -> bool
+impl core::fmt::Debug for casino_poker::agent::HandMetrics
+pub fn casino_poker::agent::HandMetrics::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::agent::HandMetrics
+impl core::marker::StructuralPartialEq for casino_poker::agent::HandMetrics
+impl serde_core::ser::Serialize for casino_poker::agent::HandMetrics
+pub fn casino_poker::agent::HandMetrics::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::agent::HandMetrics
+pub fn casino_poker::agent::HandMetrics::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct casino_poker::agent::PlayerView
+pub casino_poker::agent::PlayerView::amount_owed: u32
+pub casino_poker::agent::PlayerView::big_blind: u32
+pub casino_poker::agent::PlayerView::board: alloc::vec::Vec<casino_cards::card::Card>
+pub casino_poker::agent::PlayerView::button_seat: core::option::Option<usize>
+pub casino_poker::agent::PlayerView::chips: u32
+pub casino_poker::agent::PlayerView::current_bet: u32
+pub casino_poker::agent::PlayerView::hole: [casino_cards::card::Card; 2]
+pub casino_poker::agent::PlayerView::legal_actions: alloc::vec::Vec<casino_poker::betting::LegalAction>
+pub casino_poker::agent::PlayerView::min_raise_to: u32
+pub casino_poker::agent::PlayerView::name: alloc::string::String
+pub casino_poker::agent::PlayerView::players_remaining: usize
+pub casino_poker::agent::PlayerView::pot_total: u32
+pub casino_poker::agent::PlayerView::seats: alloc::vec::Vec<casino_poker::games::texas_hold_em::SeatView>
+pub casino_poker::agent::PlayerView::street: casino_poker::agent::Street
+pub casino_poker::agent::PlayerView::you: uuid::Uuid
+impl casino_poker::agent::PlayerView
+pub fn casino_poker::agent::PlayerView::builder() -> casino_poker::agent::PlayerViewBuilder
+pub fn casino_poker::agent::PlayerView::metrics(&self) -> casino_poker::agent::HandMetrics
+impl core::clone::Clone for casino_poker::agent::PlayerView
+pub fn casino_poker::agent::PlayerView::clone(&self) -> casino_poker::agent::PlayerView
+impl core::fmt::Debug for casino_poker::agent::PlayerView
+pub fn casino_poker::agent::PlayerView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for casino_poker::agent::PlayerView
+pub fn casino_poker::agent::PlayerView::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::agent::PlayerView
+pub fn casino_poker::agent::PlayerView::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct casino_poker::agent::PlayerViewBuilder
+impl casino_poker::agent::PlayerViewBuilder
+pub fn casino_poker::agent::PlayerViewBuilder::amount_owed(self, u32) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::big_blind(self, u32) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::board(self, alloc::vec::Vec<casino_cards::card::Card>) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::build(self) -> casino_poker::agent::PlayerView
+pub fn casino_poker::agent::PlayerViewBuilder::button_seat(self, core::option::Option<usize>) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::chips(self, u32) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::current_bet(self, u32) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::hole(self, [casino_cards::card::Card; 2]) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::legal_actions(self, alloc::vec::Vec<casino_poker::betting::LegalAction>) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::min_raise_to(self, u32) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::name(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::players_remaining(self, usize) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::pot_total(self, u32) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::seats(self, alloc::vec::Vec<casino_poker::games::texas_hold_em::SeatView>) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::street(self, casino_poker::agent::Street) -> Self
+pub fn casino_poker::agent::PlayerViewBuilder::you(self, uuid::Uuid) -> Self
+pub trait casino_poker::agent::PokerAgent
+pub fn casino_poker::agent::PokerAgent::decide(&mut self, &casino_poker::agent::PlayerView) -> core::result::Result<casino_poker::betting::PlayerAction, casino_poker::agent::AgentError>
+pub fn casino_poker::agent::PokerAgent::observe(&mut self, &casino_poker::events::GameEvent)
+pub fn casino_poker::agent::PokerAgent::session_ended(&mut self)
+pub mod casino_poker::betting
+#[non_exhaustive] pub enum casino_poker::betting::ActionError
+pub casino_poker::betting::ActionError::CannotCheck
+pub casino_poker::betting::ActionError::ChipAmountOverflow
+pub casino_poker::betting::ActionError::InsufficientChips
+pub casino_poker::betting::ActionError::NotARaise
+pub casino_poker::betting::ActionError::RaiseNotAllowed
+pub casino_poker::betting::ActionError::RaiseTooSmall
+impl core::clone::Clone for casino_poker::betting::ActionError
+pub fn casino_poker::betting::ActionError::clone(&self) -> casino_poker::betting::ActionError
+impl core::cmp::Eq for casino_poker::betting::ActionError
+impl core::cmp::PartialEq for casino_poker::betting::ActionError
+pub fn casino_poker::betting::ActionError::eq(&self, &casino_poker::betting::ActionError) -> bool
+impl core::error::Error for casino_poker::betting::ActionError
+impl core::fmt::Debug for casino_poker::betting::ActionError
+pub fn casino_poker::betting::ActionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for casino_poker::betting::ActionError
+pub fn casino_poker::betting::ActionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::betting::ActionError
+impl core::marker::StructuralPartialEq for casino_poker::betting::ActionError
+impl serde_core::ser::Serialize for casino_poker::betting::ActionError
+pub fn casino_poker::betting::ActionError::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::betting::ActionError
+pub fn casino_poker::betting::ActionError::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub enum casino_poker::betting::LegalAction
+pub casino_poker::betting::LegalAction::AllIn(u32)
+pub casino_poker::betting::LegalAction::Call(u32)
+pub casino_poker::betting::LegalAction::Check
+pub casino_poker::betting::LegalAction::Fold
+pub casino_poker::betting::LegalAction::RaiseTo
+pub casino_poker::betting::LegalAction::RaiseTo::max: u32
+pub casino_poker::betting::LegalAction::RaiseTo::min: u32
+impl core::clone::Clone for casino_poker::betting::LegalAction
+pub fn casino_poker::betting::LegalAction::clone(&self) -> casino_poker::betting::LegalAction
+impl core::cmp::Eq for casino_poker::betting::LegalAction
+impl core::cmp::PartialEq for casino_poker::betting::LegalAction
+pub fn casino_poker::betting::LegalAction::eq(&self, &casino_poker::betting::LegalAction) -> bool
+impl core::fmt::Debug for casino_poker::betting::LegalAction
+pub fn casino_poker::betting::LegalAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::betting::LegalAction
+impl core::marker::StructuralPartialEq for casino_poker::betting::LegalAction
+impl serde_core::ser::Serialize for casino_poker::betting::LegalAction
+pub fn casino_poker::betting::LegalAction::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::betting::LegalAction
+pub fn casino_poker::betting::LegalAction::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub enum casino_poker::betting::PlayerAction
+pub casino_poker::betting::PlayerAction::AllIn
+pub casino_poker::betting::PlayerAction::Call
+pub casino_poker::betting::PlayerAction::Check
+pub casino_poker::betting::PlayerAction::Fold
+pub casino_poker::betting::PlayerAction::RaiseTo(u32)
+impl core::clone::Clone for casino_poker::betting::PlayerAction
+pub fn casino_poker::betting::PlayerAction::clone(&self) -> casino_poker::betting::PlayerAction
+impl core::cmp::Eq for casino_poker::betting::PlayerAction
+impl core::cmp::PartialEq for casino_poker::betting::PlayerAction
+pub fn casino_poker::betting::PlayerAction::eq(&self, &casino_poker::betting::PlayerAction) -> bool
+impl core::fmt::Debug for casino_poker::betting::PlayerAction
+pub fn casino_poker::betting::PlayerAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::betting::PlayerAction
+impl core::marker::StructuralPartialEq for casino_poker::betting::PlayerAction
+impl serde_core::ser::Serialize for casino_poker::betting::PlayerAction
+pub fn casino_poker::betting::PlayerAction::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::betting::PlayerAction
+pub fn casino_poker::betting::PlayerAction::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct casino_poker::betting::BettingRound
+pub casino_poker::betting::BettingRound::current_bet: u32
+pub casino_poker::betting::BettingRound::last_raise_increment: u32
+impl casino_poker::betting::BettingRound
+pub fn casino_poker::betting::BettingRound::apply_action(&mut self, uuid::Uuid, &casino_poker::betting::Resolved, &std::collections::hash::set::HashSet<uuid::Uuid>) -> core::result::Result<(), casino_poker::betting::ActionError>
+pub fn casino_poker::betting::BettingRound::committed(&self, uuid::Uuid) -> u32
+pub fn casino_poker::betting::BettingRound::is_closed(&self) -> bool
+pub fn casino_poker::betting::BettingRound::may_raise(&self, uuid::Uuid) -> bool
+pub fn casino_poker::betting::BettingRound::needs_to_act(&self, uuid::Uuid) -> bool
+pub fn casino_poker::betting::BettingRound::new(&[uuid::Uuid], u32, u32, std::collections::hash::map::HashMap<uuid::Uuid, u32>, core::option::Option<uuid::Uuid>) -> Self
+pub fn casino_poker::betting::BettingRound::owed(&self, uuid::Uuid) -> u32
+impl core::clone::Clone for casino_poker::betting::BettingRound
+pub fn casino_poker::betting::BettingRound::clone(&self) -> casino_poker::betting::BettingRound
+impl core::fmt::Debug for casino_poker::betting::BettingRound
+pub fn casino_poker::betting::BettingRound::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for casino_poker::betting::BettingRound
+pub fn casino_poker::betting::BettingRound::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::betting::BettingRound
+pub fn casino_poker::betting::BettingRound::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct casino_poker::betting::Resolved
+pub casino_poker::betting::Resolved::all_in: bool
+pub casino_poker::betting::Resolved::folded: bool
+pub casino_poker::betting::Resolved::is_full_raise: bool
+pub casino_poker::betting::Resolved::paid: u32
+pub casino_poker::betting::Resolved::raised_to: core::option::Option<u32>
+impl core::clone::Clone for casino_poker::betting::Resolved
+pub fn casino_poker::betting::Resolved::clone(&self) -> casino_poker::betting::Resolved
+impl core::cmp::Eq for casino_poker::betting::Resolved
+impl core::cmp::PartialEq for casino_poker::betting::Resolved
+pub fn casino_poker::betting::Resolved::eq(&self, &casino_poker::betting::Resolved) -> bool
+impl core::fmt::Debug for casino_poker::betting::Resolved
+pub fn casino_poker::betting::Resolved::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::betting::Resolved
+impl core::marker::StructuralPartialEq for casino_poker::betting::Resolved
+pub fn casino_poker::betting::amount_owed(u32, u32) -> u32
+pub fn casino_poker::betting::legal_actions(u32, u32, u32, u32, bool) -> alloc::vec::Vec<casino_poker::betting::LegalAction>
+pub fn casino_poker::betting::resolve_action(casino_poker::betting::PlayerAction, u32, u32, u32, u32) -> core::result::Result<casino_poker::betting::Resolved, casino_poker::betting::ActionError>
+pub mod casino_poker::events
+#[non_exhaustive] pub enum casino_poker::events::ActionView
+pub casino_poker::events::ActionView::Bet
+pub casino_poker::events::ActionView::Bet::all_in: bool
+pub casino_poker::events::ActionView::Bet::amount: u32
+pub casino_poker::events::ActionView::Called
+pub casino_poker::events::ActionView::Called::all_in: bool
+pub casino_poker::events::ActionView::Called::amount: u32
+pub casino_poker::events::ActionView::Checked
+pub casino_poker::events::ActionView::Folded
+pub casino_poker::events::ActionView::Raised
+pub casino_poker::events::ActionView::Raised::all_in: bool
+pub casino_poker::events::ActionView::Raised::by: u32
+pub casino_poker::events::ActionView::Raised::to: u32
+impl core::clone::Clone for casino_poker::events::ActionView
+pub fn casino_poker::events::ActionView::clone(&self) -> casino_poker::events::ActionView
+impl core::cmp::Eq for casino_poker::events::ActionView
+impl core::cmp::PartialEq for casino_poker::events::ActionView
+pub fn casino_poker::events::ActionView::eq(&self, &casino_poker::events::ActionView) -> bool
+impl core::fmt::Debug for casino_poker::events::ActionView
+pub fn casino_poker::events::ActionView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::events::ActionView
+impl core::marker::StructuralPartialEq for casino_poker::events::ActionView
+impl serde_core::ser::Serialize for casino_poker::events::ActionView
+pub fn casino_poker::events::ActionView::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::events::ActionView
+pub fn casino_poker::events::ActionView::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub enum casino_poker::events::Blind
+pub casino_poker::events::Blind::Big
+pub casino_poker::events::Blind::Small
+impl core::clone::Clone for casino_poker::events::Blind
+pub fn casino_poker::events::Blind::clone(&self) -> casino_poker::events::Blind
+impl core::cmp::Eq for casino_poker::events::Blind
+impl core::cmp::PartialEq for casino_poker::events::Blind
+pub fn casino_poker::events::Blind::eq(&self, &casino_poker::events::Blind) -> bool
+impl core::fmt::Debug for casino_poker::events::Blind
+pub fn casino_poker::events::Blind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::events::Blind
+impl core::marker::StructuralPartialEq for casino_poker::events::Blind
+impl serde_core::ser::Serialize for casino_poker::events::Blind
+pub fn casino_poker::events::Blind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::events::Blind
+pub fn casino_poker::events::Blind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub enum casino_poker::events::GameEvent
+pub casino_poker::events::GameEvent::ActionTaken
+pub casino_poker::events::GameEvent::ActionTaken::action: casino_poker::events::ActionView
+pub casino_poker::events::GameEvent::ActionTaken::player: casino_poker::player::PlayerRef
+pub casino_poker::events::GameEvent::ActionTaken::street: casino_poker::agent::Street
+pub casino_poker::events::GameEvent::BlindPosted
+pub casino_poker::events::GameEvent::BlindPosted::all_in: bool
+pub casino_poker::events::GameEvent::BlindPosted::amount: u32
+pub casino_poker::events::GameEvent::BlindPosted::blind: casino_poker::events::Blind
+pub casino_poker::events::GameEvent::BlindPosted::player: casino_poker::player::PlayerRef
+pub casino_poker::events::GameEvent::HandComplete
+pub casino_poker::events::GameEvent::HandStarted
+pub casino_poker::events::GameEvent::HandStarted::big_blind: u32
+pub casino_poker::events::GameEvent::HandStarted::button_seat: usize
+pub casino_poker::events::GameEvent::HandStarted::hand_number: u32
+pub casino_poker::events::GameEvent::HandStarted::seats: alloc::vec::Vec<casino_poker::events::SeatInfo>
+pub casino_poker::events::GameEvent::HandStarted::small_blind: u32
+pub casino_poker::events::GameEvent::HoleCardsDealt
+pub casino_poker::events::GameEvent::HoleCardsDealt::hero: core::option::Option<(casino_poker::player::PlayerRef, alloc::vec::Vec<casino_cards::card::Card>)>
+pub casino_poker::events::GameEvent::PotAwarded
+pub casino_poker::events::GameEvent::PotAwarded::amount: u32
+pub casino_poker::events::GameEvent::PotAwarded::hand: core::option::Option<casino_poker::hand_rankings::ComparableHand>
+pub casino_poker::events::GameEvent::PotAwarded::player: casino_poker::player::PlayerRef
+pub casino_poker::events::GameEvent::PotAwarded::pot: core::option::Option<casino_poker::events::PotKind>
+pub casino_poker::events::GameEvent::Showdown
+pub casino_poker::events::GameEvent::Showdown::board: alloc::vec::Vec<casino_cards::card::Card>
+pub casino_poker::events::GameEvent::Showdown::pot: u32
+pub casino_poker::events::GameEvent::ShowdownReveal
+pub casino_poker::events::GameEvent::ShowdownReveal::hand: casino_poker::hand_rankings::ComparableHand
+pub casino_poker::events::GameEvent::ShowdownReveal::hole: alloc::vec::Vec<casino_cards::card::Card>
+pub casino_poker::events::GameEvent::ShowdownReveal::player: casino_poker::player::PlayerRef
+pub casino_poker::events::GameEvent::StreetDealt
+pub casino_poker::events::GameEvent::StreetDealt::board: alloc::vec::Vec<casino_cards::card::Card>
+pub casino_poker::events::GameEvent::StreetDealt::pot: u32
+pub casino_poker::events::GameEvent::StreetDealt::street: casino_poker::agent::Street
+pub casino_poker::events::GameEvent::UncalledBetReturned
+pub casino_poker::events::GameEvent::UncalledBetReturned::amount: u32
+pub casino_poker::events::GameEvent::UncalledBetReturned::player: casino_poker::player::PlayerRef
+impl core::clone::Clone for casino_poker::events::GameEvent
+pub fn casino_poker::events::GameEvent::clone(&self) -> casino_poker::events::GameEvent
+impl core::cmp::PartialEq for casino_poker::events::GameEvent
+pub fn casino_poker::events::GameEvent::eq(&self, &casino_poker::events::GameEvent) -> bool
+impl core::fmt::Debug for casino_poker::events::GameEvent
+pub fn casino_poker::events::GameEvent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for casino_poker::events::GameEvent
+impl serde_core::ser::Serialize for casino_poker::events::GameEvent
+pub fn casino_poker::events::GameEvent::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::events::GameEvent
+pub fn casino_poker::events::GameEvent::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub enum casino_poker::events::PotKind
+pub casino_poker::events::PotKind::Main
+pub casino_poker::events::PotKind::Side(u8)
+impl core::clone::Clone for casino_poker::events::PotKind
+pub fn casino_poker::events::PotKind::clone(&self) -> casino_poker::events::PotKind
+impl core::cmp::Eq for casino_poker::events::PotKind
+impl core::cmp::PartialEq for casino_poker::events::PotKind
+pub fn casino_poker::events::PotKind::eq(&self, &casino_poker::events::PotKind) -> bool
+impl core::fmt::Debug for casino_poker::events::PotKind
+pub fn casino_poker::events::PotKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::events::PotKind
+impl core::marker::StructuralPartialEq for casino_poker::events::PotKind
+impl serde_core::ser::Serialize for casino_poker::events::PotKind
+pub fn casino_poker::events::PotKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::events::PotKind
+pub fn casino_poker::events::PotKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct casino_poker::events::BroadcastObserver
+impl casino_poker::events::BroadcastObserver
+pub fn casino_poker::events::BroadcastObserver::new(alloc::vec::Vec<alloc::boxed::Box<dyn casino_poker::events::GameObserver>>) -> Self
+pub fn casino_poker::events::BroadcastObserver::push(&mut self, alloc::boxed::Box<dyn casino_poker::events::GameObserver>)
+impl casino_poker::events::GameObserver for casino_poker::events::BroadcastObserver
+pub fn casino_poker::events::BroadcastObserver::notify(&mut self, &casino_poker::events::GameEvent)
+pub struct casino_poker::events::NullObserver
+impl casino_poker::events::GameObserver for casino_poker::events::NullObserver
+pub fn casino_poker::events::NullObserver::notify(&mut self, &casino_poker::events::GameEvent)
+pub struct casino_poker::events::SeatInfo
+pub casino_poker::events::SeatInfo::player: casino_poker::player::PlayerRef
+pub casino_poker::events::SeatInfo::seat_no: usize
+pub casino_poker::events::SeatInfo::stack: u32
+impl core::clone::Clone for casino_poker::events::SeatInfo
+pub fn casino_poker::events::SeatInfo::clone(&self) -> casino_poker::events::SeatInfo
+impl core::cmp::Eq for casino_poker::events::SeatInfo
+impl core::cmp::PartialEq for casino_poker::events::SeatInfo
+pub fn casino_poker::events::SeatInfo::eq(&self, &casino_poker::events::SeatInfo) -> bool
+impl core::fmt::Debug for casino_poker::events::SeatInfo
+pub fn casino_poker::events::SeatInfo::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for casino_poker::events::SeatInfo
+impl serde_core::ser::Serialize for casino_poker::events::SeatInfo
+pub fn casino_poker::events::SeatInfo::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::events::SeatInfo
+pub fn casino_poker::events::SeatInfo::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub trait casino_poker::events::GameObserver
+pub fn casino_poker::events::GameObserver::notify(&mut self, &casino_poker::events::GameEvent)
+impl casino_poker::events::GameObserver for casino_poker::events::BroadcastObserver
+pub fn casino_poker::events::BroadcastObserver::notify(&mut self, &casino_poker::events::GameEvent)
+impl casino_poker::events::GameObserver for casino_poker::events::NullObserver
+pub fn casino_poker::events::NullObserver::notify(&mut self, &casino_poker::events::GameEvent)
+pub mod casino_poker::games
+pub mod casino_poker::games::texas_hold_em
+#[non_exhaustive] pub enum casino_poker::games::texas_hold_em::ActionSubmissionError
+pub casino_poker::games::texas_hold_em::ActionSubmissionError::IllegalAction(casino_poker::betting::ActionError)
+pub casino_poker::games::texas_hold_em::ActionSubmissionError::InvalidState(casino_poker::games::texas_hold_em::HandStartError)
+pub casino_poker::games::texas_hold_em::ActionSubmissionError::NoActionPending
+pub casino_poker::games::texas_hold_em::ActionSubmissionError::StaleDecision
+pub casino_poker::games::texas_hold_em::ActionSubmissionError::StaleDecision::expected: casino_poker::games::texas_hold_em::DecisionId
+pub casino_poker::games::texas_hold_em::ActionSubmissionError::StaleDecision::submitted: casino_poker::games::texas_hold_em::DecisionId
+pub casino_poker::games::texas_hold_em::ActionSubmissionError::WrongPlayer
+pub casino_poker::games::texas_hold_em::ActionSubmissionError::WrongPlayer::expected: uuid::Uuid
+pub casino_poker::games::texas_hold_em::ActionSubmissionError::WrongPlayer::submitted: uuid::Uuid
+impl core::clone::Clone for casino_poker::games::texas_hold_em::ActionSubmissionError
+pub fn casino_poker::games::texas_hold_em::ActionSubmissionError::clone(&self) -> casino_poker::games::texas_hold_em::ActionSubmissionError
+impl core::cmp::Eq for casino_poker::games::texas_hold_em::ActionSubmissionError
+impl core::cmp::PartialEq for casino_poker::games::texas_hold_em::ActionSubmissionError
+pub fn casino_poker::games::texas_hold_em::ActionSubmissionError::eq(&self, &casino_poker::games::texas_hold_em::ActionSubmissionError) -> bool
+impl core::error::Error for casino_poker::games::texas_hold_em::ActionSubmissionError
+pub fn casino_poker::games::texas_hold_em::ActionSubmissionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::ActionSubmissionError
+pub fn casino_poker::games::texas_hold_em::ActionSubmissionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for casino_poker::games::texas_hold_em::ActionSubmissionError
+pub fn casino_poker::games::texas_hold_em::ActionSubmissionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::games::texas_hold_em::ActionSubmissionError
+impl core::marker::StructuralPartialEq for casino_poker::games::texas_hold_em::ActionSubmissionError
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::ActionSubmissionError
+pub fn casino_poker::games::texas_hold_em::ActionSubmissionError::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::ActionSubmissionError
+pub fn casino_poker::games::texas_hold_em::ActionSubmissionError::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub enum casino_poker::games::texas_hold_em::BettingStep
+pub casino_poker::games::texas_hold_em::BettingStep::AwaitingAction(casino_poker::games::texas_hold_em::PendingAction)
+pub casino_poker::games::texas_hold_em::BettingStep::CannotStart(casino_poker::games::texas_hold_em::HandStartError)
+pub casino_poker::games::texas_hold_em::BettingStep::RoundComplete(casino_poker::games::texas_hold_em::RoundOutcome)
+impl core::clone::Clone for casino_poker::games::texas_hold_em::BettingStep
+pub fn casino_poker::games::texas_hold_em::BettingStep::clone(&self) -> casino_poker::games::texas_hold_em::BettingStep
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::BettingStep
+pub fn casino_poker::games::texas_hold_em::BettingStep::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::BettingStep
+pub fn casino_poker::games::texas_hold_em::BettingStep::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::BettingStep
+pub fn casino_poker::games::texas_hold_em::BettingStep::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub enum casino_poker::games::texas_hold_em::HandOutcome
+pub casino_poker::games::texas_hold_em::HandOutcome::Complete
+pub casino_poker::games::texas_hold_em::HandOutcome::Eof
+pub casino_poker::games::texas_hold_em::HandOutcome::Quit
+impl core::clone::Clone for casino_poker::games::texas_hold_em::HandOutcome
+pub fn casino_poker::games::texas_hold_em::HandOutcome::clone(&self) -> casino_poker::games::texas_hold_em::HandOutcome
+impl core::cmp::Eq for casino_poker::games::texas_hold_em::HandOutcome
+impl core::cmp::PartialEq for casino_poker::games::texas_hold_em::HandOutcome
+pub fn casino_poker::games::texas_hold_em::HandOutcome::eq(&self, &casino_poker::games::texas_hold_em::HandOutcome) -> bool
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::HandOutcome
+pub fn casino_poker::games::texas_hold_em::HandOutcome::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::games::texas_hold_em::HandOutcome
+impl core::marker::StructuralPartialEq for casino_poker::games::texas_hold_em::HandOutcome
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::HandOutcome
+pub fn casino_poker::games::texas_hold_em::HandOutcome::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::HandOutcome
+pub fn casino_poker::games::texas_hold_em::HandOutcome::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub enum casino_poker::games::texas_hold_em::HandStartError
+pub casino_poker::games::texas_hold_em::HandStartError::ChipTotalTooLarge
+pub casino_poker::games::texas_hold_em::HandStartError::DuplicateCards
+pub casino_poker::games::texas_hold_em::HandStartError::HandAlreadyInProgress
+pub casino_poker::games::texas_hold_em::HandStartError::InsufficientCards
+pub casino_poker::games::texas_hold_em::HandStartError::InsufficientCards::available: usize
+pub casino_poker::games::texas_hold_em::HandStartError::InsufficientCards::required: usize
+pub casino_poker::games::texas_hold_em::HandStartError::InvalidHandState
+pub casino_poker::games::texas_hold_em::HandStartError::InvalidRoster
+pub casino_poker::games::texas_hold_em::HandStartError::NotEnoughPlayers
+pub casino_poker::games::texas_hold_em::HandStartError::NotEnoughPlayers::seated: usize
+pub casino_poker::games::texas_hold_em::HandStartError::TooManyPlayers
+pub casino_poker::games::texas_hold_em::HandStartError::TooManyPlayers::maximum: usize
+pub casino_poker::games::texas_hold_em::HandStartError::TooManyPlayers::seated: usize
+impl core::clone::Clone for casino_poker::games::texas_hold_em::HandStartError
+pub fn casino_poker::games::texas_hold_em::HandStartError::clone(&self) -> casino_poker::games::texas_hold_em::HandStartError
+impl core::cmp::Eq for casino_poker::games::texas_hold_em::HandStartError
+impl core::cmp::PartialEq for casino_poker::games::texas_hold_em::HandStartError
+pub fn casino_poker::games::texas_hold_em::HandStartError::eq(&self, &casino_poker::games::texas_hold_em::HandStartError) -> bool
+impl core::error::Error for casino_poker::games::texas_hold_em::HandStartError
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::HandStartError
+pub fn casino_poker::games::texas_hold_em::HandStartError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for casino_poker::games::texas_hold_em::HandStartError
+pub fn casino_poker::games::texas_hold_em::HandStartError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::games::texas_hold_em::HandStartError
+impl core::marker::StructuralPartialEq for casino_poker::games::texas_hold_em::HandStartError
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::HandStartError
+pub fn casino_poker::games::texas_hold_em::HandStartError::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::HandStartError
+pub fn casino_poker::games::texas_hold_em::HandStartError::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub enum casino_poker::games::texas_hold_em::HandStep
+pub casino_poker::games::texas_hold_em::HandStep::AwaitingAction(casino_poker::games::texas_hold_em::PendingAction)
+pub casino_poker::games::texas_hold_em::HandStep::CannotStart(casino_poker::games::texas_hold_em::HandStartError)
+pub casino_poker::games::texas_hold_em::HandStep::HandComplete
+impl core::clone::Clone for casino_poker::games::texas_hold_em::HandStep
+pub fn casino_poker::games::texas_hold_em::HandStep::clone(&self) -> casino_poker::games::texas_hold_em::HandStep
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::HandStep
+pub fn casino_poker::games::texas_hold_em::HandStep::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::HandStep
+pub fn casino_poker::games::texas_hold_em::HandStep::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::HandStep
+pub fn casino_poker::games::texas_hold_em::HandStep::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub enum casino_poker::games::texas_hold_em::PlayError
+pub casino_poker::games::texas_hold_em::PlayError::Agent
+pub casino_poker::games::texas_hold_em::PlayError::Agent::error: casino_poker::agent::AgentError
+pub casino_poker::games::texas_hold_em::PlayError::Agent::player: uuid::Uuid
+pub casino_poker::games::texas_hold_em::PlayError::HandStart(casino_poker::games::texas_hold_em::HandStartError)
+pub casino_poker::games::texas_hold_em::PlayError::MissingAgent(uuid::Uuid)
+pub casino_poker::games::texas_hold_em::PlayError::Submission(casino_poker::games::texas_hold_em::ActionSubmissionError)
+impl core::clone::Clone for casino_poker::games::texas_hold_em::PlayError
+pub fn casino_poker::games::texas_hold_em::PlayError::clone(&self) -> casino_poker::games::texas_hold_em::PlayError
+impl core::cmp::Eq for casino_poker::games::texas_hold_em::PlayError
+impl core::cmp::PartialEq for casino_poker::games::texas_hold_em::PlayError
+pub fn casino_poker::games::texas_hold_em::PlayError::eq(&self, &casino_poker::games::texas_hold_em::PlayError) -> bool
+impl core::error::Error for casino_poker::games::texas_hold_em::PlayError
+pub fn casino_poker::games::texas_hold_em::PlayError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::PlayError
+pub fn casino_poker::games::texas_hold_em::PlayError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for casino_poker::games::texas_hold_em::PlayError
+pub fn casino_poker::games::texas_hold_em::PlayError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::games::texas_hold_em::PlayError
+impl core::marker::StructuralPartialEq for casino_poker::games::texas_hold_em::PlayError
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::PlayError
+pub fn casino_poker::games::texas_hold_em::PlayError::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::PlayError
+pub fn casino_poker::games::texas_hold_em::PlayError::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub enum casino_poker::games::texas_hold_em::RoundOutcome
+pub casino_poker::games::texas_hold_em::RoundOutcome::Continue
+pub casino_poker::games::texas_hold_em::RoundOutcome::Eof
+pub casino_poker::games::texas_hold_em::RoundOutcome::HandOver
+pub casino_poker::games::texas_hold_em::RoundOutcome::Quit
+impl core::clone::Clone for casino_poker::games::texas_hold_em::RoundOutcome
+pub fn casino_poker::games::texas_hold_em::RoundOutcome::clone(&self) -> casino_poker::games::texas_hold_em::RoundOutcome
+impl core::cmp::Eq for casino_poker::games::texas_hold_em::RoundOutcome
+impl core::cmp::PartialEq for casino_poker::games::texas_hold_em::RoundOutcome
+pub fn casino_poker::games::texas_hold_em::RoundOutcome::eq(&self, &casino_poker::games::texas_hold_em::RoundOutcome) -> bool
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::RoundOutcome
+pub fn casino_poker::games::texas_hold_em::RoundOutcome::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::games::texas_hold_em::RoundOutcome
+impl core::marker::StructuralPartialEq for casino_poker::games::texas_hold_em::RoundOutcome
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::RoundOutcome
+pub fn casino_poker::games::texas_hold_em::RoundOutcome::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::RoundOutcome
+pub fn casino_poker::games::texas_hold_em::RoundOutcome::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct casino_poker::games::texas_hold_em::ClientView
+pub casino_poker::games::texas_hold_em::ClientView::hole: core::option::Option<[casino_cards::card::Card; 2]>
+pub casino_poker::games::texas_hold_em::ClientView::pending_action: core::option::Option<casino_poker::games::texas_hold_em::PendingAction>
+pub casino_poker::games::texas_hold_em::ClientView::recent_events: alloc::vec::Vec<casino_poker::events::GameEvent>
+pub casino_poker::games::texas_hold_em::ClientView::table: casino_poker::games::texas_hold_em::TableView
+pub casino_poker::games::texas_hold_em::ClientView::you: uuid::Uuid
+impl core::clone::Clone for casino_poker::games::texas_hold_em::ClientView
+pub fn casino_poker::games::texas_hold_em::ClientView::clone(&self) -> casino_poker::games::texas_hold_em::ClientView
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::ClientView
+pub fn casino_poker::games::texas_hold_em::ClientView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::ClientView
+pub fn casino_poker::games::texas_hold_em::ClientView::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::ClientView
+pub fn casino_poker::games::texas_hold_em::ClientView::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct casino_poker::games::texas_hold_em::DecisionId(_)
+impl core::clone::Clone for casino_poker::games::texas_hold_em::DecisionId
+pub fn casino_poker::games::texas_hold_em::DecisionId::clone(&self) -> casino_poker::games::texas_hold_em::DecisionId
+impl core::cmp::Eq for casino_poker::games::texas_hold_em::DecisionId
+impl core::cmp::PartialEq for casino_poker::games::texas_hold_em::DecisionId
+pub fn casino_poker::games::texas_hold_em::DecisionId::eq(&self, &casino_poker::games::texas_hold_em::DecisionId) -> bool
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::DecisionId
+pub fn casino_poker::games::texas_hold_em::DecisionId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for casino_poker::games::texas_hold_em::DecisionId
+pub fn casino_poker::games::texas_hold_em::DecisionId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for casino_poker::games::texas_hold_em::DecisionId
+impl core::marker::StructuralPartialEq for casino_poker::games::texas_hold_em::DecisionId
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::DecisionId
+pub fn casino_poker::games::texas_hold_em::DecisionId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::DecisionId
+pub fn casino_poker::games::texas_hold_em::DecisionId::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct casino_poker::games::texas_hold_em::PendingAction
+pub casino_poker::games::texas_hold_em::PendingAction::decision_id: casino_poker::games::texas_hold_em::DecisionId
+pub casino_poker::games::texas_hold_em::PendingAction::player: uuid::Uuid
+pub casino_poker::games::texas_hold_em::PendingAction::view: casino_poker::agent::PlayerView
+impl core::clone::Clone for casino_poker::games::texas_hold_em::PendingAction
+pub fn casino_poker::games::texas_hold_em::PendingAction::clone(&self) -> casino_poker::games::texas_hold_em::PendingAction
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::PendingAction
+pub fn casino_poker::games::texas_hold_em::PendingAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::PendingAction
+pub fn casino_poker::games::texas_hold_em::PendingAction::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::PendingAction
+pub fn casino_poker::games::texas_hold_em::PendingAction::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct casino_poker::games::texas_hold_em::SeatView
+pub casino_poker::games::texas_hold_em::SeatView::all_in: bool
+pub casino_poker::games::texas_hold_em::SeatView::chips: u32
+pub casino_poker::games::texas_hold_em::SeatView::committed_this_street: u32
+pub casino_poker::games::texas_hold_em::SeatView::contributed_this_hand: u32
+pub casino_poker::games::texas_hold_em::SeatView::folded: bool
+pub casino_poker::games::texas_hold_em::SeatView::id: uuid::Uuid
+pub casino_poker::games::texas_hold_em::SeatView::name: alloc::string::String
+impl core::clone::Clone for casino_poker::games::texas_hold_em::SeatView
+pub fn casino_poker::games::texas_hold_em::SeatView::clone(&self) -> casino_poker::games::texas_hold_em::SeatView
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::SeatView
+pub fn casino_poker::games::texas_hold_em::SeatView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::SeatView
+pub fn casino_poker::games::texas_hold_em::SeatView::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::SeatView
+pub fn casino_poker::games::texas_hold_em::SeatView::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct casino_poker::games::texas_hold_em::TableView
+pub casino_poker::games::texas_hold_em::TableView::board: alloc::vec::Vec<casino_cards::card::Card>
+pub casino_poker::games::texas_hold_em::TableView::button_seat: core::option::Option<usize>
+pub casino_poker::games::texas_hold_em::TableView::current_bet: u32
+pub casino_poker::games::texas_hold_em::TableView::pot_total: u32
+pub casino_poker::games::texas_hold_em::TableView::pots: alloc::vec::Vec<casino_poker::pot::Pot>
+pub casino_poker::games::texas_hold_em::TableView::seats: alloc::vec::Vec<casino_poker::games::texas_hold_em::SeatView>
+pub casino_poker::games::texas_hold_em::TableView::street: core::option::Option<casino_poker::agent::Street>
+pub casino_poker::games::texas_hold_em::TableView::to_act: core::option::Option<uuid::Uuid>
+impl core::clone::Clone for casino_poker::games::texas_hold_em::TableView
+pub fn casino_poker::games::texas_hold_em::TableView::clone(&self) -> casino_poker::games::texas_hold_em::TableView
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::TableView
+pub fn casino_poker::games::texas_hold_em::TableView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::TableView
+pub fn casino_poker::games::texas_hold_em::TableView::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::TableView
+pub fn casino_poker::games::texas_hold_em::TableView::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct casino_poker::games::texas_hold_em::TexasHoldEm
+impl casino_poker::games::texas_hold_em::TexasHoldEm
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::abort_betting_round(&mut self)
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::add_chips_to(&mut self, &uuid::Uuid, u32) -> bool
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::add_player(&mut self, casino_poker::player::Player) -> core::result::Result<(), &'static str>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::begin_betting_round(&mut self, casino_poker::agent::Street) -> casino_poker::games::texas_hold_em::BettingStep
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::begin_hand(&mut self) -> core::result::Result<(), casino_poker::games::texas_hold_em::HandStartError>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::begin_hand_with_deck(&mut self, casino_cards::deck::Deck) -> core::result::Result<(), casino_poker::games::texas_hold_em::HandStartError>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::board(&self) -> &casino_cards::hand::Hand
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::button_seat(&self) -> core::option::Option<usize>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::check_for_game_over(&mut self) -> bool
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::client_view(&self, uuid::Uuid) -> casino_poker::games::texas_hold_em::ClientView
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::committed_this_street(&self, &uuid::Uuid) -> u32
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::current_bet(&self) -> u32
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::current_street(&self) -> core::option::Option<casino_poker::agent::Street>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::dealer(&self) -> core::option::Option<uuid::Uuid>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::drive_hand(&mut self) -> casino_poker::games::texas_hold_em::HandStep
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::end_game(&mut self)
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::get_big_blind_amount(&self) -> u32
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::get_big_blind_seat_index(&self) -> usize
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::get_small_blind_amount(&self) -> u32
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::get_small_blind_seat_index(&self) -> usize
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::get_under_the_gun_seat_index(&self) -> usize
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::hand_in_progress(&self) -> bool
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::has_folded(&self, &uuid::Uuid) -> bool
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::is_all_in(&self, &uuid::Uuid) -> bool
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::new(u32, usize, u32, u32) -> Self
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::new_player(&self, &str) -> casino_poker::player::Player
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::new_player_with_chips(&self, &str, u32) -> casino_poker::player::Player
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::new_seeded(u32, usize, u32, u32, u64) -> Self
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::pending_action(&self) -> core::option::Option<casino_poker::games::texas_hold_em::PendingAction>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::play_hand(&mut self, &mut std::collections::hash::map::HashMap<uuid::Uuid, alloc::boxed::Box<dyn casino_poker::agent::PokerAgent>>) -> core::result::Result<casino_poker::games::texas_hold_em::HandOutcome, casino_poker::games::texas_hold_em::PlayError>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::player(&self, &uuid::Uuid) -> core::option::Option<&casino_poker::player::Player>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::player_hand(&self, &uuid::Uuid) -> core::option::Option<&casino_cards::hand::Hand>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::pot_total(&self) -> u32
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::pots(&self) -> alloc::vec::Vec<casino_poker::pot::Pot>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::public_events(&self) -> alloc::vec::Vec<casino_poker::events::GameEvent>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::randomize_seats(&mut self) -> bool
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::remove_losers(&mut self) -> alloc::vec::Vec<alloc::string::String>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::remove_player(&mut self, &uuid::Uuid) -> core::option::Option<casino_poker::player::Player>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::replay_log(&mut self)
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::reseed(&mut self, u64)
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::rotate_dealer(&mut self) -> bool
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::run_betting_round(&mut self, casino_poker::agent::Street, &mut std::collections::hash::map::HashMap<uuid::Uuid, alloc::boxed::Box<dyn casino_poker::agent::PokerAgent>>) -> core::result::Result<casino_poker::games::texas_hold_em::RoundOutcome, casino_poker::games::texas_hold_em::PlayError>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::seats(&self) -> &[uuid::Uuid]
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::set_blinds(&mut self, u32, u32) -> bool
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::set_dealer(&mut self, uuid::Uuid) -> bool
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::set_hero(&mut self, uuid::Uuid)
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::set_min_buy_in(&mut self, u32)
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::set_observer(&mut self, alloc::boxed::Box<dyn casino_poker::events::GameObserver>)
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::submit_action(&mut self, uuid::Uuid, casino_poker::games::texas_hold_em::DecisionId, casino_poker::betting::PlayerAction) -> core::result::Result<casino_poker::games::texas_hold_em::BettingStep, casino_poker::games::texas_hold_em::ActionSubmissionError>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::submit_hand_action(&mut self, uuid::Uuid, casino_poker::games::texas_hold_em::DecisionId, casino_poker::betting::PlayerAction) -> core::result::Result<casino_poker::games::texas_hold_em::HandStep, casino_poker::games::texas_hold_em::ActionSubmissionError>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::table(&self) -> casino_poker::games::texas_hold_em::TableView
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::to_act(&self) -> core::option::Option<uuid::Uuid>
+impl core::default::Default for casino_poker::games::texas_hold_em::TexasHoldEm
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::default() -> Self
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::TexasHoldEm
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::TexasHoldEm
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub const casino_poker::games::texas_hold_em::MAX_PLAYERS: usize
+pub mod casino_poker::hand_rankings
+pub enum casino_poker::hand_rankings::HandCategory
+pub casino_poker::hand_rankings::HandCategory::Flush
+pub casino_poker::hand_rankings::HandCategory::FourOfAKind
+pub casino_poker::hand_rankings::HandCategory::FullHouse
+pub casino_poker::hand_rankings::HandCategory::HighCard
+pub casino_poker::hand_rankings::HandCategory::Pair
+pub casino_poker::hand_rankings::HandCategory::Straight
+pub casino_poker::hand_rankings::HandCategory::StraightFlush
+pub casino_poker::hand_rankings::HandCategory::ThreeOfAKind
+pub casino_poker::hand_rankings::HandCategory::TwoPair
+impl core::clone::Clone for casino_poker::hand_rankings::HandCategory
+pub fn casino_poker::hand_rankings::HandCategory::clone(&self) -> casino_poker::hand_rankings::HandCategory
+impl core::cmp::Eq for casino_poker::hand_rankings::HandCategory
+impl core::cmp::Ord for casino_poker::hand_rankings::HandCategory
+pub fn casino_poker::hand_rankings::HandCategory::cmp(&self, &casino_poker::hand_rankings::HandCategory) -> core::cmp::Ordering
+impl core::cmp::PartialEq for casino_poker::hand_rankings::HandCategory
+pub fn casino_poker::hand_rankings::HandCategory::eq(&self, &casino_poker::hand_rankings::HandCategory) -> bool
+impl core::cmp::PartialOrd for casino_poker::hand_rankings::HandCategory
+pub fn casino_poker::hand_rankings::HandCategory::partial_cmp(&self, &casino_poker::hand_rankings::HandCategory) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for casino_poker::hand_rankings::HandCategory
+pub fn casino_poker::hand_rankings::HandCategory::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for casino_poker::hand_rankings::HandCategory
+pub fn casino_poker::hand_rankings::HandCategory::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::hand_rankings::HandCategory
+impl core::marker::StructuralPartialEq for casino_poker::hand_rankings::HandCategory
+impl serde_core::ser::Serialize for casino_poker::hand_rankings::HandCategory
+pub fn casino_poker::hand_rankings::HandCategory::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::hand_rankings::HandCategory
+pub fn casino_poker::hand_rankings::HandCategory::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub enum casino_poker::hand_rankings::HandEvaluationError
+pub casino_poker::hand_rankings::HandEvaluationError::DuplicateCard
+pub casino_poker::hand_rankings::HandEvaluationError::InvalidCardCount
+pub casino_poker::hand_rankings::HandEvaluationError::InvalidCardCount::actual: usize
+pub casino_poker::hand_rankings::HandEvaluationError::InvalidCardCount::maximum: usize
+pub casino_poker::hand_rankings::HandEvaluationError::InvalidCardCount::minimum: usize
+impl core::clone::Clone for casino_poker::hand_rankings::HandEvaluationError
+pub fn casino_poker::hand_rankings::HandEvaluationError::clone(&self) -> casino_poker::hand_rankings::HandEvaluationError
+impl core::cmp::Eq for casino_poker::hand_rankings::HandEvaluationError
+impl core::cmp::PartialEq for casino_poker::hand_rankings::HandEvaluationError
+pub fn casino_poker::hand_rankings::HandEvaluationError::eq(&self, &casino_poker::hand_rankings::HandEvaluationError) -> bool
+impl core::error::Error for casino_poker::hand_rankings::HandEvaluationError
+impl core::fmt::Debug for casino_poker::hand_rankings::HandEvaluationError
+pub fn casino_poker::hand_rankings::HandEvaluationError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for casino_poker::hand_rankings::HandEvaluationError
+pub fn casino_poker::hand_rankings::HandEvaluationError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::hand_rankings::HandEvaluationError
+impl core::marker::StructuralPartialEq for casino_poker::hand_rankings::HandEvaluationError
+pub struct casino_poker::hand_rankings::ComparableHand
+pub casino_poker::hand_rankings::ComparableHand::category: casino_poker::hand_rankings::HandCategory
+pub casino_poker::hand_rankings::ComparableHand::tiebreak: [u8; 5]
+impl casino_poker::hand_rankings::ComparableHand
+pub fn casino_poker::hand_rankings::ComparableHand::describe(&self) -> alloc::string::String
+impl core::clone::Clone for casino_poker::hand_rankings::ComparableHand
+pub fn casino_poker::hand_rankings::ComparableHand::clone(&self) -> casino_poker::hand_rankings::ComparableHand
+impl core::cmp::Eq for casino_poker::hand_rankings::ComparableHand
+impl core::cmp::Ord for casino_poker::hand_rankings::ComparableHand
+pub fn casino_poker::hand_rankings::ComparableHand::cmp(&self, &casino_poker::hand_rankings::ComparableHand) -> core::cmp::Ordering
+impl core::cmp::PartialEq for casino_poker::hand_rankings::ComparableHand
+pub fn casino_poker::hand_rankings::ComparableHand::eq(&self, &casino_poker::hand_rankings::ComparableHand) -> bool
+impl core::cmp::PartialOrd for casino_poker::hand_rankings::ComparableHand
+pub fn casino_poker::hand_rankings::ComparableHand::partial_cmp(&self, &casino_poker::hand_rankings::ComparableHand) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for casino_poker::hand_rankings::ComparableHand
+pub fn casino_poker::hand_rankings::ComparableHand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for casino_poker::hand_rankings::ComparableHand
+pub fn casino_poker::hand_rankings::ComparableHand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::hand_rankings::ComparableHand
+impl core::marker::StructuralPartialEq for casino_poker::hand_rankings::ComparableHand
+impl serde_core::ser::Serialize for casino_poker::hand_rankings::ComparableHand
+pub fn casino_poker::hand_rankings::ComparableHand::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::hand_rankings::ComparableHand
+pub fn casino_poker::hand_rankings::ComparableHand::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct casino_poker::hand_rankings::EvaluatedHand
+impl casino_poker::hand_rankings::EvaluatedHand
+pub const fn casino_poker::hand_rankings::EvaluatedHand::cards(&self) -> &[casino_cards::card::Card; 5]
+pub const fn casino_poker::hand_rankings::EvaluatedHand::value(&self) -> casino_poker::hand_rankings::ComparableHand
+impl core::clone::Clone for casino_poker::hand_rankings::EvaluatedHand
+pub fn casino_poker::hand_rankings::EvaluatedHand::clone(&self) -> casino_poker::hand_rankings::EvaluatedHand
+impl core::cmp::Eq for casino_poker::hand_rankings::EvaluatedHand
+impl core::cmp::PartialEq for casino_poker::hand_rankings::EvaluatedHand
+pub fn casino_poker::hand_rankings::EvaluatedHand::eq(&self, &casino_poker::hand_rankings::EvaluatedHand) -> bool
+impl core::fmt::Debug for casino_poker::hand_rankings::EvaluatedHand
+pub fn casino_poker::hand_rankings::EvaluatedHand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for casino_poker::hand_rankings::EvaluatedHand
+impl core::marker::StructuralPartialEq for casino_poker::hand_rankings::EvaluatedHand
+impl serde_core::ser::Serialize for casino_poker::hand_rankings::EvaluatedHand
+pub fn casino_poker::hand_rankings::EvaluatedHand::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::hand_rankings::EvaluatedHand
+pub fn casino_poker::hand_rankings::EvaluatedHand::deserialize<D>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+pub fn casino_poker::hand_rankings::best_five(&[casino_cards::card::Card]) -> core::result::Result<casino_poker::hand_rankings::EvaluatedHand, casino_poker::hand_rankings::HandEvaluationError>
+pub fn casino_poker::hand_rankings::evaluate_five([casino_cards::card::Card; 5]) -> core::result::Result<casino_poker::hand_rankings::EvaluatedHand, casino_poker::hand_rankings::HandEvaluationError>
+pub fn casino_poker::hand_rankings::evaluate_holdem([casino_cards::card::Card; 2], &[casino_cards::card::Card]) -> core::result::Result<casino_poker::hand_rankings::EvaluatedHand, casino_poker::hand_rankings::HandEvaluationError>
+pub fn casino_poker::hand_rankings::evaluate_omaha([casino_cards::card::Card; 4], &[casino_cards::card::Card]) -> core::result::Result<casino_poker::hand_rankings::EvaluatedHand, casino_poker::hand_rankings::HandEvaluationError>
+pub mod casino_poker::player
+pub struct casino_poker::player::Player
+pub casino_poker::player::Player::active: bool
+pub casino_poker::player::Player::chips: u32
+pub casino_poker::player::Player::identifier: uuid::Uuid
+pub casino_poker::player::Player::name: alloc::string::String
+impl casino_poker::player::Player
+pub fn casino_poker::player::Player::add_chips(&mut self, u32)
+pub fn casino_poker::player::Player::new(&str) -> Self
+pub fn casino_poker::player::Player::new_with_chips(&str, u32) -> Self
+pub fn casino_poker::player::Player::subtract_chips(&mut self, u32)
+pub fn casino_poker::player::Player::to_ref(&self) -> casino_poker::player::PlayerRef
+impl core::clone::Clone for casino_poker::player::Player
+pub fn casino_poker::player::Player::clone(&self) -> casino_poker::player::Player
+impl core::cmp::Eq for casino_poker::player::Player
+impl core::cmp::PartialEq for casino_poker::player::Player
+pub fn casino_poker::player::Player::eq(&self, &casino_poker::player::Player) -> bool
+impl core::fmt::Debug for casino_poker::player::Player
+pub fn casino_poker::player::Player::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for casino_poker::player::Player
+pub fn casino_poker::player::Player::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for casino_poker::player::Player
+impl serde_core::ser::Serialize for casino_poker::player::Player
+pub fn casino_poker::player::Player::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::player::Player
+pub fn casino_poker::player::Player::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct casino_poker::player::PlayerRef
+pub casino_poker::player::PlayerRef::id: uuid::Uuid
+pub casino_poker::player::PlayerRef::name: alloc::string::String
+impl core::clone::Clone for casino_poker::player::PlayerRef
+pub fn casino_poker::player::PlayerRef::clone(&self) -> casino_poker::player::PlayerRef
+impl core::cmp::Eq for casino_poker::player::PlayerRef
+impl core::cmp::PartialEq for casino_poker::player::PlayerRef
+pub fn casino_poker::player::PlayerRef::eq(&self, &casino_poker::player::PlayerRef) -> bool
+impl core::fmt::Debug for casino_poker::player::PlayerRef
+pub fn casino_poker::player::PlayerRef::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for casino_poker::player::PlayerRef
+pub fn casino_poker::player::PlayerRef::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for casino_poker::player::PlayerRef
+pub fn casino_poker::player::PlayerRef::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for casino_poker::player::PlayerRef
+impl serde_core::ser::Serialize for casino_poker::player::PlayerRef
+pub fn casino_poker::player::PlayerRef::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::player::PlayerRef
+pub fn casino_poker::player::PlayerRef::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub mod casino_poker::pot
+pub struct casino_poker::pot::Pot
+pub casino_poker::pot::Pot::amount: u64
+pub casino_poker::pot::Pot::eligible: alloc::collections::btree::set::BTreeSet<uuid::Uuid>
+impl core::clone::Clone for casino_poker::pot::Pot
+pub fn casino_poker::pot::Pot::clone(&self) -> casino_poker::pot::Pot
+impl core::cmp::Eq for casino_poker::pot::Pot
+impl core::cmp::PartialEq for casino_poker::pot::Pot
+pub fn casino_poker::pot::Pot::eq(&self, &casino_poker::pot::Pot) -> bool
+impl core::fmt::Debug for casino_poker::pot::Pot
+pub fn casino_poker::pot::Pot::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for casino_poker::pot::Pot
+impl serde_core::ser::Serialize for casino_poker::pot::Pot
+pub fn casino_poker::pot::Pot::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::pot::Pot
+pub fn casino_poker::pot::Pot::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct casino_poker::pot::PotAward
+pub casino_poker::pot::PotAward::amount: u64
+pub casino_poker::pot::PotAward::index: usize
+pub casino_poker::pot::PotAward::payouts: alloc::vec::Vec<(uuid::Uuid, u64)>
+impl core::clone::Clone for casino_poker::pot::PotAward
+pub fn casino_poker::pot::PotAward::clone(&self) -> casino_poker::pot::PotAward
+impl core::cmp::Eq for casino_poker::pot::PotAward
+impl core::cmp::PartialEq for casino_poker::pot::PotAward
+pub fn casino_poker::pot::PotAward::eq(&self, &casino_poker::pot::PotAward) -> bool
+impl core::fmt::Debug for casino_poker::pot::PotAward
+pub fn casino_poker::pot::PotAward::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for casino_poker::pot::PotAward
+impl serde_core::ser::Serialize for casino_poker::pot::PotAward
+pub fn casino_poker::pot::PotAward::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::pot::PotAward
+pub fn casino_poker::pot::PotAward::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub fn casino_poker::pot::build_pots(&std::collections::hash::map::HashMap<uuid::Uuid, u32>, &std::collections::hash::set::HashSet<uuid::Uuid>) -> alloc::vec::Vec<casino_poker::pot::Pot>
+pub fn casino_poker::pot::distribute_pots(&[casino_poker::pot::Pot], &std::collections::hash::map::HashMap<uuid::Uuid, casino_poker::hand_rankings::ComparableHand>, &[uuid::Uuid], usize) -> alloc::vec::Vec<casino_poker::pot::PotAward>
+pub fn casino_poker::pot::refund_uncalled(&mut std::collections::hash::map::HashMap<uuid::Uuid, u32>, &std::collections::hash::set::HashSet<uuid::Uuid>) -> core::option::Option<(uuid::Uuid, u32)>

@@ -3,7 +3,7 @@
 use std::fmt;
 
 use casino_cards::card::Card;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// The category of a poker hand, ordered from weakest (`HighCard`) to strongest
 /// (`StraightFlush`).
@@ -88,7 +88,7 @@ impl fmt::Display for HandCategory {
 ///         Card::new(Rank::Three, Suit::Club),
 ///     ],
 /// )?;
-/// assert_eq!(flush.value.category, HandCategory::Flush);
+/// assert_eq!(flush.value().category, HandCategory::Flush);
 /// # Ok::<(), casino_poker::hand_rankings::HandEvaluationError>(())
 /// ```
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -139,12 +139,52 @@ impl fmt::Display for ComparableHand {
 }
 
 /// A ranked poker hand together with the five physical cards that form it.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub struct EvaluatedHand {
     /// The comparable category and tiebreak value.
-    pub value: ComparableHand,
+    value: ComparableHand,
     /// The five cards selected for the hand.
-    pub cards: [Card; 5],
+    cards: [Card; 5],
+}
+
+impl EvaluatedHand {
+    /// Returns the comparable category and tiebreak value.
+    pub const fn value(&self) -> ComparableHand {
+        self.value
+    }
+
+    /// Returns the five physical cards selected for the hand.
+    pub const fn cards(&self) -> &[Card; 5] {
+        &self.cards
+    }
+}
+
+impl<'de> Deserialize<'de> for EvaluatedHand {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Representation {
+            value: ComparableHand,
+            cards: [Card; 5],
+        }
+
+        let representation = Representation::deserialize(deserializer)?;
+        validate_unique(representation.cards.iter())
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+        let actual = score_five(&representation.cards);
+        if actual != representation.value {
+            return Err(<D::Error as serde::de::Error>::custom(
+                "evaluated hand value does not match its cards",
+            ));
+        }
+
+        Ok(Self {
+            value: actual,
+            cards: representation.cards,
+        })
+    }
 }
 
 /// An error returned when cards cannot form a valid supported evaluation.
@@ -580,9 +620,23 @@ mod comparable_hand_tests {
             c(Rank::Ace, Suit::Diamond),
             c(Rank::Two, Suit::Spade),
         ];
+        let evaluated = evaluate_omaha(hole, &board).unwrap();
+        assert_eq!(evaluated.value().category, HandCategory::FourOfAKind);
         assert_eq!(
-            evaluate_omaha(hole, &board).unwrap().value.category,
-            HandCategory::FourOfAKind
+            evaluated
+                .cards()
+                .iter()
+                .filter(|card| hole.contains(card))
+                .count(),
+            2
+        );
+        assert_eq!(
+            evaluated
+                .cards()
+                .iter()
+                .filter(|card| board.contains(card))
+                .count(),
+            3
         );
     }
 
@@ -819,6 +873,31 @@ mod comparable_hand_tests {
         // The low hole cards (3, 2) are worse kickers than the board's J/10/4.
         assert!(!evaluated.cards.contains(&c(Rank::Three, Suit::Heart)));
         assert!(!evaluated.cards.contains(&c(Rank::Two, Suit::Diamond)));
+    }
+
+    #[test]
+    fn evaluated_hand_deserialization_validates_cards_and_value() {
+        let evaluated = evaluate_five([
+            c(Rank::Ace, Suit::Heart),
+            c(Rank::King, Suit::Heart),
+            c(Rank::Nine, Suit::Heart),
+            c(Rank::Five, Suit::Heart),
+            c(Rank::Two, Suit::Heart),
+        ])
+        .unwrap();
+        let json = serde_json::to_value(evaluated).unwrap();
+        assert_eq!(
+            serde_json::from_value::<EvaluatedHand>(json.clone()).unwrap(),
+            evaluated
+        );
+
+        let mut contradictory = json.clone();
+        contradictory["value"]["tiebreak"][0] = serde_json::json!(2);
+        assert!(serde_json::from_value::<EvaluatedHand>(contradictory).is_err());
+
+        let mut duplicate = json;
+        duplicate["cards"][1] = duplicate["cards"][0].clone();
+        assert!(serde_json::from_value::<EvaluatedHand>(duplicate).is_err());
     }
 
     #[test]
