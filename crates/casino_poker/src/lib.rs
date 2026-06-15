@@ -3,7 +3,8 @@
 //!
 //! Most applications start with [`hand_rankings::evaluate`] for hand comparison
 //! or [`games::texas_hold_em::TexasHoldEm`] for complete game management.
-#![warn(missing_docs)]
+#![forbid(unsafe_code)]
+#![deny(missing_docs)]
 
 /// Poker game engines.
 pub mod games {

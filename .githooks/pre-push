@@ -4,9 +4,15 @@
 set -euo pipefail
 
 echo "Running clippy (warnings denied)..."
-cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
 echo "Running tests..."
-cargo test --workspace --locked
+cargo test --workspace --all-targets --locked
+
+echo "Running documentation tests..."
+cargo test --workspace --doc --locked
+
+echo "Building strict public API documentation..."
+RUSTDOCFLAGS="-D warnings -D missing_docs" cargo doc --workspace --no-deps --locked
 
 echo "All checks passed."

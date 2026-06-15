@@ -50,7 +50,15 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
       - name: Test
-        run: cargo test --workspace --locked --verbose
+        run: cargo test --workspace --all-targets --locked --verbose
+
+      - name: Test documentation
+        run: cargo test --workspace --doc --locked
+
+      - name: Build strict public API documentation
+        env:
+          RUSTDOCFLAGS: -D warnings -D missing_docs
+        run: cargo doc --workspace --no-deps --locked

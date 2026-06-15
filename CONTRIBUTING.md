@@ -1,5 +1,23 @@
 # Contributing
 
+## Safe Rust only
+
+All workspace-owned Rust code must use safe Rust exclusively. Never introduce
+`unsafe` blocks, functions, traits, implementations, FFI declarations, or lint
+overrides that permit unsafe code. This rule applies to library code, tests,
+examples, benchmarks, build scripts, and generated Rust code committed to the
+repository.
+
+Performance work must remain in safe Rust and be supported by profiling,
+benchmarks, and correctness tests. Dependencies that use unsafe code internally
+are evaluated separately during dependency review.
+
+## Commit attribution
+
+Do not add AI tools, assistants, or their vendors as commit co-authors. Do not
+add AI-attribution trailers or notices to commits, pull requests, changelogs, or
+source files unless a maintainer explicitly requests them.
+
 ## Set up git hooks (one-time)
 
 This repo ships git hooks in [`.githooks/`](.githooks). They are **not** active
@@ -29,10 +47,16 @@ cargo fmt --all
 
 # 2. Lint — warnings are treated as errors in CI. clippy is a full compile,
 #    so it also catches anything a plain `cargo build`/`check` would.
-cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
 # 3. Test
-cargo test --workspace --locked
+cargo test --workspace --all-targets --locked
+
+# 4. Test documentation examples
+cargo test --workspace --doc --locked
+
+# 5. Build strict public API documentation
+RUSTDOCFLAGS="-D warnings -D missing_docs" cargo doc --workspace --no-deps --locked
 ```
 
 If `cargo fmt --all` changes any files, include those changes in the same
