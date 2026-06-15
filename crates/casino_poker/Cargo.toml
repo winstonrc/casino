@@ -10,6 +10,9 @@ repository = "https://github.com/winstonrc/casino/tree/main/crates/casino_poker"
 keywords = ["poker", "casino", "texas-hold-em", "cards", "game"]
 categories = ["game-development"]
 
+[lints]
+workspace = true
+
 [dependencies]
 casino_cards = { version = "2", path = "../casino_cards" }
 rand = "0.8.5"

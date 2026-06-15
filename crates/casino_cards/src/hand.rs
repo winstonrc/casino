@@ -4,16 +4,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::card::Card;
 
+/// An ordered collection of cards.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Hand {
+    /// The cards in insertion order.
     pub cards: Vec<Card>,
 }
 
 impl Hand {
+    /// Creates an empty hand.
     pub fn new() -> Self {
         Self { cards: Vec::new() }
     }
 
+    /// Creates a hand containing the provided cards in their existing order.
     pub fn new_from_cards(cards: Vec<Card>) -> Self {
         Self { cards }
     }

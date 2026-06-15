@@ -5,6 +5,10 @@ use strum::IntoEnumIterator;
 
 use crate::card::{Card, Rank, Suit};
 
+/// An ordered collection of cards dealt from the end of its internal sequence.
+///
+/// [`Deck::new`] creates a standard 52-card deck. The top card is the card
+/// returned by the next call to [`Deck::deal`].
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Deck {
     cards: Vec<Card>,

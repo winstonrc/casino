@@ -47,22 +47,36 @@ macro_rules! card {
 )]
 #[repr(u8)]
 pub enum Rank {
+    /// The rank two.
     Two = 2,
+    /// The rank three.
     Three = 3,
+    /// The rank four.
     Four = 4,
+    /// The rank five.
     Five = 5,
+    /// The rank six.
     Six = 6,
+    /// The rank seven.
     Seven = 7,
+    /// The rank eight.
     Eight = 8,
+    /// The rank nine.
     Nine = 9,
+    /// The rank ten.
     Ten = 10,
+    /// The jack rank.
     Jack = 11,
+    /// The queen rank.
     Queen = 12,
+    /// The king rank.
     King = 13,
+    /// The ace rank.
     Ace = 14,
 }
 
 impl Rank {
+    /// Returns the poker rank value from `2` through `14`, with ace high.
     pub fn value(&self) -> u8 {
         *self as u8
     }
@@ -118,13 +132,18 @@ impl fmt::Display for Rank {
     Clone, Copy, Debug, Deserialize, EnumIter, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
 )]
 pub enum Suit {
+    /// Clubs, with bridge ordering value `0`.
     Club = 0,
+    /// Diamonds, with bridge ordering value `1`.
     Diamond = 1,
+    /// Hearts, with bridge ordering value `2`.
     Heart = 2,
+    /// Spades, with bridge ordering value `3`.
     Spade = 3,
 }
 
 impl Suit {
+    /// Returns the bridge ordering value from `0` for clubs to `3` for spades.
     pub fn value(&self) -> u8 {
         *self as u8
     }
@@ -153,14 +172,19 @@ impl fmt::Display for Suit {
     }
 }
 
+/// A playing card with a rank, suit, and display visibility.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Card {
+    /// The card's rank.
     pub rank: Rank,
+    /// The card's suit.
     pub suit: Suit,
+    /// Whether display operations reveal the card's rank and suit.
     pub face_up: bool,
 }
 
 impl Card {
+    /// Creates a face-up card with the given rank and suit.
     pub fn new(rank: Rank, suit: Suit) -> Self {
         Self {
             rank,
@@ -169,6 +193,10 @@ impl Card {
         }
     }
 
+    /// Returns the card's blackjack-style value.
+    ///
+    /// Aces are worth `1`, number cards retain their numeric value, and face
+    /// cards are worth `10`.
     pub fn value(&self) -> u8 {
         match self.rank {
             Rank::Ace => 1,
