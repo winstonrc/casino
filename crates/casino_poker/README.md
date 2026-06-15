@@ -114,7 +114,9 @@ Every prompt has a serialized `DecisionId`. Repeated reads and save/restore reta
 that ID; the engine accepts it once and rejects stale retries, wrong-player input,
 and illegal poker actions with `ActionSubmissionError` without changing state.
 The same identified submission contract exists one street down through
-`begin_betting_round` / `submit_action`.
+`begin_betting_round` / `submit_action`. To abandon a hand entirely,
+`abort_betting_round()` refunds its contributions, returns its cards to the deck,
+and leaves the table ready for a new hand without emitting `HandComplete`.
 
 For **save/resume and reconnection**, `TexasHoldEm` is `serde`-serializable: persist
 it mid-hand and restore it to continue from the exact spot (re-attach an observer

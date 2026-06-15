@@ -24,6 +24,12 @@ crate follows [Semantic Versioning](https://semver.org/).
 - Tables support 2–10 players and enforce a checked table-wide `u32::MAX`
   bankroll. Hand startup, restored state, and action submission validate before
   mutation.
+- `abort_betting_round` now abandons the whole hand: contributions are refunded,
+  cards are returned, and the table is immediately reusable without emitting
+  `HandComplete`.
+- Restored games reject duplicate cards, impossible board shapes, and decks too
+  short to finish before mutating. `client_view` safely omits malformed hole cards
+  instead of indexing them.
 
 ## 2026-06-14
 

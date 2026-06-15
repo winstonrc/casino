@@ -934,7 +934,8 @@ impl TexasHoldEm {
         let hole = self
             .player_hands
             .get(&player_id)
-            .map(|hand| [hand.cards[0], hand.cards[1]]);
+            .and_then(|hand| <&[Card; 2]>::try_from(hand.cards.as_slice()).ok())
+            .copied();
         ClientView {
             table: self.table(),
             you: player_id,
@@ -1105,6 +1106,9 @@ impl TexasHoldEm {
         if self.player_hands.values().any(|hand| hand.cards.len() != 2) {
             return Err(HandStartError::InvalidHandState);
         }
+        if self.hand_in_progress() && !matches!(self.board.cards.len(), 0 | 3 | 4 | 5) {
+            return Err(HandStartError::InvalidHandState);
+        }
         if self.hand_in_progress()
             && self
                 .seats
@@ -1114,7 +1118,38 @@ impl TexasHoldEm {
         {
             return Err(HandStartError::InvalidHandState);
         }
+        if self.hand_in_progress() && self.deck.len() < self.cards_needed_to_finish_hand() {
+            return Err(HandStartError::InvalidHandState);
+        }
+
+        let mut seen = HashSet::new();
+        let cards = self
+            .deck
+            .iter()
+            .chain(
+                self.player_hands
+                    .values()
+                    .flat_map(|hand| hand.cards.iter()),
+            )
+            .chain(self.board.cards.iter())
+            .chain(self.burned.cards.iter());
+        if cards
+            .map(|card| (card.rank, card.suit))
+            .any(|card| !seen.insert(card))
+        {
+            return Err(HandStartError::InvalidHandState);
+        }
         Ok(())
+    }
+
+    fn cards_needed_to_finish_hand(&self) -> usize {
+        match self.board.cards.len() {
+            0 => 8,
+            3 => 4,
+            4 => 2,
+            5 => 0,
+            _ => usize::MAX,
+        }
     }
 
     fn street_matches_board(&self, street: Street) -> bool {
@@ -1683,11 +1718,23 @@ impl TexasHoldEm {
         Ok(self.advance())
     }
 
-    /// Discard any in-progress betting street, leaving the engine reusable. Used
-    /// when a hand is abandoned (e.g. a player quits) without awarding pots.
+    /// Abandon the current hand without awarding it, restoring every contribution
+    /// to its player's stack and returning all dealt cards to the deck. No
+    /// [`GameEvent::HandComplete`] event is emitted.
+    ///
+    /// This leaves the engine between hands and immediately reusable for table
+    /// mutations or a fresh [`begin_hand`](Self::begin_hand). It is a no-op when no
+    /// hand is in progress.
     pub fn abort_betting_round(&mut self) {
-        self.betting = None;
-        self.completed_betting_street = None;
+        if !self.hand_in_progress() {
+            return;
+        }
+        for (id, amount) in self.contributed.drain() {
+            if let Some(player) = self.players.get_mut(&id) {
+                player.add_chips(amount);
+            }
+        }
+        self.clear_hand_state();
     }
 
     /// Advance the active betting street to the next player who must act, or to
@@ -1962,6 +2009,10 @@ impl TexasHoldEm {
     /// quit never reaches here, and so produces no summary — intentionally.
     fn end_hand(&mut self) {
         self.emit(GameEvent::HandComplete);
+        self.clear_hand_state();
+    }
+
+    fn clear_hand_state(&mut self) {
         for (_, hand) in self.player_hands.drain() {
             for card in hand.cards {
                 let _ = self.deck.insert_at_top(card);
@@ -1976,8 +2027,6 @@ impl TexasHoldEm {
         self.contributed.clear();
         self.folded.clear();
         self.all_in.clear();
-        // Defensively drop any in-progress street so an abandoned/partial round
-        // can never leak into the next hand.
         self.betting = None;
         self.completed_betting_street = None;
     }
@@ -2507,19 +2556,35 @@ mod tests {
     }
 
     #[test]
-    fn abort_and_end_hand_clear_an_in_progress_street() {
+    fn abort_refunds_and_clears_an_in_progress_hand() {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
-        seat_players(&mut game, &[100, 100]);
+        let ids = seat_players(&mut game, &[100, 100]);
         game.begin_hand().unwrap();
 
         let _ = game.begin_betting_round(Street::Preflop);
         assert!(game.betting.is_some(), "paused mid-street");
+        assert_eq!(game.pot_total(), 3);
         game.abort_betting_round();
-        assert!(game.betting.is_none());
 
-        // end_hand also defensively clears a partial street.
+        assert!(game.betting.is_none());
+        assert!(!game.hand_in_progress());
+        assert_eq!(game.pot_total(), 0);
+        assert_eq!(game.deck_len(), 52);
+        assert!(ids.iter().all(|id| game.players[id].chips == 100));
+        assert!(
+            !matches!(game.event_log.last(), Some(GameEvent::HandComplete)),
+            "an abandoned hand is not narrated as completed"
+        );
+        assert!(game.randomize_seats());
+        game.begin_hand().unwrap();
+    }
+
+    #[test]
+    fn end_hand_clears_an_in_progress_street() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
         let _ = game.begin_betting_round(Street::Preflop);
-        assert!(game.betting.is_some());
         game.end_hand();
         assert!(game.betting.is_none());
     }
@@ -3528,7 +3593,6 @@ mod tests {
         seat_players(&mut game, &[100, 100, 100]);
         game.begin_hand().unwrap();
         game.deal_flop();
-        game.abort_betting_round();
         assert!(game.pending_action().is_none());
         let deck_before = game.deck_len();
         let board_before = game.board().cards.clone();
@@ -4140,6 +4204,54 @@ mod tests {
             game.drive_hand(),
             HandStep::CannotStart(HandStartError::InvalidHandState)
         ));
+    }
+
+    #[test]
+    fn restored_state_with_duplicate_cards_is_rejected_without_mutation() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
+        let duplicate = game.player_hands[&game.seats[0]].cards[0];
+        game.board.push(duplicate);
+        game.board.push(card(Rank::Two, Suit::Club));
+        game.board.push(card(Rank::Three, Suit::Club));
+        let before = serde_json::to_string(&game).unwrap();
+
+        assert!(matches!(
+            game.drive_hand(),
+            HandStep::CannotStart(HandStartError::InvalidHandState)
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn restored_state_without_enough_cards_is_rejected_without_dealing() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
+        while game.deck.len() > 7 {
+            game.deck.deal();
+        }
+        let before = serde_json::to_string(&game).unwrap();
+
+        assert!(matches!(
+            game.drive_hand(),
+            HandStep::CannotStart(HandStartError::InvalidHandState)
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn client_view_does_not_panic_on_a_malformed_saved_hand() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
+        game.player_hands.get_mut(&ids[0]).unwrap().cards.pop();
+
+        let view = game.client_view(ids[0]);
+        assert_eq!(view.you, ids[0]);
+        assert_eq!(view.hole, None);
+        assert!(view.pending_action.is_none());
     }
 
     #[test]
