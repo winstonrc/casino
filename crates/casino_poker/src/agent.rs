@@ -10,6 +10,8 @@
 //! so it both sidesteps borrow-checker conflicts in the engine's action loop and
 //! can be serialized to hand to an external/local model in the future.
 
+use std::fmt;
+
 use casino_cards::card::{Card, Rank, Suit};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -32,7 +34,7 @@ pub enum Street {
 }
 
 /// An error returned by an agent that prevents it from producing an action.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[non_exhaustive]
 pub enum AgentError {
     /// The player chose to quit the game.
@@ -41,7 +43,22 @@ pub enum AgentError {
     Eof,
     /// The supplied player snapshot is internally inconsistent.
     InvalidView,
+    /// An agent-specific failure with context suitable for logs or a user interface.
+    Failure(String),
 }
+
+impl fmt::Display for AgentError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Quit => f.write_str("the player chose to quit"),
+            Self::Eof => f.write_str("agent input ended unexpectedly"),
+            Self::InvalidView => f.write_str("the player snapshot is internally inconsistent"),
+            Self::Failure(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for AgentError {}
 
 /// An owned, read-only snapshot of everything an agent needs to decide.
 ///

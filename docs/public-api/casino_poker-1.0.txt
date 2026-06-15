@@ -4,6 +4,7 @@ pub use casino_poker::uuid
 pub mod casino_poker::agent
 #[non_exhaustive] pub enum casino_poker::agent::AgentError
 pub casino_poker::agent::AgentError::Eof
+pub casino_poker::agent::AgentError::Failure(alloc::string::String)
 pub casino_poker::agent::AgentError::InvalidView
 pub casino_poker::agent::AgentError::Quit
 impl core::clone::Clone for casino_poker::agent::AgentError
@@ -11,9 +12,11 @@ pub fn casino_poker::agent::AgentError::clone(&self) -> casino_poker::agent::Age
 impl core::cmp::Eq for casino_poker::agent::AgentError
 impl core::cmp::PartialEq for casino_poker::agent::AgentError
 pub fn casino_poker::agent::AgentError::eq(&self, &casino_poker::agent::AgentError) -> bool
+impl core::error::Error for casino_poker::agent::AgentError
 impl core::fmt::Debug for casino_poker::agent::AgentError
 pub fn casino_poker::agent::AgentError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for casino_poker::agent::AgentError
+impl core::fmt::Display for casino_poker::agent::AgentError
+pub fn casino_poker::agent::AgentError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for casino_poker::agent::AgentError
 impl serde_core::ser::Serialize for casino_poker::agent::AgentError
 pub fn casino_poker::agent::AgentError::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
@@ -504,7 +507,6 @@ impl core::fmt::Debug for casino_poker::games::texas_hold_em::PlayError
 pub fn casino_poker::games::texas_hold_em::PlayError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for casino_poker::games::texas_hold_em::PlayError
 pub fn casino_poker::games::texas_hold_em::PlayError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for casino_poker::games::texas_hold_em::PlayError
 impl core::marker::StructuralPartialEq for casino_poker::games::texas_hold_em::PlayError
 impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::PlayError
 pub fn casino_poker::games::texas_hold_em::PlayError::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer

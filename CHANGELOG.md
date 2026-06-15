@@ -125,6 +125,11 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 - `ActionError`, `ActionSubmissionError`, and `PlayError` are non-exhaustive and
   include validation/overflow failures. `BettingStep` and `HandStep` can return
   `CannotStart`.
+- `EvaluatedHand` keeps its validated value and physical cards private. Read
+  them with `EvaluatedHand::value()` and `EvaluatedHand::cards()`.
+- `AgentError` is non-exhaustive and includes `InvalidView` plus
+  `Failure(String)` for downstream context. It implements `Display` and
+  `Error`, and blocking `PlayError::Agent` values expose it as their source.
 - Standalone `Pot` and `PotAward` aggregate amounts and payouts use `u64`.
 - Tables support 2–10 players and enforce a checked table-wide `u32::MAX`
   bankroll. Hand startup, restored state, and action submission validate before
