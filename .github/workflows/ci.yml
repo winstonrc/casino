@@ -62,3 +62,25 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings -D missing_docs
         run: cargo doc --workspace --no-deps --locked
+
+  exhaustive_evaluator:
+    name: Exhaustive Evaluator
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache build artifacts
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Check every five-card hand
+        run: >-
+          cargo test -p casino_poker --release --locked
+          --test hand_rankings_exhaustive
+          exhaustive_five_card_evaluation_matches_reference
+          -- --ignored --exact
