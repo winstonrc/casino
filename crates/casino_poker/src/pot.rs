@@ -5,11 +5,13 @@
 //! incrementally during betting. This is both simpler and less error-prone.
 //!
 //! The flow at the end of a hand is:
-//! 1. [`refund_uncalled`] — return any uncalled overbet to the lone top bettor.
-//! 2. [`build_pots`] — split the remaining contributions into a main pot and any
-//!    side pots via layering.
-//! 3. [`distribute_pots`] — award each pot to the best eligible hand(s), splitting
-//!    ties with the odd chip going to the first eligible seat left of the dealer.
+//! 1. [`refund_uncalled`](crate::pot::refund_uncalled) — return any uncalled
+//!    overbet to the lone top bettor.
+//! 2. [`build_pots`](crate::pot::build_pots) — split the remaining contributions
+//!    into a main pot and any side pots via layering.
+//! 3. [`distribute_pots`](crate::pot::distribute_pots) — award each pot to the
+//!    best eligible hand(s), splitting ties with the odd chip going to the first
+//!    eligible seat left of the dealer.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -25,6 +27,7 @@ use crate::hand_rankings::ComparableHand;
 /// re-sorts by seat position relative to the dealer.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Pot {
+    /// Chips in this pot.
     pub amount: u64,
     /// Players eligible to win this pot: those who contributed to its layer and
     /// have not folded. Folded players' chips remain in the pot as dead money but

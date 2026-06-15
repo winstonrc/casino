@@ -4,9 +4,9 @@
 
 A library that provides hand ranking & the backend for poker games. 
 
-**Note:** The public API follows [SemVer](https://semver.org/). Version `2.0.0`
-makes the engine own the complete hand lifecycle and adds checked, transactional
-state transitions.
+**Note:** The public API follows [SemVer](https://semver.org/). Version `1.0.0`
+establishes the engine-owned hand lifecycle and checked, transactional state
+transitions as the stable API.
 
 ## Usage
 
@@ -20,7 +20,7 @@ Call `hand.describe()` for a PokerStars-style name ("two pair, Jacks and Fives",
 `evaluate_with_cards` to also get the exact five cards forming the hand.
 
 ```rust
-use casino_cards::card::{Card, Rank, Suit};
+use casino_poker::casino_cards::card::{Card, Rank, Suit};
 use casino_poker::hand_rankings::evaluate;
 
 let hole = [Card::new(Rank::Ace, Suit::Heart), Card::new(Rank::Two, Suit::Heart)];

@@ -1,3 +1,5 @@
+//! Poker hand evaluation and comparison.
+
 use std::fmt;
 
 use casino_cards::card::Card;
@@ -15,14 +17,23 @@ use serde::{Deserialize, Serialize};
 /// source of truth for category precedence.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum HandCategory {
+    /// Five unmatched cards.
     HighCard,
+    /// Two cards of one rank.
     Pair,
+    /// Two distinct pairs.
     TwoPair,
+    /// Three cards of one rank.
     ThreeOfAKind,
+    /// Five consecutive ranks.
     Straight,
+    /// Five cards of one suit.
     Flush,
+    /// Three cards of one rank plus a pair.
     FullHouse,
+    /// Four cards of one rank.
     FourOfAKind,
+    /// Five consecutive cards of one suit.
     StraightFlush,
 }
 
@@ -81,7 +92,9 @@ impl fmt::Display for HandCategory {
 /// ```
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct ComparableHand {
+    /// The made-hand category.
     pub category: HandCategory,
+    /// Category-specific ranks used for kicker-aware ordering.
     pub tiebreak: [u8; 5],
 }
 

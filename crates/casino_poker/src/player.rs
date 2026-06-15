@@ -1,13 +1,20 @@
+//! Player identity and chip-stack types.
+
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// A player seated at a table.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Player {
+    /// Stable identity used throughout the engine.
     pub identifier: Uuid,
+    /// Display name.
     pub name: String,
+    /// Chips remaining in the player's stack.
     pub chips: u32,
+    /// Whether the player remains active in the surrounding session.
     pub active: bool,
 }
 
@@ -19,7 +26,9 @@ pub struct Player {
 /// `id` is the reliable key.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct PlayerRef {
+    /// Stable player identity.
     pub id: Uuid,
+    /// Display name captured when the reference was created.
     pub name: String,
 }
 
@@ -32,6 +41,7 @@ impl fmt::Display for PlayerRef {
 }
 
 impl Player {
+    /// Creates an active player with an empty chip stack.
     pub fn new(name: &str) -> Self {
         let identifier = Uuid::new_v4();
         let chips: u32 = 0;
@@ -44,6 +54,7 @@ impl Player {
         }
     }
 
+    /// Creates an active player with the given chip stack.
     pub fn new_with_chips(name: &str, chips: u32) -> Self {
         let identifier = Uuid::new_v4();
 
@@ -64,6 +75,7 @@ impl Player {
         }
     }
 
+    /// Adds chips, saturating at [`u32::MAX`].
     pub fn add_chips(&mut self, amount: u32) {
         self.chips = self.chips.saturating_add(amount);
     }
@@ -75,5 +87,30 @@ impl Player {
     /// off-by-one in the betting math must not underflow a `u32`.
     pub fn subtract_chips(&mut self, amount: u32) {
         self.chips = self.chips.saturating_sub(amount);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructors_references_and_chip_mutators_preserve_contracts() {
+        let empty = Player::new("Alice");
+        assert_eq!(empty.name, "Alice");
+        assert_eq!(empty.chips, 0);
+        assert!(empty.active);
+
+        let mut player = Player::new_with_chips("Bob", 10);
+        let reference = player.to_ref();
+        assert_eq!(reference.id, player.identifier);
+        assert_eq!(reference.name, "Bob");
+        assert_eq!(reference.to_string(), "Bob");
+
+        player.add_chips(u32::MAX);
+        assert_eq!(player.chips, u32::MAX);
+        player.subtract_chips(u32::MAX);
+        player.subtract_chips(1);
+        assert_eq!(player.chips, 0);
     }
 }

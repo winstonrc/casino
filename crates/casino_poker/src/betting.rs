@@ -1,9 +1,11 @@
 //! Betting math and the per-street betting-round state machine.
 //!
 //! Everything here is engine-side and UI-agnostic. The pure functions
-//! ([`amount_owed`], [`resolve_action`], [`legal_actions`]) validate and price a
-//! player's action; [`BettingRound`] tracks whose turn it is and when a street's
-//! betting is complete.
+//! ([`amount_owed`](crate::betting::amount_owed),
+//! [`resolve_action`](crate::betting::resolve_action),
+//! [`legal_actions`](crate::betting::legal_actions)) validate and price a
+//! player's action; [`BettingRound`](crate::betting::BettingRound) tracks whose
+//! turn it is and when a street's betting is complete.
 //!
 //! Key invariants encoded here (and the bugs they prevent):
 //! - A player only owes `current_bet - committed_this_round` — blinds and prior
@@ -28,8 +30,11 @@ use uuid::Uuid;
 /// User interfaces that collect "raise by X" convert with `RaiseTo(current_bet + X)`.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum PlayerAction {
+    /// Surrender the hand.
     Fold,
+    /// Pass without committing chips when no call is owed.
     Check,
+    /// Match the current bet, or commit the remaining stack if short.
     Call,
     /// Raise so the player's total committed this street becomes this amount.
     RaiseTo(u32),
@@ -41,13 +46,17 @@ pub enum PlayerAction {
 /// or AI can present/choose without recomputing them.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum LegalAction {
+    /// Folding is available.
     Fold,
+    /// Checking is available.
     Check,
     /// Call by paying this many chips.
     Call(u32),
     /// Raise to a total between `min` and `max` (inclusive) chips committed.
     RaiseTo {
+        /// Smallest legal raise-to total.
         min: u32,
+        /// Largest legal raise-to total.
         max: u32,
     },
     /// Go all-in, committing to this total this street.
@@ -525,6 +534,36 @@ mod tests {
             Err(ActionError::RaiseTooSmall)
         );
         assert!(resolve_action(PlayerAction::RaiseTo(2), 100, 0, 0, 2).is_ok());
+    }
+
+    #[test]
+    fn legal_actions_cover_check_call_raise_all_in_and_restricted_states() {
+        assert_eq!(
+            legal_actions(100, 0, 0, 2, true),
+            vec![
+                LegalAction::Fold,
+                LegalAction::Check,
+                LegalAction::RaiseTo { min: 2, max: 100 },
+                LegalAction::AllIn(100),
+            ]
+        );
+        assert_eq!(
+            legal_actions(100, 1, 2, 2, true),
+            vec![
+                LegalAction::Fold,
+                LegalAction::Call(1),
+                LegalAction::RaiseTo { min: 4, max: 101 },
+                LegalAction::AllIn(101),
+            ]
+        );
+        assert_eq!(
+            legal_actions(1, 0, 2, 2, true),
+            vec![LegalAction::Fold, LegalAction::AllIn(1)]
+        );
+        assert_eq!(
+            legal_actions(100, 0, 10, 10, false),
+            vec![LegalAction::Fold, LegalAction::Call(10)]
+        );
     }
 
     // --- BettingRound state machine ---

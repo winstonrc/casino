@@ -1,13 +1,15 @@
 //! Game events emitted by the engine, and the observer that receives them.
 //!
 //! The [`TexasHoldEm`](crate::games::texas_hold_em::TexasHoldEm) engine is
-//! I/O-free: instead of printing, it emits [`GameEvent`]s to a [`GameObserver`].
+//! I/O-free: instead of printing, it emits [`GameEvent`](crate::events::GameEvent)s
+//! to a [`GameObserver`](crate::events::GameObserver).
 //! A terminal front-end can render the direct observer stream. Network layers
 //! should instead use the filtered public or authenticated client copies below.
 //!
 //! Most event data is public table narration. When a hero is configured,
-//! [`GameEvent::HoleCardsDealt`] carries that perspective player's private cards
-//! to the direct observer stream and [`TexasHoldEm::replay_log`](crate::games::texas_hold_em::TexasHoldEm::replay_log).
+//! [`GameEvent::HoleCardsDealt`](crate::events::GameEvent::HoleCardsDealt) carries
+//! that perspective player's private cards to the direct observer stream and
+//! [`TexasHoldEm::replay_log`](crate::games::texas_hold_em::TexasHoldEm::replay_log).
 //! Use [`TexasHoldEm::public_events`](crate::games::texas_hold_em::TexasHoldEm::public_events)
 //! or [`TexasHoldEm::client_view`](crate::games::texas_hold_em::TexasHoldEm::client_view)
 //! for redacted network/agent-facing copies.
@@ -24,7 +26,9 @@ use crate::player::PlayerRef;
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[non_exhaustive]
 pub enum Blind {
+    /// The small blind.
     Small,
+    /// The big blind.
     Big,
 }
 
@@ -32,6 +36,7 @@ pub enum Blind {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[non_exhaustive]
 pub enum PotKind {
+    /// The main pot.
     Main,
     /// A side pot, numbered from `1` for the smallest (lowest) side-pot layer
     /// upward.
@@ -43,8 +48,11 @@ pub enum PotKind {
 /// posted).
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SeatInfo {
+    /// One-based seat number.
     pub seat_no: usize,
+    /// Stable player identity and display name.
     pub player: PlayerRef,
+    /// Stack before blinds were posted.
     pub stack: u32,
 }
 
@@ -52,22 +60,32 @@ pub struct SeatInfo {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[non_exhaustive]
 pub enum ActionView {
+    /// The player folded.
     Folded,
+    /// The player checked.
     Checked,
+    /// The player called.
     Called {
+        /// Chips paid by the call.
         amount: u32,
+        /// Whether the call exhausted the player's stack.
         all_in: bool,
     },
     /// An opening bet (the bet was zero before this action).
     Bet {
+        /// Total chips committed by the opening bet.
         amount: u32,
+        /// Whether the bet exhausted the player's stack.
         all_in: bool,
     },
     /// A raise of `by` chips over the prior bet, to a total of `to` committed this
     /// street (PokerStars writes "raises `by` to `to`").
     Raised {
+        /// Increase over the previous bet.
         by: u32,
+        /// New total committed on the street.
         to: u32,
+        /// Whether the raise exhausted the player's stack.
         all_in: bool,
     },
 }
@@ -82,46 +100,73 @@ pub enum GameEvent {
     /// number, the button seat (1-based), the blinds, and the seat roster with
     /// each player's starting (pre-blind) stack.
     HandStarted {
+        /// Monotonic hand number for the session.
         hand_number: u32,
+        /// One-based dealer-button seat.
         button_seat: usize,
+        /// Configured small blind.
         small_blind: u32,
+        /// Configured big blind.
         big_blind: u32,
+        /// Seat roster at hand start.
         seats: Vec<SeatInfo>,
     },
     /// A blind was posted (possibly all-in for less than the full blind).
     BlindPosted {
+        /// Player who posted.
         player: PlayerRef,
+        /// Blind posted.
         blind: Blind,
+        /// Chips posted.
         amount: u32,
+        /// Whether posting exhausted the player's stack.
         all_in: bool,
     },
     /// Hole cards were dealt — the marker that betting is about to begin. `hero`
     /// carries the perspective player and two cards when one is set (for the
     /// `Dealt to …` line); `None` when no hero is designated.
     HoleCardsDealt {
+        /// Optional perspective player and their private cards.
         hero: Option<(PlayerRef, Vec<Card>)>,
     },
     /// A player acted on the given street.
     ActionTaken {
+        /// Player who acted.
         player: PlayerRef,
+        /// Street on which the action occurred.
         street: Street,
+        /// Public representation of the resolved action.
         action: ActionView,
     },
     /// Community cards were dealt for a street, with the running pot total.
     StreetDealt {
+        /// Newly reached street.
         street: Street,
+        /// Complete board after dealing.
         board: Vec<Card>,
+        /// Pot total after dealing.
         pot: u32,
     },
     /// An uncalled bet was returned to its bettor.
-    UncalledBetReturned { player: PlayerRef, amount: u32 },
+    UncalledBetReturned {
+        /// Player receiving the refund.
+        player: PlayerRef,
+        /// Chips returned.
+        amount: u32,
+    },
     /// Two or more players reached a showdown. Emitted once, after the final
     /// betting round and before any [`ShowdownReveal`](GameEvent::ShowdownReveal),
     /// carrying the final board and pot so a front-end can re-show the table the
     /// hands are read against.
-    Showdown { board: Vec<Card>, pot: u32 },
+    Showdown {
+        /// Final community board.
+        board: Vec<Card>,
+        /// Pot total entering showdown.
+        pot: u32,
+    },
     /// A player's hand was revealed at showdown.
     ShowdownReveal {
+        /// Player revealing their hand.
         player: PlayerRef,
         /// The player's two hole cards.
         hole: Vec<Card>,
@@ -133,11 +178,14 @@ pub enum GameEvent {
     /// identifies which pot the chips came from when the hand had side pots, and
     /// is `None` when there was a single pot (nothing to distinguish).
     PotAwarded {
+        /// Player receiving chips.
         player: PlayerRef,
+        /// Chips awarded from this pot.
         amount: u32,
         /// The winning hand value (`None` when the pot was uncontested). Call
         /// `hand.describe()` to name it.
         hand: Option<ComparableHand>,
+        /// Main/side-pot identity when multiple pots exist.
         pot: Option<PotKind>,
     },
     /// The hand is fully resolved (all pots awarded). Signals a front-end to flush
@@ -148,6 +196,7 @@ pub enum GameEvent {
 /// Receives [`GameEvent`]s emitted by the engine. The default [`NullObserver`]
 /// drops them, so callers that don't render pay nothing.
 pub trait GameObserver {
+    /// Receives one emitted event.
     fn notify(&mut self, event: &GameEvent);
 }
 
@@ -229,6 +278,25 @@ mod tests {
 
         assert_eq!(*a.borrow(), 2);
         assert_eq!(*b.borrow(), 2);
+    }
+
+    #[test]
+    fn broadcast_observer_push_adds_an_observer() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        struct Counter(Rc<RefCell<usize>>);
+        impl GameObserver for Counter {
+            fn notify(&mut self, _event: &GameEvent) {
+                *self.0.borrow_mut() += 1;
+            }
+        }
+
+        let count = Rc::new(RefCell::new(0));
+        let mut broadcast = BroadcastObserver::new(Vec::new());
+        broadcast.push(Box::new(Counter(count.clone())));
+        broadcast.notify(&GameEvent::HandComplete);
+        assert_eq!(*count.borrow(), 1);
     }
 
     /// Events must survive a serialize/deserialize round-trip so they can be

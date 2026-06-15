@@ -1,13 +1,14 @@
 //! The agent interface: how a human or AI is asked to act.
 //!
-//! The engine builds an owned [`PlayerView`] snapshot each turn and hands it to a
-//! [`PokerAgent`], which returns a [`PlayerAction`]. Both a terminal human prompt
-//! and an AI implement the same trait, so swapping in a smarter (or model-backed)
-//! opponent later requires no engine changes.
+//! The engine builds an owned [`PlayerView`](crate::agent::PlayerView) snapshot
+//! each turn and hands it to a [`PokerAgent`](crate::agent::PokerAgent), which
+//! returns a [`PlayerAction`](crate::betting::PlayerAction). Both a terminal human
+//! prompt and an AI implement the same trait, so swapping in a smarter (or
+//! model-backed) opponent later requires no engine changes.
 //!
-//! [`PlayerView`] is deliberately **owned** (no borrows) so it both sidesteps
-//! borrow-checker conflicts in the engine's action loop and can be serialized to
-//! hand to an external/local model in the future.
+//! [`PlayerView`](crate::agent::PlayerView) is deliberately **owned** (no borrows)
+//! so it both sidesteps borrow-checker conflicts in the engine's action loop and
+//! can be serialized to hand to an external/local model in the future.
 
 use casino_cards::card::{Card, Rank, Suit};
 use serde::{Deserialize, Serialize};
@@ -20,9 +21,13 @@ use crate::games::texas_hold_em::SeatView;
 /// Which betting street is in progress.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Street {
+    /// Betting before any community cards are dealt.
     Preflop,
+    /// Betting after the first three community cards.
     Flop,
+    /// Betting after the fourth community card.
     Turn,
+    /// Betting after the fifth community card.
     River,
 }
 
@@ -275,6 +280,7 @@ impl PlayerViewBuilder {
 /// `decide` is required; the two learning hooks default to no-ops so a stateless
 /// agent ignores them and adding them stays backwards-compatible.
 pub trait PokerAgent {
+    /// Chooses an action from the current player-specific view.
     fn decide(&mut self, view: &PlayerView) -> Result<PlayerAction, AgentError>;
 
     /// Observe a public [`GameEvent`] as a hand unfolds. The default is a no-op.
@@ -293,6 +299,59 @@ pub trait PokerAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn builder_sets_every_public_field() {
+        let you = Uuid::from_u128(7);
+        let hole = [
+            Card::new(Rank::Queen, Suit::Club),
+            Card::new(Rank::Jack, Suit::Diamond),
+        ];
+        let board = vec![Card::new(Rank::Ten, Suit::Heart)];
+        let seats = vec![SeatView {
+            id: you,
+            name: "Ada".into(),
+            chips: 90,
+            committed_this_street: 10,
+            contributed_this_hand: 10,
+            folded: false,
+            all_in: false,
+        }];
+        let legal = vec![LegalAction::Call(10)];
+        let view = PlayerView::builder()
+            .you(you)
+            .name("Ada")
+            .street(Street::Turn)
+            .hole(hole)
+            .board(board.clone())
+            .chips(90)
+            .amount_owed(10)
+            .current_bet(20)
+            .min_raise_to(40)
+            .pot_total(50)
+            .players_remaining(2)
+            .legal_actions(legal.clone())
+            .big_blind(2)
+            .seats(seats)
+            .button_seat(Some(0))
+            .build();
+
+        assert_eq!(view.you, you);
+        assert_eq!(view.name, "Ada");
+        assert_eq!(view.street, Street::Turn);
+        assert_eq!(view.hole, hole);
+        assert_eq!(view.board, board);
+        assert_eq!(view.chips, 90);
+        assert_eq!(view.amount_owed, 10);
+        assert_eq!(view.current_bet, 20);
+        assert_eq!(view.min_raise_to, 40);
+        assert_eq!(view.pot_total, 50);
+        assert_eq!(view.players_remaining, 2);
+        assert_eq!(view.legal_actions, legal);
+        assert_eq!(view.big_blind, 2);
+        assert_eq!(view.seats.len(), 1);
+        assert_eq!(view.button_seat, Some(0));
+    }
 
     #[test]
     fn metrics_compute_pot_odds_and_stack_depth() {

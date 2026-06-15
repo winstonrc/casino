@@ -4,7 +4,7 @@
 //! contributions, the board, who has folded or gone all-in, betting, and pot
 //! distribution. Callers (a terminal UI, tests, a future network layer) drive it
 //! with a thin loop — deal, run each betting street, then award the pots — and
-//! supply a [`PokerAgent`] per player to decide actions.
+//! supply a [`PokerAgent`](crate::agent::PokerAgent) per player to decide actions.
 //!
 //! Side pots are computed at showdown from total contributions (see [`crate::pot`]).
 
@@ -37,13 +37,34 @@ pub const MAX_PLAYERS: usize = 10;
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[non_exhaustive]
 pub enum HandStartError {
+    /// A previous hand has not ended or been aborted.
     HandAlreadyInProgress,
-    NotEnoughPlayers { seated: usize },
-    TooManyPlayers { seated: usize, maximum: usize },
-    InsufficientCards { available: usize, required: usize },
+    /// Fewer than two players are seated.
+    NotEnoughPlayers {
+        /// Number of seated players.
+        seated: usize,
+    },
+    /// More players are seated than the table supports.
+    TooManyPlayers {
+        /// Number of seated players.
+        seated: usize,
+        /// Maximum supported by this table.
+        maximum: usize,
+    },
+    /// The supplied deck cannot finish the hand.
+    InsufficientCards {
+        /// Cards available.
+        available: usize,
+        /// Cards required.
+        required: usize,
+    },
+    /// The supplied deck contains the same card more than once.
     DuplicateCards,
+    /// Seats and player records are inconsistent.
     InvalidRoster,
+    /// Restored in-progress hand state is internally inconsistent.
     InvalidHandState,
+    /// Total table chips exceed [`u32::MAX`].
     ChipTotalTooLarge,
 }
 
@@ -103,8 +124,11 @@ pub struct DecisionId(u64);
 /// One identified player decision yielded by either state machine.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PendingAction {
+    /// Stable identity for this decision.
     pub decision_id: DecisionId,
+    /// Player expected to act.
     pub player: Uuid,
+    /// Player-specific decision snapshot.
     pub view: PlayerView,
 }
 
@@ -116,16 +140,25 @@ pub struct PendingAction {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[non_exhaustive]
 pub enum ActionSubmissionError {
+    /// The engine is not awaiting an action.
     NoActionPending,
+    /// Restored game state failed validation.
     InvalidState(HandStartError),
+    /// An action was submitted for a player other than the one on the clock.
     WrongPlayer {
+        /// Player expected by the engine.
         expected: Uuid,
+        /// Player supplied by the caller.
         submitted: Uuid,
     },
+    /// The decision has already advanced or belongs to another prompt.
     StaleDecision {
+        /// Current decision identity.
         expected: DecisionId,
+        /// Identity supplied by the caller.
         submitted: DecisionId,
     },
+    /// The poker action is not legal in the current betting state.
     IllegalAction(ActionError),
 }
 
@@ -165,8 +198,11 @@ impl std::error::Error for ActionSubmissionError {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[non_exhaustive]
 pub enum PlayError {
+    /// No agent was registered for the player on the clock.
     MissingAgent(Uuid),
+    /// The hand or betting round could not start.
     HandStart(HandStartError),
+    /// An agent-selected action could not be submitted.
     Submission(ActionSubmissionError),
 }
 
@@ -234,8 +270,11 @@ pub enum HandStep {
 /// quit or their input ended unexpectedly.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum HandOutcome {
+    /// The hand completed and all pots were awarded.
     Complete,
+    /// An agent asked to quit, leaving the hand resumable.
     Quit,
+    /// Agent input ended, leaving the hand resumable.
     Eof,
 }
 
@@ -286,8 +325,11 @@ pub struct TableView {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct SeatView {
+    /// Stable player identity.
     pub id: Uuid,
+    /// Display name.
     pub name: String,
+    /// Chips remaining in the stack.
     pub chips: u32,
     /// Chips this player has committed on the current street.
     pub committed_this_street: u32,
@@ -298,7 +340,9 @@ pub struct SeatView {
     ///
     /// [`committed_this_street`]: SeatView::committed_this_street
     pub contributed_this_hand: u32,
+    /// Whether the player has folded this hand.
     pub folded: bool,
+    /// Whether the player has committed their entire stack.
     pub all_in: bool,
 }
 
@@ -787,10 +831,12 @@ impl TexasHoldEm {
         (self.get_big_blind_seat_index() + 1) % len
     }
 
+    /// Configured small-blind amount.
     pub fn get_small_blind_amount(&self) -> u32 {
         self.small_blind_amount
     }
 
+    /// Configured big-blind amount.
     pub fn get_big_blind_amount(&self) -> u32 {
         self.big_blind_amount
     }
@@ -2066,6 +2112,64 @@ mod tests {
             ids.push(id);
         }
         ids
+    }
+
+    #[test]
+    fn public_table_management_helpers_cover_their_contracts() {
+        let mut game = TexasHoldEm::new(10, 3, 1, 2);
+        assert_eq!(game.get_small_blind_amount(), 1);
+        assert_eq!(game.get_big_blind_amount(), 2);
+
+        let too_short = game.new_player_with_chips("Short", 9);
+        assert!(game.add_player(too_short).is_err());
+        game.set_min_buy_in(0);
+
+        let first = game.new_player("First");
+        let first_id = first.identifier;
+        game.add_player(first).unwrap();
+        assert_eq!(game.player(&first_id).unwrap().chips, 0);
+        assert!(game.add_chips_to(&first_id, 25));
+        assert_eq!(game.player(&first_id).unwrap().chips, 25);
+        assert!(!game.add_chips_to(&Uuid::new_v4(), 1));
+
+        let broke = game.new_player("Broke");
+        let broke_id = broke.identifier;
+        game.add_player(broke).unwrap();
+        assert_eq!(game.seats(), &[first_id, broke_id]);
+        assert!(!game.check_for_game_over());
+        assert_eq!(game.remove_losers(), vec!["Broke"]);
+        assert_eq!(game.seats(), &[first_id]);
+        assert!(game.player(&broke_id).is_none());
+
+        assert!(game.check_for_game_over());
+        game.end_game();
+        assert!(game.check_for_game_over());
+        assert_eq!(game.remove_player(&first_id).unwrap().name, "First");
+        assert!(game.remove_player(&first_id).is_none());
+    }
+
+    #[test]
+    fn reseed_matches_a_fresh_seeded_engine() {
+        let mut seeded = TexasHoldEm::new_seeded(0, 10, 1, 2, 99);
+        let mut reseeded = TexasHoldEm::new(0, 10, 1, 2);
+        reseeded.reseed(99);
+        seat_players(&mut seeded, &[100, 100]);
+        seat_players(&mut reseeded, &[100, 100]);
+
+        seeded.begin_hand().unwrap();
+        reseeded.begin_hand().unwrap();
+
+        let seeded_hands: Vec<Vec<Card>> = seeded
+            .seats()
+            .iter()
+            .map(|id| seeded.player_hand(id).unwrap().cards.clone())
+            .collect();
+        let reseeded_hands: Vec<Vec<Card>> = reseeded
+            .seats()
+            .iter()
+            .map(|id| reseeded.player_hand(id).unwrap().cards.clone())
+            .collect();
+        assert_eq!(seeded_hands, reseeded_hands);
     }
 
     #[test]
