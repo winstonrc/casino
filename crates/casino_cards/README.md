@@ -1,4 +1,4 @@
-[![crates.io](https://img.shields.io/crates/v/casino_cards.svg)](https://crates.io/crates/casino_cards) [![Cards Test](https://github.com/winstonrc/casino/actions/workflows/casino_cards.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions/workflows/casino_cards.yml)
+[![crates.io](https://img.shields.io/crates/v/casino_cards.svg)](https://crates.io/crates/casino_cards) [![CI](https://github.com/winstonrc/casino/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/winstonrc/casino/actions/workflows/ci.yml)
 
 # casino_cards
 
@@ -15,21 +15,22 @@ fn main() {
     let mut deck = Deck::new();
     deck.shuffle();
 
-    let card1 = deck.deal();
+    // `deal` returns `Option<Card>` (`None` once the deck is empty).
+    let card1 = deck.deal().unwrap();
     // A card can be inserted at a specified position in the deck.
-    deck.insert(12, card);
+    deck.insert(12, card1).unwrap();
 
-    let card2 = deck.deal();
+    let card2 = deck.deal().unwrap();
     // A card can be inserted at the bottom of the deck.
-    deck.insert_at_bottom(card2);
+    deck.insert_at_bottom(card2).unwrap();
 
-    let card3 = deck.deal();
+    let card3 = deck.deal().unwrap();
     // A card can be inserted at the middle of the deck.
-    deck.insert_at_middle(card3);
+    deck.insert_at_middle(card3).unwrap();
 
-    let card4 = deck.deal();
+    let card4 = deck.deal().unwrap();
     // A card can be inserted at the top of the deck.
-    deck.insert_at_top(card4);
+    deck.insert_at_top(card4).unwrap();
 
     deck.shuffle();
 }
@@ -59,19 +60,19 @@ use casino_cards::hand::Hand;
 
 fn main() {
     let mut deck = Deck::new();
-    deck.shuffle()
+    deck.shuffle();
 
     // A hand can be created by pushing cards into it.
-    let card1 = deck.deal();
-    let card2 = deck.deal();
+    let card1 = deck.deal().unwrap();
+    let card2 = deck.deal().unwrap();
     let mut hand = Hand::new();
     hand.push(card1);
     hand.push(card2);
 
     // Or a hand can be created from an existing Vec<Card>.
     let mut cards: Vec<Card> = Vec::new();
-    let card3 = deck.deal();
-    let card4 = deck.deal();
+    let card3 = deck.deal().unwrap();
+    let card4 = deck.deal().unwrap();
     cards.push(card3);
     cards.push(card4);
     let mut hand2 = Hand::new_from_cards(cards);

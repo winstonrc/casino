@@ -1,15 +1,17 @@
+use std::fmt;
+
+use serde::{Deserialize, Serialize};
+
 use crate::card::Card;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Hand {
     pub cards: Vec<Card>,
 }
 
 impl Hand {
     pub fn new() -> Self {
-        let cards = Vec::new();
-
-        Self { cards }
+        Self { cards: Vec::new() }
     }
 
     pub fn new_from_cards(cards: Vec<Card>) -> Self {
@@ -28,38 +30,19 @@ impl Hand {
 
     /// Returns the Card at the back of the Hand if any.
     pub fn pop(&mut self) -> Option<Card> {
-        if let Some(card) = self.cards.pop() {
-            return Some(card);
-        }
-
-        None
+        self.cards.pop()
     }
 
-    pub fn to_string(&self) -> String {
-        let mut cards_string = String::new();
-
-        for (i, &card) in self.cards.iter().enumerate() {
-            cards_string.push_str(&card.to_string());
-
-            if i < self.cards.len() - 1 {
-                cards_string.push_str(" ");
-            }
-        }
-
-        cards_string
-    }
-
+    /// Returns the hand rendered as a space-separated string of cards, honoring
+    /// the current card display style (see [`crate::card::set_glyph_display`]).
     pub fn to_symbols(&self) -> String {
-        let mut card_symbols = String::new();
+        self.to_string()
+    }
+}
 
-        for (i, &card) in self.cards.iter().enumerate() {
-            card_symbols.push_str(&card.to_string());
-
-            if i < self.cards.len() - 1 {
-                card_symbols.push_str(" ");
-            }
-        }
-
-        card_symbols
+impl fmt::Display for Hand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let cards: Vec<String> = self.cards.iter().map(|card| card.to_string()).collect();
+        write!(f, "{}", cards.join(" "))
     }
 }

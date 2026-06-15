@@ -1,7 +1,27 @@
 use std::cmp::Ordering;
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 
+use serde::{Deserialize, Serialize};
 use strum::EnumIter;
+
+/// Whether `Card`'s `Display` uses the single Unicode playing-card glyphs.
+/// Defaults to `false` (portable rank+suit text).
+static GLYPH_DISPLAY: AtomicBool = AtomicBool::new(false);
+
+/// Chooses how `Card` renders via its [`Display`](std::fmt::Display) impl:
+/// `true` for the single Unicode playing-card glyphs (e.g. `🂡` — pretty but tiny
+/// or missing in some terminals), `false` for parseable PokerStars codes (e.g.
+/// `As`). Applies process-wide and affects everything that prints a `Card` or
+/// `Hand`.
+pub fn set_glyph_display(enabled: bool) {
+    GLYPH_DISPLAY.store(enabled, AtomicOrdering::Relaxed);
+}
+
+/// Returns whether glyph display is currently enabled (see [`set_glyph_display`]).
+pub fn glyph_display_enabled() -> bool {
+    GLYPH_DISPLAY.load(AtomicOrdering::Relaxed)
+}
 
 /// Creates a new card.
 ///
@@ -22,7 +42,9 @@ macro_rules! card {
 /// Numerical values for the ranks.
 ///
 /// Ranks contain Two through Ace (Ace-high by default).
-#[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, EnumIter, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[repr(u8)]
 pub enum Rank {
     Two = 2,
@@ -43,6 +65,27 @@ pub enum Rank {
 impl Rank {
     pub fn value(&self) -> u8 {
         *self as u8
+    }
+
+    /// The single-character PokerStars rank code: `2`–`9`, `T` (Ten), `J`, `Q`,
+    /// `K`, `A`. Used by `Card`'s text `Display` so output is parseable by
+    /// standard hand-history tools.
+    pub fn code(&self) -> char {
+        match self {
+            Rank::Two => '2',
+            Rank::Three => '3',
+            Rank::Four => '4',
+            Rank::Five => '5',
+            Rank::Six => '6',
+            Rank::Seven => '7',
+            Rank::Eight => '8',
+            Rank::Nine => '9',
+            Rank::Ten => 'T',
+            Rank::Jack => 'J',
+            Rank::Queen => 'Q',
+            Rank::King => 'K',
+            Rank::Ace => 'A',
+        }
     }
 }
 
@@ -71,7 +114,9 @@ impl fmt::Display for Rank {
 /// A suit can be a Club, Diamond, Heart, or Spade, which are ranked from lowest to highest value.
 ///
 /// Suit values are based on the values for the game Bridge.
-#[derive(Clone, Copy, Debug, EnumIter, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, EnumIter, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
 pub enum Suit {
     Club = 0,
     Diamond = 1,
@@ -82,6 +127,16 @@ pub enum Suit {
 impl Suit {
     pub fn value(&self) -> u8 {
         *self as u8
+    }
+
+    /// The single-character PokerStars suit code: `c`, `d`, `h`, `s` (lowercase).
+    pub fn code(&self) -> char {
+        match self {
+            Suit::Club => 'c',
+            Suit::Diamond => 'd',
+            Suit::Heart => 'h',
+            Suit::Spade => 's',
+        }
     }
 }
 
@@ -98,7 +153,7 @@ impl fmt::Display for Suit {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Card {
     pub rank: Rank,
     pub suit: Suit,
@@ -131,31 +186,20 @@ impl Card {
             Rank::King => 10,
         }
     }
-}
 
-impl Ord for Card {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let rank_ordering = self.rank.cmp(&other.rank);
-        match rank_ordering {
-            Ordering::Equal => self.suit.cmp(&other.suit),
-            _ => rank_ordering,
+    /// Returns the single Unicode playing-card glyph for this card (e.g. `🂡`),
+    /// or the card-back glyph (`🂠`) if it is face down.
+    ///
+    /// These glyphs render inconsistently across terminals and fonts — often
+    /// tiny or missing — so for portable, parseable output prefer the
+    /// [`Display`](std::fmt::Display) form, which is the PokerStars code (e.g.
+    /// `As`).
+    pub fn glyph(&self) -> char {
+        if !self.face_up {
+            return '🂠';
         }
-    }
-}
 
-impl PartialOrd for Card {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        let rank_ordering = self.rank.partial_cmp(&other.rank);
-        match rank_ordering {
-            Some(Ordering::Equal) => self.suit.partial_cmp(&other.suit),
-            _ => rank_ordering,
-        }
-    }
-}
-
-impl fmt::Display for Card {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut card = match (self.rank, self.suit) {
+        match (self.rank, self.suit) {
             (Rank::Two, Suit::Club) => '🃒',
             (Rank::Three, Suit::Club) => '🃓',
             (Rank::Four, Suit::Club) => '🃔',
@@ -208,13 +252,100 @@ impl fmt::Display for Card {
             (Rank::Queen, Suit::Spade) => '🂭',
             (Rank::King, Suit::Spade) => '🂮',
             (Rank::Ace, Suit::Spade) => '🂡',
-        };
+        }
+    }
+}
 
-        if !self.face_up {
-            card = '🂠'
+/// The error returned when a [`Card`] cannot be parsed from its string code.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ParseCardError;
+
+impl fmt::Display for ParseCardError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "invalid card code (expected a rank 2-9/T/J/Q/K/A followed by a suit c/d/h/s, e.g. \"As\")"
+        )
+    }
+}
+
+impl std::error::Error for ParseCardError {}
+
+impl std::str::FromStr for Card {
+    type Err = ParseCardError;
+
+    /// Parses a PokerStars-style code — the inverse of the text [`Display`] form —
+    /// e.g. `"As"`, `"Td"`, `"9h"`. The rank is `2`–`9`/`T`/`J`/`Q`/`K`/`A`
+    /// (uppercase) and the suit is `c`/`d`/`h`/`s` (lowercase); the parsed card is
+    /// face up. The face-down `"??"` form, and any malformed input, return an error.
+    ///
+    /// [`Display`]: std::fmt::Display
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut chars = s.chars();
+        let rank_ch = chars.next().ok_or(ParseCardError)?;
+        let suit_ch = chars.next().ok_or(ParseCardError)?;
+        if chars.next().is_some() {
+            return Err(ParseCardError);
         }
 
-        write!(f, "{}", card)
+        let rank = match rank_ch {
+            '2' => Rank::Two,
+            '3' => Rank::Three,
+            '4' => Rank::Four,
+            '5' => Rank::Five,
+            '6' => Rank::Six,
+            '7' => Rank::Seven,
+            '8' => Rank::Eight,
+            '9' => Rank::Nine,
+            'T' => Rank::Ten,
+            'J' => Rank::Jack,
+            'Q' => Rank::Queen,
+            'K' => Rank::King,
+            'A' => Rank::Ace,
+            _ => return Err(ParseCardError),
+        };
+        let suit = match suit_ch {
+            'c' => Suit::Club,
+            'd' => Suit::Diamond,
+            'h' => Suit::Heart,
+            's' => Suit::Spade,
+            _ => return Err(ParseCardError),
+        };
+
+        Ok(Card::new(rank, suit))
+    }
+}
+
+impl Ord for Card {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let rank_ordering = self.rank.cmp(&other.rank);
+        match rank_ordering {
+            Ordering::Equal => self.suit.cmp(&other.suit),
+            _ => rank_ordering,
+        }
+    }
+}
+
+impl PartialOrd for Card {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl fmt::Display for Card {
+    /// Renders the card as the PokerStars two-character code — rank code plus a
+    /// lowercase suit letter, e.g. `As`, `Td` (a face-down card renders as `??`).
+    /// This form is parseable by standard hand-history tools. If glyph display is
+    /// enabled via [`set_glyph_display`], renders the single Unicode playing-card
+    /// glyph instead.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if glyph_display_enabled() {
+            write!(f, "{}", self.glyph())
+        } else if self.face_up {
+            write!(f, "{}{}", self.rank.code(), self.suit.code())
+        } else {
+            write!(f, "??")
+        }
     }
 }
 
@@ -294,17 +425,45 @@ mod tests {
     }
 
     #[test]
-    fn cards_have_correct_string_values() {
-        let two_of_clubs_card = card!(Two, Club);
-        assert_eq!(two_of_clubs_card.to_string(), "🃒");
+    fn cards_display_as_pokerstars_codes() {
+        assert_eq!(card!(Two, Club).to_string(), "2c");
+        assert_eq!(card!(Seven, Diamond).to_string(), "7d");
+        assert_eq!(card!(Ten, Spade).to_string(), "Ts");
+        assert_eq!(card!(King, Heart).to_string(), "Kh");
+        assert_eq!(card!(Ace, Spade).to_string(), "As");
 
-        let seven_of_diamonds_card = card!(Seven, Diamond);
-        assert_eq!(seven_of_diamonds_card.to_string(), "🃇");
+        let mut face_down = card!(Ace, Spade);
+        face_down.face_up = false;
+        assert_eq!(face_down.to_string(), "??");
+    }
 
-        let king_of_hearts_card = card!(King, Heart);
-        assert_eq!(king_of_hearts_card.to_string(), "🂾");
+    #[test]
+    fn cards_parse_from_their_codes() {
+        use std::str::FromStr;
 
-        let ace_of_spades_card = card!(Ace, Spade);
-        assert_eq!(ace_of_spades_card.to_string(), "🂡");
+        assert_eq!(Card::from_str("As").unwrap(), card!(Ace, Spade));
+        assert_eq!(Card::from_str("Td").unwrap(), card!(Ten, Diamond));
+        assert_eq!(Card::from_str("9h").unwrap(), card!(Nine, Heart));
+        assert_eq!(Card::from_str("2c").unwrap(), card!(Two, Club));
+
+        // Round-trips with the text Display form.
+        let king = card!(King, Heart);
+        assert_eq!(Card::from_str(&king.to_string()).unwrap(), king);
+
+        // Rejects the face-down form, wrong case, and malformed input.
+        assert!(Card::from_str("??").is_err());
+        assert!(Card::from_str("aS").is_err());
+        assert!(Card::from_str("A").is_err());
+        assert!(Card::from_str("Ass").is_err());
+    }
+
+    #[test]
+    fn glyph_returns_unicode_playing_card() {
+        assert_eq!(card!(Two, Club).glyph(), '🃒');
+        assert_eq!(card!(Ace, Spade).glyph(), '🂡');
+
+        let mut face_down = card!(Ace, Spade);
+        face_down.face_up = false;
+        assert_eq!(face_down.glyph(), '🂠');
     }
 }
