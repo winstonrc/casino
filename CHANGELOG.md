@@ -6,6 +6,25 @@ crate follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## 2026-06-15
+
+### casino_poker 2.0.0
+
+#### Changed
+
+- **Breaking:** `begin_hand` and `begin_hand_with_deck` now return
+  `Result<(), HandStartError>`. Seat/button mutators report rejection, and the
+  engine owns street dealing, pot awards, and hand cleanup internally.
+- **Breaking:** `ActionError`, `ActionSubmissionError`, and `PlayError` are
+  non-exhaustive and include validation/overflow failures. `BettingStep` and
+  `HandStep` can return `CannotStart`.
+- **Breaking:** standalone `Pot` and `PotAward` aggregate amounts and payouts
+  use `u64`. Binary/network consumers must version or migrate serialized values;
+  older binaries cannot decode newly emitted enum variants.
+- Tables support 2–10 players and enforce a checked table-wide `u32::MAX`
+  bankroll. Hand startup, restored state, and action submission validate before
+  mutation.
+
 ## 2026-06-14
 
 ### casino_poker 1.0.0

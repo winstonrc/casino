@@ -4,7 +4,9 @@
 
 A library that provides hand ranking & the backend for poker games. 
 
-**Note:** As of `1.0.0` the public API is considered stable and follows [SemVer](https://semver.org/) — breaking changes will bump the major version. Larger follow-ups (TUI, pluggable/model-backed agents, online multiplayer) are targeted for `2.0.0`.
+**Note:** The public API follows [SemVer](https://semver.org/). Version `2.0.0`
+makes the engine own the complete hand lifecycle and adds checked, transactional
+state transitions.
 
 ## Usage
 
@@ -79,11 +81,19 @@ for &id in game.seats() {
 game.play_hand(&mut agents).unwrap();
 ```
 
+`TexasHoldEm` supports 2–10 players. `begin_hand()` and
+`begin_hand_with_deck()` validate the table and return `HandStartError` without
+mutating the engine when the player count, deck, roster, or bankroll is invalid.
+Seat and button changes are accepted only between hands. Standalone pot helpers
+use `u64` aggregate amounts; engine snapshots/events and player stacks remain
+`u32` under a checked table-wide bankroll cap.
+
 `play_hand` is the blocking convenience over the **resumable hand state machine**:
 `drive_hand()` (begin a fresh hand or resume the one in progress) and
 `submit_hand_action(player, decision_id, action)` yield a `HandStep`
-(`AwaitingAction(PendingAction)` or `HandComplete`), so an async front-end drives a
-whole hand without re-implementing the deal/bet/award sequence:
+(`AwaitingAction(PendingAction)`, `HandComplete`, or transactional
+`CannotStart(HandStartError)`), so an async front-end drives a whole hand without
+re-implementing the deal/bet/award sequence:
 
 ```rust
 use casino_poker::betting::PlayerAction;

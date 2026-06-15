@@ -47,7 +47,7 @@ dependencies = [
 
 [[package]]
 name = "casino_poker"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "casino_cards",
  "proptest",

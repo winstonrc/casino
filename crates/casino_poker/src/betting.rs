@@ -56,6 +56,7 @@ pub enum LegalAction {
 
 /// Why an action could not be applied.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 pub enum ActionError {
     /// Tried to check while owing chips.
     CannotCheck,
@@ -67,6 +68,8 @@ pub enum ActionError {
     NotARaise,
     /// Betting was not reopened after an incomplete all-in raise.
     RaiseNotAllowed,
+    /// Committed chips plus the remaining stack exceeded the supported amount.
+    ChipAmountOverflow,
 }
 
 impl fmt::Display for ActionError {
@@ -77,6 +80,7 @@ impl fmt::Display for ActionError {
             Self::InsufficientChips => "insufficient chips for that raise",
             Self::NotARaise => "raise target must exceed the current bet",
             Self::RaiseNotAllowed => "betting was not reopened for this player",
+            Self::ChipAmountOverflow => "chip amount exceeds the supported u32 range",
         };
         f.write_str(message)
     }
@@ -174,8 +178,10 @@ pub fn resolve_action(
                 return Err(ActionError::InsufficientChips);
             }
             let all_in = need == chips;
-            let min_to = current_bet + last_raise_increment;
-            if target < min_to {
+            let is_full_raise = current_bet
+                .checked_add(last_raise_increment)
+                .is_some_and(|min_to| target >= min_to);
+            if !is_full_raise {
                 // Below a full raise: only legal as an all-in (handled here so a
                 // UI passing RaiseTo for a shove still works).
                 if all_in {
@@ -200,7 +206,9 @@ pub fn resolve_action(
 
         PlayerAction::AllIn => {
             let paid = chips;
-            let target = committed_this_round + chips;
+            let target = committed_this_round
+                .checked_add(chips)
+                .ok_or(ActionError::ChipAmountOverflow)?;
             if target <= current_bet {
                 // Short all-in that doesn't even match the bet: a call, no raise.
                 return Ok(Resolved {
@@ -211,8 +219,9 @@ pub fn resolve_action(
                     is_full_raise: false,
                 });
             }
-            let min_to = current_bet + last_raise_increment;
-            let is_full_raise = target >= min_to;
+            let is_full_raise = current_bet
+                .checked_add(last_raise_increment)
+                .is_some_and(|min_to| target >= min_to);
             Ok(Resolved {
                 paid,
                 all_in: true,
@@ -237,7 +246,7 @@ pub fn legal_actions(
 ) -> Vec<LegalAction> {
     let mut actions = vec![LegalAction::Fold];
     let owed = amount_owed(current_bet, committed_this_round);
-    let max_to = committed_this_round + chips; // total if the player shoves
+    let max_to = committed_this_round.checked_add(chips);
 
     if owed == 0 {
         actions.push(LegalAction::Check);
@@ -245,20 +254,22 @@ pub fn legal_actions(
         actions.push(LegalAction::Call(owed));
     }
 
-    if max_to > current_bet {
+    if max_to.is_some_and(|max_to| max_to > current_bet) {
         if can_raise {
-            let min_to = current_bet + last_raise_increment;
-            if max_to >= min_to {
-                actions.push(LegalAction::RaiseTo {
-                    min: min_to,
-                    max: max_to,
-                });
+            let max_to = max_to.expect("checked above");
+            if let Some(min_to) = current_bet.checked_add(last_raise_increment) {
+                if max_to >= min_to {
+                    actions.push(LegalAction::RaiseTo {
+                        min: min_to,
+                        max: max_to,
+                    });
+                }
             }
             actions.push(LegalAction::AllIn(max_to));
         }
-    } else if owed > 0 && chips <= owed {
+    } else if max_to.is_some() && owed > 0 && chips <= owed {
         // Can't fully call — the only way to commit chips is a short all-in call.
-        actions.push(LegalAction::AllIn(max_to));
+        actions.push(LegalAction::AllIn(max_to.expect("checked above")));
     }
 
     actions
@@ -345,14 +356,46 @@ impl BettingRound {
         self.needs_to_act.is_empty() && !self.bb_option_pending
     }
 
+    pub(crate) fn references_only(&self, players: &HashSet<Uuid>) -> bool {
+        self.committed_this_round
+            .keys()
+            .chain(self.needs_to_act.iter())
+            .chain(self.acted_at_bet.keys())
+            .all(|id| players.contains(id))
+            && self.big_blind.is_none_or(|id| players.contains(&id))
+            && self
+                .acted_at_bet
+                .values()
+                .all(|acted_at| *acted_at <= self.current_bet)
+    }
+
+    pub(crate) fn needs_action_only_from(&self, players: &HashSet<Uuid>) -> bool {
+        self.needs_to_act.iter().all(|id| players.contains(id))
+    }
+
+    pub(crate) fn commitments_within(&self, contributed: &HashMap<Uuid, u32>) -> bool {
+        self.committed_this_round
+            .iter()
+            .all(|(id, amount)| *amount <= contributed.get(id).copied().unwrap_or(0))
+    }
+
     /// Applies a resolved action, updating committed chips, the current bet, the
     /// minimum raise, whose action remains, and the big-blind option.
     ///
     /// `live_after` is the set of players who can still act *after* this action
     /// (i.e. excluding anyone who just folded or went all-in). It is used to
     /// reopen action on a full raise.
-    pub fn apply_action(&mut self, id: Uuid, resolved: &Resolved, live_after: &HashSet<Uuid>) {
-        *self.committed_this_round.entry(id).or_insert(0) += resolved.paid;
+    pub fn apply_action(
+        &mut self,
+        id: Uuid,
+        resolved: &Resolved,
+        live_after: &HashSet<Uuid>,
+    ) -> Result<(), ActionError> {
+        let committed = self.committed(id);
+        let new_committed = committed
+            .checked_add(resolved.paid)
+            .ok_or(ActionError::ChipAmountOverflow)?;
+        self.committed_this_round.insert(id, new_committed);
 
         // The actor has now acted.
         self.needs_to_act.remove(&id);
@@ -388,6 +431,7 @@ impl BettingRound {
         if resolved.raised_to.is_some() || self.big_blind == Some(id) {
             self.bb_option_pending = false;
         }
+        Ok(())
     }
 }
 
@@ -501,7 +545,9 @@ mod tests {
             round.last_raise_increment,
         )
         .expect("legal action in test");
-        round.apply_action(actor, &resolved, live_after);
+        round
+            .apply_action(actor, &resolved, live_after)
+            .expect("legal action in test");
         resolved
     }
 
@@ -610,5 +656,31 @@ mod tests {
 
         assert!(round.needs_to_act(c));
         assert!(round.may_raise(c));
+    }
+
+    #[test]
+    fn chip_math_is_safe_at_u32_max() {
+        let actions = legal_actions(u32::MAX, u32::MAX, u32::MAX - 1, 10, true);
+        assert!(!actions
+            .iter()
+            .any(|action| matches!(action, LegalAction::AllIn(_))));
+        assert!(!actions
+            .iter()
+            .any(|action| matches!(action, LegalAction::RaiseTo { .. })));
+
+        assert_eq!(
+            resolve_action(PlayerAction::AllIn, u32::MAX, u32::MAX, u32::MAX - 1, 10,),
+            Err(ActionError::ChipAmountOverflow)
+        );
+    }
+
+    #[test]
+    fn restored_round_rejects_ghost_player_ids() {
+        let a = id(1);
+        let ghost = id(2);
+        let mut round = BettingRound::new(&[a], 0, 2, HashMap::new(), None);
+        round.needs_to_act.insert(ghost);
+
+        assert!(!round.references_only(&HashSet::from([a])));
     }
 }

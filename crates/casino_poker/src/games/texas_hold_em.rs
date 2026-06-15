@@ -30,6 +30,56 @@ use crate::hand_rankings::{evaluate, ComparableHand};
 use crate::player::Player;
 use crate::pot::{build_pots, distribute_pots, refund_uncalled, Pot};
 
+/// Maximum number of players supported by one Texas Hold'em table.
+pub const MAX_PLAYERS: usize = 10;
+
+/// Why a new hand could not be started.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
+pub enum HandStartError {
+    HandAlreadyInProgress,
+    NotEnoughPlayers { seated: usize },
+    TooManyPlayers { seated: usize, maximum: usize },
+    InsufficientCards { available: usize, required: usize },
+    DuplicateCards,
+    InvalidRoster,
+    InvalidHandState,
+    ChipTotalTooLarge,
+}
+
+impl fmt::Display for HandStartError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::HandAlreadyInProgress => f.write_str("a hand is already in progress"),
+            Self::NotEnoughPlayers { seated } => {
+                write!(f, "at least 2 players are required, found {seated}")
+            }
+            Self::TooManyPlayers { seated, maximum } => {
+                write!(f, "at most {maximum} players are supported, found {seated}")
+            }
+            Self::InsufficientCards {
+                available,
+                required,
+            } => write!(
+                f,
+                "the deck has {available} cards but {required} are required"
+            ),
+            Self::DuplicateCards => f.write_str("the deck contains duplicate cards"),
+            Self::InvalidRoster => {
+                f.write_str("the seat roster contains duplicate, missing, or unseated players")
+            }
+            Self::InvalidHandState => {
+                f.write_str("the saved hand state is internally inconsistent")
+            }
+            Self::ChipTotalTooLarge => {
+                f.write_str("total chips at the table exceed the supported u32 bankroll")
+            }
+        }
+    }
+}
+
+impl std::error::Error for HandStartError {}
+
 /// The result of running a betting street.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum RoundOutcome {
@@ -64,8 +114,10 @@ pub struct PendingAction {
 /// [`PendingAction`] remains current. Decision identity is checked before player
 /// identity, so a submission with both values wrong reports `StaleDecision`.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 pub enum ActionSubmissionError {
     NoActionPending,
+    InvalidState(HandStartError),
     WrongPlayer {
         expected: Uuid,
         submitted: Uuid,
@@ -81,6 +133,7 @@ impl fmt::Display for ActionSubmissionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoActionPending => f.write_str("no action is pending"),
+            Self::InvalidState(error) => write!(f, "invalid game state: {error}"),
             Self::WrongPlayer {
                 expected,
                 submitted,
@@ -102,6 +155,7 @@ impl std::error::Error for ActionSubmissionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::IllegalAction(error) => Some(error),
+            Self::InvalidState(error) => Some(error),
             _ => None,
         }
     }
@@ -109,8 +163,10 @@ impl std::error::Error for ActionSubmissionError {
 
 /// Failure from an agent-driven blocking wrapper.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 pub enum PlayError {
     MissingAgent(Uuid),
+    HandStart(HandStartError),
     Submission(ActionSubmissionError),
 }
 
@@ -118,6 +174,7 @@ impl fmt::Display for PlayError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::MissingAgent(player) => write!(f, "no agent registered for player {player}"),
+            Self::HandStart(error) => write!(f, "hand could not start: {error}"),
             Self::Submission(error) => write!(f, "action submission failed: {error}"),
         }
     }
@@ -127,6 +184,7 @@ impl std::error::Error for PlayError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Submission(error) => Some(error),
+            Self::HandStart(error) => Some(error),
             Self::MissingAgent(_) => None,
         }
     }
@@ -149,6 +207,8 @@ pub enum BettingStep {
     ///
     /// [`run_betting_round`]: TexasHoldEm::run_betting_round
     RoundComplete(RoundOutcome),
+    /// The requested or restored street state is invalid; no action was applied.
+    CannotStart(HandStartError),
 }
 
 /// One step of driving a whole *hand* without blocking — the hand-level sibling of
@@ -165,6 +225,8 @@ pub enum HandStep {
     AwaitingAction(PendingAction),
     /// The hand is fully played, awarded, and ended.
     HandComplete,
+    /// A fresh hand could not start; the engine was not mutated.
+    CannotStart(HandStartError),
 }
 
 /// The result of driving a whole hand with [`play_hand`](TexasHoldEm::play_hand):
@@ -346,12 +408,20 @@ pub struct TexasHoldEm {
 
 impl TexasHoldEm {
     /// Create a new game that internally contains a deck and players.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `maximum_players_count` is between 2 and [`MAX_PLAYERS`].
     pub fn new(
         minimum_chips_buy_in_amount: u32,
         maximum_players_count: usize,
         small_blind_amount: u32,
         big_blind_amount: u32,
     ) -> Self {
+        assert!(
+            (2..=MAX_PLAYERS).contains(&maximum_players_count),
+            "maximum_players_count must be between 2 and {MAX_PLAYERS}"
+        );
         Self {
             game_over: false,
             deck: Deck::new(),
@@ -479,13 +549,30 @@ impl TexasHoldEm {
     }
 
     /// Add a player into the game.
+    ///
+    /// Players may only join between hands. The table's total bankroll is capped
+    /// at [`u32::MAX`] so every possible single-player payout remains representable
+    /// by [`Player::chips`].
     pub fn add_player(&mut self, player: Player) -> Result<(), &'static str> {
+        if self.hand_in_progress() {
+            return Err("Unable to join the table while a hand is in progress.");
+        }
         if self.players.len() >= self.maximum_players_count {
             return Err("Unable to join the table. It is already at max capacity.");
         }
 
         if player.chips < self.minimum_chips_buy_in_amount {
             return Err("The player does not have enough chips to play at this table.");
+        }
+        if self.players.contains_key(&player.identifier) {
+            return Err("A player with that identifier is already seated.");
+        }
+        if self
+            .total_table_chips()
+            .and_then(|total| total.checked_add(player.chips))
+            .is_none()
+        {
+            return Err("The table cannot hold more than u32::MAX chips.");
         }
 
         self.seats.push(player.identifier);
@@ -496,15 +583,25 @@ impl TexasHoldEm {
     /// Shuffle the seating order so the dealer button (and therefore the blinds)
     /// don't always start with the first player added. Call once after all players
     /// are seated and before the first hand.
-    pub fn randomize_seats(&mut self) {
+    pub fn randomize_seats(&mut self) -> bool {
+        if self.hand_in_progress() {
+            return false;
+        }
         self.seats.shuffle(&mut self.rng);
+        self.sync_dealer_seat_index();
+        true
     }
 
-    /// Remove a player from the game.
+    /// Remove a player from the game. Returns `None` while a hand is in progress.
     pub fn remove_player(&mut self, player_identifier: &Uuid) -> Option<Player> {
+        if self.hand_in_progress() {
+            return None;
+        }
         self.players.get(player_identifier)?;
         self.seats.retain(|x| x != player_identifier);
-        self.players.remove(player_identifier)
+        let removed = self.players.remove(player_identifier);
+        self.sync_dealer_seat_index();
+        removed
     }
 
     /// Remove players who have run out of chips and return their names (so the
@@ -542,7 +639,7 @@ impl TexasHoldEm {
     }
 
     /// Shuffle the game's deck using the engine's RNG.
-    pub fn shuffle_deck(&mut self) {
+    fn shuffle_deck(&mut self) {
         self.deck.shuffle_with(&mut self.rng);
     }
 
@@ -559,13 +656,20 @@ impl TexasHoldEm {
 
     /// Place the dealer button on a specific seated player. Used to restore a
     /// resumed tournament to the button it left off on; the next [`begin_hand`]
-    /// rotates on from here. No-op if the player is not seated.
+    /// rotates on from here. Returns `false` during a hand or when the player is
+    /// not seated.
     ///
     /// [`begin_hand`]: Self::begin_hand
-    pub fn set_dealer(&mut self, player: Uuid) {
+    pub fn set_dealer(&mut self, player: Uuid) -> bool {
+        if self.hand_in_progress() {
+            return false;
+        }
         if let Some(pos) = self.seats.iter().position(|s| *s == player) {
             self.dealer_seat_index = pos;
             self.dealer = Some(player);
+            true
+        } else {
+            false
         }
     }
 
@@ -599,6 +703,13 @@ impl TexasHoldEm {
         if self.hand_in_progress() {
             return false;
         }
+        if self
+            .total_table_chips()
+            .and_then(|total| total.checked_add(amount))
+            .is_none()
+        {
+            return false;
+        }
         match self.players.get_mut(id) {
             Some(player) => {
                 player.add_chips(amount);
@@ -610,13 +721,14 @@ impl TexasHoldEm {
 
     /// Rotate the dealer button clockwise to the next seated player.
     ///
-    /// The button is tracked by player id. If the previous button player is still
+    /// The button is tracked by player id. Returns `false` during a hand or on an
+    /// empty table. If the previous button player is still
     /// seated, it advances to the next seat; otherwise (first hand, or the button
     /// player busted) it falls to the first seat. This keeps `dealer_seat_index`
     /// always valid — a small simplification of formal dead-button rules.
-    pub fn rotate_dealer(&mut self) {
-        if self.seats.is_empty() {
-            return;
+    pub fn rotate_dealer(&mut self) -> bool {
+        if self.hand_in_progress() || self.seats.is_empty() {
+            return false;
         }
         let next = match self
             .dealer
@@ -627,6 +739,14 @@ impl TexasHoldEm {
         };
         self.dealer_seat_index = next;
         self.dealer = Some(self.seats[next]);
+        true
+    }
+
+    fn sync_dealer_seat_index(&mut self) {
+        self.dealer_seat_index = self
+            .dealer
+            .and_then(|dealer| self.seats.iter().position(|id| *id == dealer))
+            .unwrap_or(0);
     }
 
     /// Seat index of the small blind. Heads-up, the button posts the small blind.
@@ -677,7 +797,10 @@ impl TexasHoldEm {
 
     /// Total chips across all pots (main + sides) for the current hand.
     pub fn pot_total(&self) -> u32 {
-        self.contributed.values().sum()
+        self.contributed
+            .values()
+            .try_fold(0u32, |total, amount| total.checked_add(*amount))
+            .unwrap_or(u32::MAX)
     }
 
     /// The community cards.
@@ -791,6 +914,7 @@ impl TexasHoldEm {
     /// [`begin_betting_round`]: Self::begin_betting_round
     /// [`submit_action`]: Self::submit_action
     pub fn pending_action(&self) -> Option<PendingAction> {
+        self.validate_roster_and_bankroll().ok()?;
         let active = self.betting.as_ref()?;
         let (player, decision_id) = active.awaiting?;
         Some(PendingAction {
@@ -845,10 +969,14 @@ impl TexasHoldEm {
     }
 
     /// Begin a hand: rotate the button, shuffle, post blinds, and deal hole cards.
-    pub fn begin_hand(&mut self) {
+    ///
+    /// Validation is transactional: on error the engine is not mutated.
+    pub fn begin_hand(&mut self) -> Result<(), HandStartError> {
+        self.validate_hand_start(&self.deck)?;
         self.rotate_dealer();
         self.shuffle_deck();
         self.start_hand();
+        Ok(())
     }
 
     /// Begin a hand from a caller-supplied, pre-ordered deck **without shuffling**,
@@ -859,10 +987,148 @@ impl TexasHoldEm {
     /// take the last card first. So lay the deck out in **reverse** deal order —
     /// the final cards in the `Vec` are dealt first, and burn cards (one before
     /// each of the flop/turn/river) must be included in that ordering.
-    pub fn begin_hand_with_deck(&mut self, deck: Deck) {
+    pub fn begin_hand_with_deck(&mut self, deck: Deck) -> Result<(), HandStartError> {
+        self.validate_hand_start(&deck)?;
         self.rotate_dealer();
         self.deck = deck;
         self.start_hand();
+        Ok(())
+    }
+
+    fn validate_hand_start(&self, deck: &Deck) -> Result<(), HandStartError> {
+        if self.hand_in_progress() {
+            return Err(HandStartError::HandAlreadyInProgress);
+        }
+        let seated = self.seats.len();
+        if seated < 2 {
+            return Err(HandStartError::NotEnoughPlayers { seated });
+        }
+        if seated > self.maximum_players_count || seated > MAX_PLAYERS {
+            return Err(HandStartError::TooManyPlayers {
+                seated,
+                maximum: self.maximum_players_count.min(MAX_PLAYERS),
+            });
+        }
+        self.validate_roster_and_bankroll()?;
+        if !self.board.cards.is_empty()
+            || !self.burned.cards.is_empty()
+            || !self.contributed.is_empty()
+            || !self.folded.is_empty()
+            || !self.all_in.is_empty()
+        {
+            return Err(HandStartError::InvalidHandState);
+        }
+
+        // Two hole cards per player, five board cards, and three burn cards.
+        let required = seated * 2 + 8;
+        if deck.len() < required {
+            return Err(HandStartError::InsufficientCards {
+                available: deck.len(),
+                required,
+            });
+        }
+        let unique: HashSet<_> = deck.iter().map(|card| (card.rank, card.suit)).collect();
+        if unique.len() != deck.len() {
+            return Err(HandStartError::DuplicateCards);
+        }
+        Ok(())
+    }
+
+    fn total_table_chips(&self) -> Option<u32> {
+        self.players
+            .values()
+            .try_fold(0u32, |total, player| total.checked_add(player.chips))
+    }
+
+    fn validate_roster_and_bankroll(&self) -> Result<(), HandStartError> {
+        let seated: HashSet<Uuid> = self.seats.iter().copied().collect();
+        if seated.len() != self.seats.len()
+            || seated.len() != self.players.len()
+            || seated.iter().any(|id| !self.players.contains_key(id))
+        {
+            return Err(HandStartError::InvalidRoster);
+        }
+        let bankroll = self
+            .players
+            .values()
+            .try_fold(0u64, |total, player| {
+                total.checked_add(u64::from(player.chips))
+            })
+            .and_then(|total| {
+                self.contributed
+                    .values()
+                    .try_fold(total, |sum, amount| sum.checked_add(u64::from(*amount)))
+            });
+        if bankroll.is_none_or(|total| total > u64::from(u32::MAX)) {
+            return Err(HandStartError::ChipTotalTooLarge);
+        }
+        if self.next_decision_id == u64::MAX {
+            return Err(HandStartError::InvalidHandState);
+        }
+        let state_ids_are_seated = self
+            .contributed
+            .keys()
+            .chain(self.folded.iter())
+            .chain(self.all_in.iter())
+            .chain(self.player_hands.keys())
+            .all(|id| seated.contains(id));
+        if !state_ids_are_seated {
+            return Err(HandStartError::InvalidRoster);
+        }
+        if let Some(active) = &self.betting {
+            let actionable: HashSet<Uuid> = seated
+                .iter()
+                .copied()
+                .filter(|id| !self.folded.contains(id) && !self.all_in.contains(id))
+                .collect();
+            if active.seat >= self.seats.len()
+                || active.awaiting.is_none()
+                || active.awaiting.is_some_and(|(player, decision)| {
+                    !actionable.contains(&player)
+                        || !self.player_hands.contains_key(&player)
+                        || !active.round.needs_to_act(player)
+                        || decision.0 != self.next_decision_id
+                })
+                || !active.round.references_only(&seated)
+                || !active.round.needs_action_only_from(&actionable)
+                || !active.round.commitments_within(&self.contributed)
+                || !self.street_matches_board(active.street)
+            {
+                return Err(HandStartError::InvalidHandState);
+            }
+        }
+        if self.completed_betting_street.is_some_and(|street| {
+            self.betting.is_some() || !self.completed_street_matches_board(street)
+        }) {
+            return Err(HandStartError::InvalidHandState);
+        }
+        if self.player_hands.values().any(|hand| hand.cards.len() != 2) {
+            return Err(HandStartError::InvalidHandState);
+        }
+        if self.hand_in_progress()
+            && self
+                .seats
+                .iter()
+                .filter(|id| !self.folded.contains(id))
+                .any(|id| !self.player_hands.contains_key(id))
+        {
+            return Err(HandStartError::InvalidHandState);
+        }
+        Ok(())
+    }
+
+    fn street_matches_board(&self, street: Street) -> bool {
+        matches!(
+            (street, self.board.cards.len()),
+            (Street::Preflop, 0) | (Street::Flop, 3) | (Street::Turn, 4) | (Street::River, 5)
+        )
+    }
+
+    fn completed_street_matches_board(&self, street: Street) -> bool {
+        matches!(
+            (street, self.board.cards.len()),
+            (Street::Preflop, 0) | (Street::Flop, 3) | (Street::Turn, 4) | (Street::River, 5)
+        )
     }
 
     /// The shared body of [`begin_hand`]/[`begin_hand_with_deck`] that runs after
@@ -974,7 +1240,7 @@ impl TexasHoldEm {
     }
 
     /// Burn a card, then deal the three flop cards to the board.
-    pub fn deal_flop(&mut self) {
+    fn deal_flop(&mut self) {
         self.completed_betting_street = None;
         if let Some(card) = self.deal_card() {
             self.burned.push(card);
@@ -988,14 +1254,14 @@ impl TexasHoldEm {
     }
 
     /// Burn a card, then deal the turn card to the board.
-    pub fn deal_turn(&mut self) {
+    fn deal_turn(&mut self) {
         self.completed_betting_street = None;
         self.deal_single_board_card();
         self.emit_street_dealt(Street::Turn);
     }
 
     /// Burn a card, then deal the river card to the board.
-    pub fn deal_river(&mut self) {
+    fn deal_river(&mut self) {
         self.completed_betting_street = None;
         self.deal_single_board_card();
         self.emit_street_dealt(Street::River);
@@ -1028,7 +1294,7 @@ impl TexasHoldEm {
     }
 
     /// Deal a single card.
-    pub fn deal_card(&mut self) -> Option<Card> {
+    fn deal_card(&mut self) -> Option<Card> {
         self.deck.deal_face_up()
     }
 
@@ -1081,6 +1347,7 @@ impl TexasHoldEm {
                         .map_err(PlayError::Submission)?;
                 }
                 BettingStep::RoundComplete(outcome) => return Ok(outcome),
+                BettingStep::CannotStart(error) => return Err(PlayError::HandStart(error)),
             }
         }
     }
@@ -1091,12 +1358,18 @@ impl TexasHoldEm {
     /// [`submit_hand_action`](Self::submit_hand_action).
     ///
     /// Every value this and `submit_hand_action` *return* leaves the engine at an
-    /// unambiguous boundary — `AwaitingAction` (a betting round is active) or
-    /// `HandComplete` (the hand is over) — never mid-deal. So a front-end that saves
-    /// on each returned step can resume exactly, with no street ever re-dealt.
+    /// unambiguous boundary — `AwaitingAction` (a betting round is active),
+    /// `HandComplete` (the hand is over), or `CannotStart` (validation failed
+    /// without mutation) — never mid-deal. So a front-end that saves on each
+    /// returned step can resume exactly, with no street ever re-dealt.
     pub fn drive_hand(&mut self) -> HandStep {
+        if let Err(error) = self.validate_roster_and_bankroll() {
+            return HandStep::CannotStart(error);
+        }
         if !self.hand_in_progress() {
-            self.begin_hand();
+            if let Err(error) = self.begin_hand() {
+                return HandStep::CannotStart(error);
+            }
             let step = self.begin_betting_round(Street::Preflop);
             return self.drive_hand_from(Street::Preflop, step);
         }
@@ -1163,6 +1436,7 @@ impl TexasHoldEm {
                         .map_err(PlayError::Submission)?;
                 }
                 HandStep::HandComplete => return Ok(HandOutcome::Complete),
+                HandStep::CannotStart(error) => return Err(PlayError::HandStart(error)),
             }
         }
     }
@@ -1211,6 +1485,7 @@ impl TexasHoldEm {
                         return HandStep::HandComplete;
                     }
                 },
+                BettingStep::CannotStart(error) => return HandStep::CannotStart(error),
             }
         }
     }
@@ -1244,16 +1519,20 @@ impl TexasHoldEm {
     /// the existing [`PendingAction`] without resetting commitments or allocating a
     /// new [`DecisionId`].
     pub fn begin_betting_round(&mut self, street: Street) -> BettingStep {
+        if self.seats.is_empty() {
+            return BettingStep::RoundComplete(RoundOutcome::HandOver);
+        }
+        if let Err(error) = self.validate_roster_and_bankroll() {
+            return BettingStep::CannotStart(error);
+        }
         if let Some(pending) = self.pending_action() {
             return BettingStep::AwaitingAction(pending);
         }
         if self.completed_betting_street == Some(street) {
             return BettingStep::RoundComplete(RoundOutcome::Continue);
         }
-
-        let n = self.seats.len();
-        if n == 0 {
-            return BettingStep::RoundComplete(RoundOutcome::HandOver);
+        if !self.hand_in_progress() || !self.street_matches_board(street) {
+            return BettingStep::CannotStart(HandStartError::InvalidHandState);
         }
 
         let actors: Vec<Uuid> = self
@@ -1313,6 +1592,8 @@ impl TexasHoldEm {
         decision_id: DecisionId,
         action: PlayerAction,
     ) -> Result<BettingStep, ActionSubmissionError> {
+        self.validate_roster_and_bankroll()
+            .map_err(ActionSubmissionError::InvalidState)?;
         let active = self
             .betting
             .as_ref()
@@ -1335,6 +1616,7 @@ impl TexasHoldEm {
 
         let id = player;
         let chips = self.players.get(&id).map_or(0, |p| p.chips);
+        let previous_bet = active.round.current_bet;
         let resolved = resolve_action(
             action,
             chips,
@@ -1349,17 +1631,40 @@ impl TexasHoldEm {
             ));
         }
 
+        let live_after: HashSet<Uuid> = self
+            .seats
+            .iter()
+            .copied()
+            .filter(|p| {
+                !self.folded.contains(p)
+                    && !self.all_in.contains(p)
+                    && (*p != id || (!resolved.folded && !resolved.all_in))
+            })
+            .collect();
+        let mut next_round = active.round.clone();
+        next_round
+            .apply_action(id, &resolved, &live_after)
+            .map_err(ActionSubmissionError::IllegalAction)?;
+        let contribution = self.contributed.get(&id).copied().unwrap_or(0);
+        let next_contribution =
+            contribution
+                .checked_add(resolved.paid)
+                .ok_or(ActionSubmissionError::IllegalAction(
+                    ActionError::ChipAmountOverflow,
+                ))?;
+
         let mut active = self
             .betting
             .take()
             .expect("validated active betting round disappeared");
         active.awaiting = None;
+        active.round = next_round;
 
         if let Some(player_state) = self.players.get_mut(&id) {
             player_state.subtract_chips(resolved.paid);
         }
-        *self.contributed.entry(id).or_insert(0) += resolved.paid;
-        self.announce_action(id, &resolved, active.round.current_bet, active.street);
+        self.contributed.insert(id, next_contribution);
+        self.announce_action(id, &resolved, previous_bet, active.street);
 
         if resolved.folded {
             self.folded.insert(id);
@@ -1372,16 +1677,6 @@ impl TexasHoldEm {
         if resolved.all_in {
             self.all_in.insert(id);
         }
-
-        // Recompute the live set *after* the fold/all-in updates above so the
-        // reopening logic in `apply_action` sees who can still act.
-        let live_after: HashSet<Uuid> = self
-            .seats
-            .iter()
-            .copied()
-            .filter(|p| !self.folded.contains(p) && !self.all_in.contains(p))
-            .collect();
-        active.round.apply_action(id, &resolved, &live_after);
 
         active.seat = (active.seat + 1) % self.seats.len();
         self.betting = Some(active);
@@ -1505,7 +1800,7 @@ impl TexasHoldEm {
             chips,
             amount_owed: round.owed(id),
             current_bet: round.current_bet,
-            min_raise_to: round.current_bet + round.last_raise_increment,
+            min_raise_to: round.current_bet.saturating_add(round.last_raise_increment),
             pot_total: self.pot_total(),
             players_remaining: self.live_count(),
             legal_actions: legal,
@@ -1552,7 +1847,7 @@ impl TexasHoldEm {
 
     /// Award the pot(s) at the end of a hand: refund any uncalled bet, build the
     /// main and side pots, and pay the best eligible hand(s).
-    pub fn award_pots(&mut self) {
+    fn award_pots(&mut self) {
         if let Some((id, refund)) = refund_uncalled(&mut self.contributed, &self.folded) {
             if refund > 0 {
                 if let Some(player) = self.players.get_mut(&id) {
@@ -1574,7 +1869,8 @@ impl TexasHoldEm {
             .filter(|id| !self.folded.contains(id))
             .collect();
         let pots = build_pots(&self.contributed, &self.folded);
-        let total: u32 = pots.iter().map(|p| p.amount).sum();
+        let total: u64 = pots.iter().map(|p| p.amount).sum();
+        let total = u32::try_from(total).expect("validated table bankroll must fit in u32");
 
         // Uncontested: everyone else folded.
         if live.len() <= 1 {
@@ -1639,6 +1935,8 @@ impl TexasHoldEm {
                 if amount == 0 {
                     continue;
                 }
+                let amount =
+                    u32::try_from(amount).expect("validated table bankroll must fit in u32");
                 if let Some(player) = self.players.get_mut(&id) {
                     player.add_chips(amount);
                 }
@@ -1662,7 +1960,7 @@ impl TexasHoldEm {
     /// [`HandComplete`](GameEvent::HandComplete) signal is emitted (covering both
     /// the contested and uncontested award paths). A hand abandoned via a player
     /// quit never reaches here, and so produces no summary — intentionally.
-    pub fn end_hand(&mut self) {
+    fn end_hand(&mut self) {
         self.emit(GameEvent::HandComplete);
         for (_, hand) in self.player_hands.drain() {
             for card in hand.cards {
@@ -1737,7 +2035,7 @@ mod tests {
         assert_eq!(game.dealer(), Some(ids[1]));
 
         // begin_hand rotates from the restored button to the next seat.
-        game.begin_hand();
+        game.begin_hand().unwrap();
         assert_eq!(game.dealer(), Some(ids[2]));
     }
 
@@ -1997,7 +2295,7 @@ mod tests {
         for &id in game.seats() {
             agents.insert(id, make_agent());
         }
-        game.begin_hand();
+        game.begin_hand().unwrap();
         for street in [Street::Preflop, Street::Flop, Street::Turn, Street::River] {
             match street {
                 Street::Preflop => {}
@@ -2091,6 +2389,9 @@ mod tests {
                         .unwrap();
                 }
                 BettingStep::RoundComplete(outcome) => return outcome,
+                BettingStep::CannotStart(error) => {
+                    panic!("test attempted to drive an invalid street: {error}")
+                }
             }
         }
     }
@@ -2121,12 +2422,12 @@ mod tests {
         for &id in wrapped.seats() {
             agents.insert(id, Box::new(CallingAgent));
         }
-        wrapped.begin_hand();
+        wrapped.begin_hand().unwrap();
         let wrapped_outcome = wrapped.run_betting_round(Street::Preflop, &mut agents);
 
         let mut resumable = TexasHoldEm::new(0, 10, 1, 2);
         seat_players(&mut resumable, &stacks);
-        resumable.begin_hand();
+        resumable.begin_hand().unwrap();
         let resumable_outcome = drive_street(&mut resumable, Street::Preflop, calling_policy);
 
         assert_eq!(wrapped_outcome, Ok(resumable_outcome));
@@ -2143,7 +2444,7 @@ mod tests {
         use crate::betting::LegalAction;
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         seat_players(&mut game, &[100, 100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
 
         let mut opened = false;
         let outcome = drive_street(&mut game, Street::Preflop, |view| {
@@ -2181,7 +2482,7 @@ mod tests {
     fn awaiting_action_yields_the_first_actor_and_serializes() {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         seat_players(&mut game, &[100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
 
         let step = game.begin_betting_round(Street::Preflop);
         let BettingStep::AwaitingAction(pending) = &step else {
@@ -2209,7 +2510,7 @@ mod tests {
     fn abort_and_end_hand_clear_an_in_progress_street() {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         seat_players(&mut game, &[100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
 
         let _ = game.begin_betting_round(Street::Preflop);
         assert!(game.betting.is_some(), "paused mid-street");
@@ -2217,7 +2518,6 @@ mod tests {
         assert!(game.betting.is_none());
 
         // end_hand also defensively clears a partial street.
-        game.begin_hand();
         let _ = game.begin_betting_round(Street::Preflop);
         assert!(game.betting.is_some());
         game.end_hand();
@@ -2240,7 +2540,7 @@ mod tests {
     fn rejected_submission_preserves_state() {
         let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 17);
         seat_players(&mut game, &[100, 100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
             panic!("expected a pending decision");
         };
@@ -2287,7 +2587,7 @@ mod tests {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         let ids = seat_players(&mut game, &[1, 2]);
         game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
-        game.begin_hand();
+        game.begin_hand().unwrap();
 
         assert!(ids.iter().all(|id| game.is_all_in(id)));
         assert!(ids.iter().all(|id| game.player(id).unwrap().chips == 0));
@@ -2311,7 +2611,7 @@ mod tests {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         let ids = seat_players(&mut game, &[0, 0]);
         game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
-        game.begin_hand();
+        game.begin_hand().unwrap();
 
         assert!(ids.iter().all(|id| game.is_all_in(id)));
         assert_eq!(
@@ -2338,7 +2638,7 @@ mod tests {
     fn short_big_blind_keeps_configured_bring_in() {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         let ids = seat_players(&mut game, &[100, 1]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         assert!(game.is_all_in(&ids[1]));
 
         let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
@@ -2352,7 +2652,7 @@ mod tests {
     fn multiway_short_big_blind_preserves_action_order_and_bring_in() {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         let ids = seat_players(&mut game, &[100, 100, 1]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         assert!(game.is_all_in(&ids[2]));
 
         let BettingStep::AwaitingAction(under_the_gun) = game.begin_betting_round(Street::Preflop)
@@ -2378,7 +2678,7 @@ mod tests {
     }
 
     fn reach_incomplete_raise(game: &mut TexasHoldEm) -> (PendingAction, PendingAction) {
-        game.begin_hand();
+        game.begin_hand().unwrap();
         drive_street(game, Street::Preflop, calling_policy);
         game.deal_flop();
 
@@ -2441,7 +2741,7 @@ mod tests {
     fn repeated_begin_returns_the_same_pending_decision_without_resetting() {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         seat_players(&mut game, &[100, 100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         let BettingStep::AwaitingAction(first) = game.begin_betting_round(Street::Preflop) else {
             panic!("expected a decision");
         };
@@ -2460,7 +2760,7 @@ mod tests {
     fn repeated_begin_after_completion_does_not_reopen_the_street() {
         let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 33);
         seat_players(&mut game, &[100, 100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         assert_eq!(
             drive_street(&mut game, Street::Preflop, calling_policy),
             RoundOutcome::Continue
@@ -2478,7 +2778,7 @@ mod tests {
     fn lone_actionable_player_is_not_prompted_when_nothing_is_owed() {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         seat_players(&mut game, &[100, 1, 2]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
             panic!("the remaining player must respond to the blinds");
         };
@@ -2501,7 +2801,7 @@ mod tests {
     fn completed_street_survives_serde_and_advances_instead_of_reopening() {
         let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 31);
         seat_players(&mut game, &[100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         assert_eq!(
             drive_street(&mut game, Street::Preflop, calling_policy),
             RoundOutcome::Continue
@@ -2536,7 +2836,7 @@ mod tests {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         let total = 239;
         let ids = seat_players(&mut game, &[100, 100, 17, 22]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         drive_street(&mut game, Street::Preflop, calling_policy);
         game.deal_flop();
 
@@ -2598,7 +2898,7 @@ mod tests {
         // Control: drive the whole preflop street, no serialization.
         let mut control = TexasHoldEm::new_seeded(0, 10, 1, 2, 7);
         seat_players(&mut control, &[100, 100, 100]);
-        control.begin_hand();
+        control.begin_hand().unwrap();
         let control_outcome = drive_street(&mut control, Street::Preflop, calling_policy);
         let control_snap = seat_snapshot(&control);
 
@@ -2606,7 +2906,7 @@ mod tests {
         // genuinely mid-street, then serde round-trip the *whole engine*.
         let mut subject = TexasHoldEm::new_seeded(0, 10, 1, 2, 7);
         seat_players(&mut subject, &[100, 100, 100]);
-        subject.begin_hand();
+        subject.begin_hand().unwrap();
         let mut step = subject.begin_betting_round(Street::Preflop);
         if let BettingStep::AwaitingAction(pending) = &step {
             let action = calling_policy(&pending.view);
@@ -2653,7 +2953,7 @@ mod tests {
         let deal = |seed: u64| {
             let mut g = TexasHoldEm::new_seeded(0, 10, 1, 2, seed);
             seat_players(&mut g, &[100, 100, 100]);
-            g.begin_hand();
+            g.begin_hand().unwrap();
             g.deal_flop();
             g
         };
@@ -2685,7 +2985,7 @@ mod tests {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         let ids = seat_players(&mut game, &[100, 100]);
 
-        game.begin_hand_with_deck(Deck::new());
+        game.begin_hand_with_deck(Deck::new()).unwrap();
 
         assert_eq!(
             game.player_hand(&ids[0]).unwrap().cards,
@@ -2704,7 +3004,7 @@ mod tests {
     fn table_view_exposes_public_state_without_hole_cards() {
         let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 5);
         seat_players(&mut game, &[100, 50, 75]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         let _ = game.begin_betting_round(Street::Preflop);
 
         let view = game.table();
@@ -2736,7 +3036,7 @@ mod tests {
         // must grow across streets, while `committed_this_street` resets each street.
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         seat_players(&mut game, &[100, 100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
 
         // Pre-flop: everyone calls/checks down to the big blind.
         drive_street(&mut game, Street::Preflop, calling_policy);
@@ -2803,7 +3103,7 @@ mod tests {
     fn set_blinds_and_add_chips_are_noops_during_a_hand() {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         let ids = seat_players(&mut game, &[100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         let _ = game.begin_betting_round(Street::Preflop);
 
         let chips_before = game.player(&ids[0]).map(|p| p.chips);
@@ -2827,7 +3127,7 @@ mod tests {
     fn pending_action_re_derives_the_prompt_without_mutating() {
         let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 3);
         seat_players(&mut game, &[100, 100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         let step = game.begin_betting_round(Street::Preflop);
 
         let BettingStep::AwaitingAction(pending) = &step else {
@@ -2874,7 +3174,7 @@ mod tests {
     fn quit_preserves_the_round_and_run_betting_round_resumes_it() {
         let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 11);
         seat_players(&mut game, &[100, 100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
 
         // The player on the clock quits: the round is left paused on them (not
         // aborted), exactly the state a front-end would serialize to resume later.
@@ -2916,7 +3216,7 @@ mod tests {
     fn run_betting_round_preserves_pending_decision_on_failures() {
         let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 13);
         seat_players(&mut game, &[100, 100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
             panic!("expected a pending decision");
         };
@@ -3226,7 +3526,7 @@ mod tests {
         // defensive resume re-opens that street's betting without re-dealing.
         let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 5);
         seat_players(&mut game, &[100, 100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         game.deal_flop();
         game.abort_betting_round();
         assert!(game.pending_action().is_none());
@@ -3296,7 +3596,7 @@ mod tests {
         let hero = ids[0];
         let other = ids[1];
         game.set_hero(hero);
-        game.begin_hand();
+        game.begin_hand().unwrap();
 
         let public = game.public_events();
         assert!(public
@@ -3435,7 +3735,7 @@ mod tests {
             Some(GameEvent::HandComplete)
         ));
         // The next hand clears it before re-populating.
-        game.begin_hand();
+        game.begin_hand().unwrap();
         assert!(
             matches!(game.event_log.first(), Some(GameEvent::HandStarted { .. })),
             "the log restarts with the new hand's header"
@@ -3724,7 +4024,7 @@ mod tests {
     fn deck_returns_to_full_after_a_hand_with_a_fold() {
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
         seat_players(&mut game, &[100, 100, 100]);
-        game.begin_hand();
+        game.begin_hand().unwrap();
         game.deal_flop();
         game.deal_turn();
         game.deal_river();
@@ -3738,5 +4038,252 @@ mod tests {
         game.folded.insert(folder);
         game.end_hand();
         assert_eq!(game.deck_len(), 52, "all cards must return to the deck");
+    }
+
+    #[test]
+    fn live_hand_rejects_table_and_button_mutations() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 100, 100]);
+        game.begin_hand().unwrap();
+        let seats_before = game.seats.clone();
+        let dealer_before = game.dealer;
+
+        let late = Player::new_with_chips("Late", 100);
+        assert!(game.add_player(late).is_err());
+        assert!(!game.randomize_seats());
+        assert_eq!(game.remove_player(&ids[0]), None);
+        assert!(!game.set_dealer(ids[1]));
+        assert!(!game.rotate_dealer());
+        assert_eq!(game.seats, seats_before);
+        assert_eq!(game.dealer, dealer_before);
+    }
+
+    #[test]
+    fn table_bankroll_cannot_exceed_u32() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        game.add_player(Player::new_with_chips("A", u32::MAX - 1))
+            .unwrap();
+        let b = Player::new_with_chips("B", 1);
+        let b_id = b.identifier;
+        game.add_player(b).unwrap();
+
+        assert!(!game.add_chips_to(&b_id, 1));
+        assert!(game.add_player(Player::new_with_chips("C", 1)).is_err());
+        assert_eq!(game.total_table_chips(), Some(u32::MAX));
+    }
+
+    #[test]
+    fn hand_start_validation_is_transactional() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        assert_eq!(
+            game.begin_hand(),
+            Err(HandStartError::NotEnoughPlayers { seated: 0 })
+        );
+        seat_players(&mut game, &[100, 100]);
+        let before = serde_json::to_string(&game).unwrap();
+
+        let short_deck = Deck::from_cards(vec![card(Rank::Ace, Suit::Spade); 11]);
+        assert_eq!(
+            game.begin_hand_with_deck(short_deck),
+            Err(HandStartError::InsufficientCards {
+                available: 11,
+                required: 12,
+            })
+        );
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+
+        let duplicate_deck = Deck::from_cards(vec![card(Rank::Ace, Suit::Spade); 12]);
+        assert_eq!(
+            game.begin_hand_with_deck(duplicate_deck),
+            Err(HandStartError::DuplicateCards)
+        );
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn drive_hand_reports_start_errors_without_mutating() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let before = serde_json::to_string(&game).unwrap();
+        assert!(matches!(
+            game.drive_hand(),
+            HandStep::CannotStart(HandStartError::NotEnoughPlayers { seated: 0 })
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn wrong_street_is_rejected_without_mutation() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
+        let before = serde_json::to_string(&game).unwrap();
+
+        assert!(matches!(
+            game.begin_betting_round(Street::River),
+            BettingStep::CannotStart(HandStartError::InvalidHandState)
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn restored_pending_actor_without_a_hand_is_rejected() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
+        let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
+            panic!("expected a pending action");
+        };
+        game.player_hands.remove(&pending.player);
+
+        assert!(game.pending_action().is_none());
+        assert!(matches!(
+            game.drive_hand(),
+            HandStep::CannotStart(HandStartError::InvalidHandState)
+        ));
+    }
+
+    #[test]
+    fn invalid_restored_bankroll_rejects_submission_without_mutation() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
+        let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
+            panic!("expected a pending action");
+        };
+        game.contributed.insert(pending.player, u32::MAX);
+        let before = serde_json::to_string(&game).unwrap();
+
+        assert!(matches!(
+            game.submit_action(pending.player, pending.decision_id, PlayerAction::Fold),
+            Err(ActionSubmissionError::InvalidState(
+                HandStartError::ChipTotalTooLarge
+            ))
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn invalid_completed_street_marker_is_rejected_without_dealing() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
+        game.completed_betting_street = Some(Street::Flop);
+        let before = serde_json::to_string(&game).unwrap();
+
+        assert!(matches!(
+            game.drive_hand(),
+            HandStep::CannotStart(HandStartError::InvalidHandState)
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn restored_round_without_pending_decision_is_rejected() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
+        let BettingStep::AwaitingAction(_) = game.begin_betting_round(Street::Preflop) else {
+            panic!("expected a pending action");
+        };
+        game.betting.as_mut().unwrap().awaiting = None;
+
+        assert!(matches!(
+            game.drive_hand(),
+            HandStep::CannotStart(HandStartError::InvalidHandState)
+        ));
+    }
+
+    #[test]
+    fn exhausted_decision_ids_are_rejected_before_action_mutation() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100, 100]);
+        game.begin_hand().unwrap();
+        let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
+            panic!("expected a pending action");
+        };
+        game.next_decision_id = u64::MAX;
+        let before = serde_json::to_string(&game).unwrap();
+
+        assert!(matches!(
+            game.submit_action(pending.player, pending.decision_id, PlayerAction::Call),
+            Err(ActionSubmissionError::InvalidState(
+                HandStartError::InvalidHandState
+            ))
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn exhausted_decision_ids_are_rejected_before_starting_a_round() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.next_decision_id = u64::MAX;
+        let before = serde_json::to_string(&game).unwrap();
+
+        assert!(matches!(
+            game.drive_hand(),
+            HandStep::CannotStart(HandStartError::InvalidHandState)
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn invalid_pending_actor_is_rejected() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
+        let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
+            panic!("expected a pending action");
+        };
+        game.folded.insert(pending.player);
+        game.player_hands.remove(&pending.player);
+
+        assert!(matches!(
+            game.drive_hand(),
+            HandStep::CannotStart(HandStartError::InvalidHandState)
+        ));
+    }
+
+    #[test]
+    fn street_commitment_cannot_exceed_hand_contribution() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
+        let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
+            panic!("expected a pending action");
+        };
+        game.contributed.insert(pending.player, 0);
+
+        assert!(matches!(
+            game.submit_action(pending.player, pending.decision_id, PlayerAction::Call),
+            Err(ActionSubmissionError::InvalidState(
+                HandStartError::InvalidHandState
+            ))
+        ));
+    }
+
+    #[test]
+    fn raise_event_uses_the_pre_action_bet() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 41);
+        seat_players(&mut game, &[100, 100, 100]);
+        game.begin_hand().unwrap();
+        let BettingStep::AwaitingAction(pending) = game.begin_betting_round(Street::Preflop) else {
+            panic!("expected a pending action");
+        };
+
+        game.submit_action(
+            pending.player,
+            pending.decision_id,
+            PlayerAction::RaiseTo(6),
+        )
+        .unwrap();
+
+        assert!(game.event_log.iter().any(|event| matches!(
+            event,
+            GameEvent::ActionTaken {
+                action: ActionView::Raised { by: 4, to: 6, .. },
+                ..
+            }
+        )));
     }
 }

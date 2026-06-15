@@ -25,7 +25,7 @@ use crate::hand_rankings::ComparableHand;
 /// re-sorts by seat position relative to the dealer.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Pot {
-    pub amount: u32,
+    pub amount: u64,
     /// Players eligible to win this pot: those who contributed to its layer and
     /// have not folded. Folded players' chips remain in the pot as dead money but
     /// they cannot win it.
@@ -110,11 +110,11 @@ pub fn build_pots(contributed: &HashMap<Uuid, u32>, folded: &HashSet<Uuid>) -> V
 
     let mut layers: Vec<Pot> = Vec::new();
     while let Some(&layer) = remaining.values().filter(|&&a| a > 0).min() {
-        let mut amount = 0u32;
+        let mut amount = 0u64;
         let mut eligible = BTreeSet::new();
         for (id, amt) in remaining.iter_mut() {
             if *amt > 0 {
-                amount += layer;
+                amount += u64::from(layer);
                 *amt -= layer;
                 if !folded.contains(id) {
                     eligible.insert(*id);
@@ -150,10 +150,10 @@ pub struct PotAward {
     /// (lowest) layer upward.
     pub index: usize,
     /// Total chips in this pot.
-    pub amount: u32,
+    pub amount: u64,
     /// Each winner and the chips they received from this pot, ordered clockwise
     /// from the dealer (the seat that receives any odd chip first).
-    pub payouts: Vec<(Uuid, u32)>,
+    pub payouts: Vec<(Uuid, u64)>,
 }
 
 /// Awards each pot to the best eligible hand(s), returning one [`PotAward`] per
@@ -186,7 +186,7 @@ pub fn distribute_pots(
         }
 
         let ordered = order_by_seat(&winners, seats, dealer_seat_index);
-        let count = ordered.len() as u32;
+        let count = ordered.len() as u64;
         let base = pot.amount / count;
         let remainder = pot.amount % count;
 
@@ -194,7 +194,7 @@ pub fn distribute_pots(
             .iter()
             .enumerate()
             .map(|(i, &id)| {
-                let extra = if (i as u32) < remainder { 1 } else { 0 };
+                let extra = if (i as u64) < remainder { 1 } else { 0 };
                 (id, base + extra)
             })
             .collect();
@@ -240,7 +240,7 @@ fn order_by_seat(players: &[Uuid], seats: &[Uuid], dealer_seat_index: usize) -> 
     let mut ordered: Vec<Uuid> = players.to_vec();
     ordered.sort_by_key(|id| match seats.iter().position(|seat| seat == id) {
         Some(pos) if len > 0 => {
-            let first_left_of_dealer = (dealer_seat_index + 1) % len;
+            let first_left_of_dealer = (dealer_seat_index % len + 1) % len;
             (pos + len - first_left_of_dealer) % len
         }
         _ => usize::MAX,
@@ -276,8 +276,8 @@ mod tests {
 
     /// Sums each player's chips across all pot awards, for assertions that only
     /// care about totals rather than which pot paid them.
-    fn totals(awards: &[PotAward]) -> HashMap<Uuid, u32> {
-        let mut totals: HashMap<Uuid, u32> = HashMap::new();
+    fn totals(awards: &[PotAward]) -> HashMap<Uuid, u64> {
+        let mut totals: HashMap<Uuid, u64> = HashMap::new();
         for award in awards {
             for &(id, amount) in &award.payouts {
                 *totals.entry(id).or_insert(0) += amount;
@@ -377,7 +377,7 @@ mod tests {
         let folded = HashSet::from([b, c]);
         let pots = build_pots(&contributed, &folded);
         // A is the only live player; dead money from B and C accrues to A's pot.
-        let total: u32 = pots.iter().map(|p| p.amount).sum();
+        let total: u64 = pots.iter().map(|p| p.amount).sum();
         assert_eq!(total, 8);
         for pot in &pots {
             assert!(!pot.eligible.is_empty(), "no orphaned (empty-eligible) pot");
@@ -447,5 +447,15 @@ mod tests {
         let winnings = totals(&distribute_pots(&pots, &evaluated, &seats, 0));
         assert_eq!(winnings.get(&b), Some(&3));
         assert_eq!(winnings.get(&a), Some(&2));
+    }
+
+    #[test]
+    fn aggregate_pots_can_exceed_u32_without_overflowing() {
+        let (a, b) = (id(1), id(2));
+        let contributed = HashMap::from([(a, u32::MAX), (b, u32::MAX)]);
+        let pots = build_pots(&contributed, &HashSet::new());
+
+        assert_eq!(pots.len(), 1);
+        assert_eq!(pots[0].amount, u64::from(u32::MAX) * 2);
     }
 }
