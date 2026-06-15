@@ -170,8 +170,8 @@ pub enum GameEvent {
         player: PlayerRef,
         /// The player's two hole cards.
         hole: Vec<Card>,
-        /// The player's best hand value. Call `hand.describe()` to name it or read
-        /// `hand.category` for the bare category.
+        /// The player's best hand value. Call `hand.describe()` to name it or
+        /// `hand.category()` for the bare category.
         hand: ComparableHand,
     },
     /// A player won chips. `hand` is `None` when the pot was uncontested. `pot`
@@ -303,10 +303,7 @@ mod tests {
     /// logged or sent over a network.
     #[test]
     fn game_event_round_trips_through_json() {
-        let pair = ComparableHand {
-            category: HandCategory::Pair,
-            tiebreak: [14, 13, 12, 11, 0],
-        };
+        let pair = ComparableHand::new(HandCategory::Pair, [14, 13, 12, 11, 0]).unwrap();
         let events = [
             GameEvent::HandStarted {
                 hand_number: 7,

@@ -39,6 +39,9 @@ Each returns `Result<EvaluatedHand, HandEvaluationError>`. Invalid card counts
 and duplicate physical cards are errors rather than panics. `EvaluatedHand`
 keeps its fields private and exposes `value()` and `cards()` so callers cannot
 construct contradictory card/value pairs.
+`ComparableHand` likewise validates manually supplied and deserialized category
+/ tiebreak pairs; use `ComparableHand::new(...)`, `category()`, and
+`tiebreak()`.
 
 The retired pre-release names were `evaluate`, `evaluate_with_cards`,
 `best_five_with_cards`, and `best_omaha`.

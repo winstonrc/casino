@@ -112,7 +112,7 @@ fn reference_score(cards: &[Card; 5]) -> ComparableHand {
 fn hand(category: HandCategory, ranks: &[u8]) -> ComparableHand {
     let mut tiebreak = [0u8; 5];
     tiebreak[..ranks.len()].copy_from_slice(ranks);
-    ComparableHand { category, tiebreak }
+    ComparableHand::new(category, tiebreak).unwrap()
 }
 
 #[test]
@@ -131,7 +131,7 @@ fn exhaustive_five_card_evaluation_matches_reference() {
                         let actual = evaluate_five(cards).unwrap().value();
                         let expected = reference_score(&cards);
                         assert_eq!(actual, expected, "mismatch for {cards:?}");
-                        category_counts[actual.category as usize] += 1;
+                        category_counts[actual.category() as usize] += 1;
                         evaluated += 1;
                     }
                 }

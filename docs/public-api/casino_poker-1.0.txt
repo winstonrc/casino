@@ -702,6 +702,7 @@ pub casino_poker::hand_rankings::HandEvaluationError::InvalidCardCount
 pub casino_poker::hand_rankings::HandEvaluationError::InvalidCardCount::actual: usize
 pub casino_poker::hand_rankings::HandEvaluationError::InvalidCardCount::maximum: usize
 pub casino_poker::hand_rankings::HandEvaluationError::InvalidCardCount::minimum: usize
+pub casino_poker::hand_rankings::HandEvaluationError::InvalidHandValue
 impl core::clone::Clone for casino_poker::hand_rankings::HandEvaluationError
 pub fn casino_poker::hand_rankings::HandEvaluationError::clone(&self) -> casino_poker::hand_rankings::HandEvaluationError
 impl core::cmp::Eq for casino_poker::hand_rankings::HandEvaluationError
@@ -715,10 +716,11 @@ pub fn casino_poker::hand_rankings::HandEvaluationError::fmt(&self, &mut core::f
 impl core::marker::Copy for casino_poker::hand_rankings::HandEvaluationError
 impl core::marker::StructuralPartialEq for casino_poker::hand_rankings::HandEvaluationError
 pub struct casino_poker::hand_rankings::ComparableHand
-pub casino_poker::hand_rankings::ComparableHand::category: casino_poker::hand_rankings::HandCategory
-pub casino_poker::hand_rankings::ComparableHand::tiebreak: [u8; 5]
 impl casino_poker::hand_rankings::ComparableHand
+pub const fn casino_poker::hand_rankings::ComparableHand::category(&self) -> casino_poker::hand_rankings::HandCategory
 pub fn casino_poker::hand_rankings::ComparableHand::describe(&self) -> alloc::string::String
+pub fn casino_poker::hand_rankings::ComparableHand::new(casino_poker::hand_rankings::HandCategory, [u8; 5]) -> core::result::Result<Self, casino_poker::hand_rankings::HandEvaluationError>
+pub const fn casino_poker::hand_rankings::ComparableHand::tiebreak(&self) -> [u8; 5]
 impl core::clone::Clone for casino_poker::hand_rankings::ComparableHand
 pub fn casino_poker::hand_rankings::ComparableHand::clone(&self) -> casino_poker::hand_rankings::ComparableHand
 impl core::cmp::Eq for casino_poker::hand_rankings::ComparableHand
@@ -737,7 +739,7 @@ impl core::marker::StructuralPartialEq for casino_poker::hand_rankings::Comparab
 impl serde_core::ser::Serialize for casino_poker::hand_rankings::ComparableHand
 pub fn casino_poker::hand_rankings::ComparableHand::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl<'de> serde_core::de::Deserialize<'de> for casino_poker::hand_rankings::ComparableHand
-pub fn casino_poker::hand_rankings::ComparableHand::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub fn casino_poker::hand_rankings::ComparableHand::deserialize<D>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
 pub struct casino_poker::hand_rankings::EvaluatedHand
 impl casino_poker::hand_rankings::EvaluatedHand
 pub const fn casino_poker::hand_rankings::EvaluatedHand::cards(&self) -> &[casino_cards::card::Card; 5]

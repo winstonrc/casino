@@ -23,7 +23,7 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   exactly two of four hole cards and three board cards. The evaluator handles
   the wheel (A-2-3-4-5) and is cross-checked against an independent brute-force
   oracle. `ComparableHand::describe` names hands in PokerStars wording, and
-  `ComparableHand` derives serde.
+  `ComparableHand` serializes/deserializes with validated tiebreak ranks.
 - `agent` module: the `PokerAgent` trait — `decide`, plus default-no-op `observe`
   (receive the `GameEvent` stream to update a player model) and `session_ended`
   (persist what was learned) lifecycle hooks — an owned (serializable) `PlayerView`,
@@ -127,6 +127,8 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   `CannotStart`.
 - `EvaluatedHand` keeps its validated value and physical cards private. Read
   them with `EvaluatedHand::value()` and `EvaluatedHand::cards()`.
+- `ComparableHand` keeps category/tiebreak layout validated. Build manual values
+  with `ComparableHand::new(...)` and read them with `category()`/`tiebreak()`.
 - `AgentError` is non-exhaustive and includes `InvalidView` plus
   `Failure(String)` for downstream context. It implements `Display` and
   `Error`, and blocking `PlayError::Agent` values expose it as their source.

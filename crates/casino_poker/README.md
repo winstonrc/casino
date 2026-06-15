@@ -37,7 +37,7 @@ fn main() -> Result<(), casino_poker::hand_rankings::HandEvaluationError> {
         Card::new(Rank::Three, Suit::Club),
     ];
     let hand = evaluate_holdem(hole, &board)?;
-    assert_eq!(hand.value().category, HandCategory::Flush);
+    assert_eq!(hand.value().category(), HandCategory::Flush);
     Ok(())
 }
 ```
@@ -188,7 +188,7 @@ Notable events:
 - `Showdown` is emitted once before the reveals when two or more players reach a
   showdown, carrying the final `board` and `pot`.
 - `ShowdownReveal` carries the player's `hole` cards and their `hand` (a
-  `ComparableHand` — `hand.describe()` for the named hand, `hand.category` for the
+  `ComparableHand` — `hand.describe()` for the named hand, `hand.category()` for the
   bare category).
 - `PotAwarded` carries the winning `hand` (`Option<ComparableHand>`) and an
   optional `PotKind` (`Main` / `Side(n)`) for per-pot narration (`None` for a

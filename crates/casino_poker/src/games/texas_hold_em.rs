@@ -4273,7 +4273,7 @@ mod tests {
         let category = |name: &str| {
             events.iter().find_map(|e| match e {
                 GameEvent::ShowdownReveal { player, hand, .. } if player.name == *name => {
-                    Some(hand.category)
+                    Some(hand.category())
                 }
                 _ => None,
             })

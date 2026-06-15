@@ -36,7 +36,7 @@ fn external_consumers_can_evaluate_serialize_and_implement_agents() {
     ];
 
     let evaluated = evaluate_holdem(hole, &board).unwrap();
-    assert_eq!(evaluated.value().category, HandCategory::Flush);
+    assert_eq!(evaluated.value().category(), HandCategory::Flush);
     assert_eq!(evaluated.cards().len(), 5);
 
     let encoded = serde_json::to_string(&evaluated).unwrap();

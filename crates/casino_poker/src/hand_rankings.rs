@@ -88,18 +88,41 @@ impl fmt::Display for HandCategory {
 ///         Card::new(Rank::Three, Suit::Club),
 ///     ],
 /// )?;
-/// assert_eq!(flush.value().category, HandCategory::Flush);
+/// assert_eq!(flush.value().category(), HandCategory::Flush);
 /// # Ok::<(), casino_poker::hand_rankings::HandEvaluationError>(())
 /// ```
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct ComparableHand {
     /// The made-hand category.
-    pub category: HandCategory,
+    category: HandCategory,
     /// Category-specific ranks used for kicker-aware ordering.
-    pub tiebreak: [u8; 5],
+    tiebreak: [u8; 5],
 }
 
 impl ComparableHand {
+    /// Builds a comparable hand value from a category and canonical tiebreak
+    /// ranks.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HandEvaluationError::InvalidHandValue`] when the tiebreak ranks
+    /// are outside `2..=14`, are not zero-padded correctly, or do not match the
+    /// canonical layout for the supplied category.
+    pub fn new(category: HandCategory, tiebreak: [u8; 5]) -> Result<Self, HandEvaluationError> {
+        validate_comparable_hand(category, &tiebreak)?;
+        Ok(Self { category, tiebreak })
+    }
+
+    /// Returns the made-hand category.
+    pub const fn category(&self) -> HandCategory {
+        self.category
+    }
+
+    /// Returns the category-specific ranks used for kicker-aware ordering.
+    pub const fn tiebreak(&self) -> [u8; 5] {
+        self.tiebreak
+    }
+
     /// Names the made hand in **PokerStars hand-history wording** — e.g.
     /// `two pair, Jacks and Fives`, `a pair of Sevens`, `a flush, Ace high`,
     /// `a full house, Kings full of Threes`, `a straight, Five to Nine`,
@@ -126,6 +149,23 @@ impl ComparableHand {
             HandCategory::FourOfAKind => format!("four of a kind, {}", rank_plural(t[0])),
             HandCategory::StraightFlush => format!("a straight flush, {}", straight_range(t[0])),
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for ComparableHand {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Representation {
+            category: HandCategory,
+            tiebreak: [u8; 5],
+        }
+
+        let representation = Representation::deserialize(deserializer)?;
+        Self::new(representation.category, representation.tiebreak)
+            .map_err(<D::Error as serde::de::Error>::custom)
     }
 }
 
@@ -202,6 +242,9 @@ pub enum HandEvaluationError {
     },
     /// The input contains the same rank and suit more than once.
     DuplicateCard,
+    /// The supplied category and tiebreak ranks are not a canonical poker hand
+    /// value.
+    InvalidHandValue,
 }
 
 impl fmt::Display for HandEvaluationError {
@@ -223,6 +266,9 @@ impl fmt::Display for HandEvaluationError {
                 "expected between {minimum} and {maximum} cards, got {actual}"
             ),
             Self::DuplicateCard => write!(f, "the same physical card appears more than once"),
+            Self::InvalidHandValue => {
+                write!(f, "the hand category and tiebreak ranks are inconsistent")
+            }
         }
     }
 }
@@ -233,10 +279,10 @@ impl std::error::Error for HandEvaluationError {}
 /// PokerStars style: `Five to Nine`. The wheel (5-high) plays the Ace low and
 /// reads `Ace to Five`.
 fn straight_range(high: u8) -> String {
-    if high == 5 {
-        "Ace to Five".to_string()
-    } else {
-        format!("{} to {}", rank_name(high - 4), rank_name(high))
+    match high {
+        5 => "Ace to Five".to_string(),
+        6..=14 => format!("{} to {}", rank_name(high - 4), rank_name(high)),
+        _ => "unknown straight".to_string(),
     }
 }
 
@@ -432,6 +478,69 @@ fn validate_unique<'a>(
     Ok(())
 }
 
+fn validate_comparable_hand(
+    category: HandCategory,
+    tiebreak: &[u8; 5],
+) -> Result<(), HandEvaluationError> {
+    let valid_rank = |rank: u8| (2..=14).contains(&rank);
+    let ranks_desc = |ranks: &[u8]| {
+        ranks.iter().all(|&rank| valid_rank(rank)) && ranks.windows(2).all(|pair| pair[0] > pair[1])
+    };
+    let zeroes = |ranks: &[u8]| ranks.iter().all(|&rank| rank == 0);
+    let not_straight = |ranks: &[u8; 5]| straight_high(ranks).is_none();
+
+    let valid = match category {
+        HandCategory::HighCard | HandCategory::Flush => {
+            ranks_desc(tiebreak) && not_straight(tiebreak)
+        }
+        HandCategory::Pair => {
+            let pair = tiebreak[0];
+            valid_rank(pair)
+                && ranks_desc(&tiebreak[1..4])
+                && zeroes(&tiebreak[4..])
+                && tiebreak[1..4].iter().all(|&rank| rank != pair)
+        }
+        HandCategory::TwoPair => {
+            let high_pair = tiebreak[0];
+            let low_pair = tiebreak[1];
+            let kicker = tiebreak[2];
+            valid_rank(high_pair)
+                && valid_rank(low_pair)
+                && valid_rank(kicker)
+                && high_pair > low_pair
+                && kicker != high_pair
+                && kicker != low_pair
+                && zeroes(&tiebreak[3..])
+        }
+        HandCategory::ThreeOfAKind => {
+            let trips = tiebreak[0];
+            valid_rank(trips)
+                && ranks_desc(&tiebreak[1..3])
+                && zeroes(&tiebreak[3..])
+                && tiebreak[1..3].iter().all(|&rank| rank != trips)
+        }
+        HandCategory::Straight | HandCategory::StraightFlush => {
+            (5..=14).contains(&tiebreak[0]) && zeroes(&tiebreak[1..])
+        }
+        HandCategory::FullHouse => {
+            let trips = tiebreak[0];
+            let pair = tiebreak[1];
+            valid_rank(trips) && valid_rank(pair) && trips != pair && zeroes(&tiebreak[2..])
+        }
+        HandCategory::FourOfAKind => {
+            let quads = tiebreak[0];
+            let kicker = tiebreak[1];
+            valid_rank(quads) && valid_rank(kicker) && quads != kicker && zeroes(&tiebreak[2..])
+        }
+    };
+
+    if valid {
+        Ok(())
+    } else {
+        Err(HandEvaluationError::InvalidHandValue)
+    }
+}
+
 /// Scores exactly five cards into a [`ComparableHand`].
 fn score_five(cards: &[Card; 5]) -> ComparableHand {
     let mut ranks: [u8; 5] = [
@@ -599,7 +708,7 @@ mod comparable_hand_tests {
         .unwrap()
         .value;
         let omaha = evaluate_omaha(hole, &board).unwrap().value;
-        assert_eq!(pooled.category, HandCategory::StraightFlush);
+        assert_eq!(pooled.category(), HandCategory::StraightFlush);
         assert!(
             omaha < pooled,
             "Omaha's exact-2+3 rule must yield a weaker hand than pooling all seven"
@@ -621,7 +730,7 @@ mod comparable_hand_tests {
             c(Rank::Two, Suit::Spade),
         ];
         let evaluated = evaluate_omaha(hole, &board).unwrap();
-        assert_eq!(evaluated.value().category, HandCategory::FourOfAKind);
+        assert_eq!(evaluated.value().category(), HandCategory::FourOfAKind);
         assert_eq!(
             evaluated
                 .cards()
@@ -852,6 +961,36 @@ mod comparable_hand_tests {
     }
 
     #[test]
+    fn comparable_hand_rejects_invalid_values_and_describe_is_total() {
+        assert_eq!(
+            ComparableHand::new(HandCategory::Straight, [4, 0, 0, 0, 0]),
+            Err(HandEvaluationError::InvalidHandValue)
+        );
+        assert_eq!(
+            ComparableHand::new(HandCategory::Pair, [14, 14, 13, 12, 0]),
+            Err(HandEvaluationError::InvalidHandValue)
+        );
+        assert_eq!(
+            ComparableHand::new(HandCategory::Flush, [14, 13, 12, 11, 10]),
+            Err(HandEvaluationError::InvalidHandValue)
+        );
+
+        let invalid_json = serde_json::json!({
+            "category": "Straight",
+            "tiebreak": [4, 0, 0, 0, 0],
+        });
+        assert!(serde_json::from_value::<ComparableHand>(invalid_json).is_err());
+
+        // This cannot be built through the public API, but `describe` must remain
+        // total even for an internal or future malformed value.
+        let malformed = ComparableHand {
+            category: HandCategory::Straight,
+            tiebreak: [4, 0, 0, 0, 0],
+        };
+        assert_eq!(malformed.describe(), "a straight, unknown straight");
+    }
+
+    #[test]
     fn evaluated_hand_returns_the_forming_cards() {
         // Board pair of Queens plus three low cards; the best five is the two
         // Queens and the three highest kickers, regardless of input order.
@@ -868,7 +1007,7 @@ mod comparable_hand_tests {
             ],
         )
         .unwrap();
-        assert_eq!(evaluated.value.category, HandCategory::Pair);
+        assert_eq!(evaluated.value.category(), HandCategory::Pair);
         assert!(evaluated.cards.contains(&qc) && evaluated.cards.contains(&qs));
         // The low hole cards (3, 2) are worse kickers than the board's J/10/4.
         assert!(!evaluated.cards.contains(&c(Rank::Three, Suit::Heart)));
@@ -911,7 +1050,7 @@ mod comparable_hand_tests {
                 c(Rank::Five, Suit::Spade),
                 c(Rank::Three, Suit::Club),
             ])
-            .category,
+            .category(),
             HandCategory::HighCard
         );
         // Pair
@@ -923,7 +1062,7 @@ mod comparable_hand_tests {
                 c(Rank::Five, Suit::Spade),
                 c(Rank::Three, Suit::Club),
             ])
-            .category,
+            .category(),
             HandCategory::Pair
         );
         // Two pair
@@ -935,7 +1074,7 @@ mod comparable_hand_tests {
                 c(Rank::Seven, Suit::Spade),
                 c(Rank::Three, Suit::Club),
             ])
-            .category,
+            .category(),
             HandCategory::TwoPair
         );
         // Three of a kind
@@ -947,7 +1086,7 @@ mod comparable_hand_tests {
                 c(Rank::Seven, Suit::Spade),
                 c(Rank::Three, Suit::Club),
             ])
-            .category,
+            .category(),
             HandCategory::ThreeOfAKind
         );
         // Straight
@@ -959,7 +1098,7 @@ mod comparable_hand_tests {
                 c(Rank::Three, Suit::Spade),
                 c(Rank::Two, Suit::Club),
             ])
-            .category,
+            .category(),
             HandCategory::Straight
         );
         // Flush
@@ -971,7 +1110,7 @@ mod comparable_hand_tests {
                 c(Rank::Five, Suit::Club),
                 c(Rank::Three, Suit::Club),
             ])
-            .category,
+            .category(),
             HandCategory::Flush
         );
         // Full house
@@ -983,7 +1122,7 @@ mod comparable_hand_tests {
                 c(Rank::Seven, Suit::Spade),
                 c(Rank::Seven, Suit::Club),
             ])
-            .category,
+            .category(),
             HandCategory::FullHouse
         );
         // Four of a kind
@@ -995,7 +1134,7 @@ mod comparable_hand_tests {
                 c(Rank::Ace, Suit::Spade),
                 c(Rank::Seven, Suit::Club),
             ])
-            .category,
+            .category(),
             HandCategory::FourOfAKind
         );
         // Straight flush
@@ -1007,7 +1146,7 @@ mod comparable_hand_tests {
                 c(Rank::Three, Suit::Club),
                 c(Rank::Two, Suit::Club),
             ])
-            .category,
+            .category(),
             HandCategory::StraightFlush
         );
     }
@@ -1072,8 +1211,8 @@ mod comparable_hand_tests {
             c(Rank::Five, Suit::Spade),
             c(Rank::Six, Suit::Club),
         ]);
-        assert_eq!(wheel.category, HandCategory::Straight);
-        assert_eq!(wheel.tiebreak[0], 5);
+        assert_eq!(wheel.category(), HandCategory::Straight);
+        assert_eq!(wheel.tiebreak()[0], 5);
         assert!(six_high > wheel, "6-high straight must beat the wheel");
         // ...but the wheel still beats any non-straight.
         let pair = eval(&[
@@ -1102,8 +1241,8 @@ mod comparable_hand_tests {
             c(Rank::Five, Suit::Club),
             c(Rank::Six, Suit::Club),
         ]);
-        assert_eq!(steel_wheel.category, HandCategory::StraightFlush);
-        assert_eq!(steel_wheel.tiebreak[0], 5);
+        assert_eq!(steel_wheel.category(), HandCategory::StraightFlush);
+        assert_eq!(steel_wheel.tiebreak()[0], 5);
         assert!(six_high_sf > steel_wheel);
     }
 
@@ -1122,8 +1261,8 @@ mod comparable_hand_tests {
         )
         .unwrap()
         .value;
-        assert_eq!(hand.category, HandCategory::Flush);
-        assert_eq!(hand.tiebreak, [14, 13, 10, 5, 2]);
+        assert_eq!(hand.category(), HandCategory::Flush);
+        assert_eq!(hand.tiebreak(), [14, 13, 10, 5, 2]);
     }
 
     #[test]
@@ -1283,8 +1422,8 @@ mod proptest_oracle {
             let arr = [five[0], five[1], five[2], five[3], five[4]];
             let got = evaluate_five(arr).unwrap().value;
             let (category, tiebreak) = oracle_five(&arr);
-            prop_assert_eq!(got.category as u8, category);
-            prop_assert_eq!(got.tiebreak, pad5(tiebreak));
+            prop_assert_eq!(got.category() as u8, category);
+            prop_assert_eq!(got.tiebreak(), pad5(tiebreak));
         }
 
         /// `best_five` of 7 cards equals the best 5-card subset per the oracle.
@@ -1315,8 +1454,8 @@ mod proptest_oracle {
             }
 
             let (category, tiebreak) = best.unwrap();
-            prop_assert_eq!(got.category as u8, category);
-            prop_assert_eq!(got.tiebreak, tiebreak);
+            prop_assert_eq!(got.category() as u8, category);
+            prop_assert_eq!(got.tiebreak(), tiebreak);
         }
 
         /// `ComparableHand` is a total order: comparison is trichotomous and
@@ -1333,7 +1472,7 @@ mod proptest_oracle {
             let relations = [a < b, a == b, a > b];
             prop_assert_eq!(relations.iter().filter(|&&r| r).count(), 1);
             if a == b {
-                prop_assert_eq!(a.category, b.category);
+                prop_assert_eq!(a.category(), b.category());
             }
         }
     }
