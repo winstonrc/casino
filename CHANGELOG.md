@@ -15,17 +15,15 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 
 #### Added
 
-- `hand_rankings::evaluate(hole, board) -> ComparableHand` — picks the best
-  5-card hand and returns a fully-ordered, kicker-correct value (`HandCategory`
-  - tiebreak ranks). Handles the wheel (A-2-3-4-5) and is cross-checked in tests
-    against an independent brute-force oracle. `evaluate_with_cards` additionally
-    returns the exact five cards that form the hand, and `ComparableHand::describe`
-    names a hand in PokerStars wording ("two pair, Jacks and Fives", "a flush, Ace
-    high", "a full house, Kings full of Threes", "a straight, Five to Nine").
-    `ComparableHand` derives serde.
-- `hand_rankings::best_omaha(hole, board) -> ComparableHand` — Omaha
-  evaluation, which must use exactly two of the four hole cards plus three
-  board cards (panics unless `hole.len() == 4` and `board.len()` is 3–5).
+- Fallible hand evaluation through `evaluate_five`, `best_five`,
+  `evaluate_holdem`, and `evaluate_omaha`. Each returns an `EvaluatedHand`
+  containing the fully ordered, kicker-correct `ComparableHand` value and the
+  exact five physical cards forming it. Invalid card counts and duplicate cards
+  return `HandEvaluationError` rather than panicking. Omaha evaluation uses
+  exactly two of four hole cards and three board cards. The evaluator handles
+  the wheel (A-2-3-4-5) and is cross-checked against an independent brute-force
+  oracle. `ComparableHand::describe` names hands in PokerStars wording, and
+  `ComparableHand` serializes/deserializes with validated tiebreak ranks.
 - `agent` module: the `PokerAgent` trait — `decide`, plus default-no-op `observe`
   (receive the `GameEvent` stream to update a player model) and `session_ended`
   (persist what was learned) lifecycle hooks — an owned (serializable) `PlayerView`,
@@ -127,6 +125,13 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 - `ActionError`, `ActionSubmissionError`, and `PlayError` are non-exhaustive and
   include validation/overflow failures. `BettingStep` and `HandStep` can return
   `CannotStart`.
+- `EvaluatedHand` keeps its validated value and physical cards private. Read
+  them with `EvaluatedHand::value()` and `EvaluatedHand::cards()`.
+- `ComparableHand` keeps category/tiebreak layout validated. Build manual values
+  with `ComparableHand::new(...)` and read them with `category()`/`tiebreak()`.
+- `AgentError` is non-exhaustive and includes `InvalidView` plus
+  `Failure(String)` for downstream context. It implements `Display` and
+  `Error`, and blocking `PlayError::Agent` values expose it as their source.
 - Standalone `Pot` and `PotAward` aggregate amounts and payouts use `u64`.
 - Tables support 2–10 players and enforce a checked table-wide `u32::MAX`
   bankroll. Hand startup, restored state, and action submission validate before
@@ -150,10 +155,12 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
 
 #### Removed
 
+- Pre-release evaluator names `evaluate`, `evaluate_with_cards`,
+  `best_five_with_cards`, and `best_omaha`. Use the checked evaluator functions
+  documented above.
 - `HandRank`, `rank_hand`, `get_high_card_value`, and the `check_for_*` helpers.
-  **Migration:** call `evaluate(hole, board)` and compare the returned
-  `ComparableHand` values directly with `>`, `<`, and `==` — these handle hand
-  category, kickers, and ties correctly.
+  Hand comparison is provided by the fallible `evaluate_holdem`, `best_five`,
+  `evaluate_five`, and `evaluate_omaha` APIs described above.
 
 #### Fixed
 

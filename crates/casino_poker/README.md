@@ -12,26 +12,34 @@ transitions as the stable API.
 
 ### Evaluating the best hand
 
-`evaluate` returns a `ComparableHand` — a kicker-correct, fully-ordered value of
-the best 5-card hand from hole cards plus the board. Compare two players'
-`ComparableHand`s directly with `<`, `>`, and `==` (equal hands chop the pot).
-Call `hand.describe()` for a PokerStars-style name ("two pair, Jacks and Fives",
-"a flush, Ace high", "a full house, Kings full of Threes"), or
-`evaluate_with_cards` to also get the exact five cards forming the hand.
+`evaluate_holdem` returns an `EvaluatedHand` containing the best five physical
+cards and a kicker-correct, fully ordered `ComparableHand` value. Compare
+players' `hand.value()`s directly with `<`, `>`, and `==` (equal values chop the
+pot). Call `hand.value().describe()` for a PokerStars-style name ("two pair, Jacks
+and Fives", "a flush, Ace high", "a full house, Kings full of Threes").
+
+Evaluation is fallible: unsupported card counts and duplicate physical cards
+return `HandEvaluationError` rather than panicking. Use `evaluate_five` for
+exactly five cards, `best_five` for a flat five-to-seven-card pool, and
+`evaluate_omaha` for Omaha's exact two-hole-card and three-board-card rule.
 
 ```rust
 use casino_poker::casino_cards::card::{Card, Rank, Suit};
-use casino_poker::hand_rankings::evaluate;
+use casino_poker::hand_rankings::{evaluate_holdem, HandCategory};
 
-let hole = [Card::new(Rank::Ace, Suit::Heart), Card::new(Rank::Two, Suit::Heart)];
-let board = [
-    Card::new(Rank::Five, Suit::Heart),
-    Card::new(Rank::Nine, Suit::Heart),
-    Card::new(Rank::King, Suit::Heart),
-    Card::new(Rank::King, Suit::Spade),
-    Card::new(Rank::Three, Suit::Club),
-];
-let hand = evaluate(&hole, &board); // a Flush
+fn main() -> Result<(), casino_poker::hand_rankings::HandEvaluationError> {
+    let hole = [Card::new(Rank::Ace, Suit::Heart), Card::new(Rank::Two, Suit::Heart)];
+    let board = [
+        Card::new(Rank::Five, Suit::Heart),
+        Card::new(Rank::Nine, Suit::Heart),
+        Card::new(Rank::King, Suit::Heart),
+        Card::new(Rank::King, Suit::Spade),
+        Card::new(Rank::Three, Suit::Club),
+    ];
+    let hand = evaluate_holdem(hole, &board)?;
+    assert_eq!(hand.value().category(), HandCategory::Flush);
+    Ok(())
+}
 ```
 
 ### Texas hold 'em
@@ -180,7 +188,7 @@ Notable events:
 - `Showdown` is emitted once before the reveals when two or more players reach a
   showdown, carrying the final `board` and `pot`.
 - `ShowdownReveal` carries the player's `hole` cards and their `hand` (a
-  `ComparableHand` — `hand.describe()` for the named hand, `hand.category` for the
+  `ComparableHand` — `hand.describe()` for the named hand, `hand.category()` for the
   bare category).
 - `PotAwarded` carries the winning `hand` (`Option<ComparableHand>`) and an
   optional `PotKind` (`Main` / `Side(n)`) for per-pot narration (`None` for a
@@ -192,9 +200,9 @@ winners and the chips they receive.
 
 ## Building on this
 
-Most front-ends only need `play_hand` and `evaluate`, but the engine exposes a few
-seams that aren't obvious from the happy path. If you're building a server, a UI, or
-a learning agent, these are the ones to reach for:
+Most front-ends only need `play_hand` and `evaluate_holdem`, but the engine
+exposes a few capabilities that aren't obvious from the happy path. If you're
+building a server, a UI, or a learning agent, these are the ones to reach for:
 
 - **Save / resume.** `TexasHoldEm` is `serde`-serializable, so you can persist a
   game mid-hand and restore it to continue from the exact spot. A restored engine is

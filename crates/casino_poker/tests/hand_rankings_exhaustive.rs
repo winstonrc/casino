@@ -1,5 +1,5 @@
 use casino_poker::casino_cards::card::{Card, Rank, Suit};
-use casino_poker::hand_rankings::{best_five, ComparableHand, HandCategory};
+use casino_poker::hand_rankings::{evaluate_five, ComparableHand, HandCategory};
 
 const EXPECTED_CATEGORY_COUNTS: [usize; 9] = [
     1_302_540, // High card
@@ -112,7 +112,7 @@ fn reference_score(cards: &[Card; 5]) -> ComparableHand {
 fn hand(category: HandCategory, ranks: &[u8]) -> ComparableHand {
     let mut tiebreak = [0u8; 5];
     tiebreak[..ranks.len()].copy_from_slice(ranks);
-    ComparableHand { category, tiebreak }
+    ComparableHand::new(category, tiebreak).unwrap()
 }
 
 #[test]
@@ -128,10 +128,10 @@ fn exhaustive_five_card_evaluation_matches_reference() {
                 for d in (c + 1)..51 {
                     for e in (d + 1)..52 {
                         let cards = [deck[a], deck[b], deck[c], deck[d], deck[e]];
-                        let actual = best_five(&cards);
+                        let actual = evaluate_five(cards).unwrap().value();
                         let expected = reference_score(&cards);
                         assert_eq!(actual, expected, "mismatch for {cards:?}");
-                        category_counts[actual.category as usize] += 1;
+                        category_counts[actual.category() as usize] += 1;
                         evaluated += 1;
                     }
                 }
