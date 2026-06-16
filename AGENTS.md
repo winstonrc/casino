@@ -3,7 +3,7 @@
 ## Formatting
 
 - Always run `cargo fmt --all` before committing Rust changes
-- If you touch Markdown, also run Prettier on the touched Markdown files before the final diff
+- If you touch Markdown, use pinned Prettier via `npm run format:md` or `node_modules/.bin/prettier --write <files>` before the final diff
 - Do not assume `cargo fmt` formats docs, changelogs, README files, or workflow prose
 
 ## Public API Snapshots

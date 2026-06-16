@@ -88,8 +88,8 @@ correct betting, all-ins, and side pots, and exposes a stable public API.
   observe one hand.
 - **Serializable, resumable game state.** `TexasHoldEm` derives
   `Serialize`/`Deserialize` (the observer and RNG are `#[serde(skip)]` and
-  re-attached/re-seeded on restore), so a front-end can serialize an *exact
-  in-progress hand* — deck, hole cards, board, bets, button — and restore it to
+  re-attached/re-seeded on restore), so a front-end can serialize an _exact
+  in-progress hand_ — deck, hole cards, board, bets, button — and restore it to
   continue from the precise spot. `hand_in_progress` and `current_street` report
   where a restored hand stands.
 - **Betting-street state machine** (the non-blocking driving seam):

@@ -1,0 +1,11 @@
+{
+  "name": "casino",
+  "private": true,
+  "scripts": {
+    "format:md": "prettier --write \"**/*.md\"",
+    "check:md": "prettier --check \"**/*.md\""
+  },
+  "devDependencies": {
+    "prettier": "3.8.1"
+  }
+}
