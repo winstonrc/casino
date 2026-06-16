@@ -103,5 +103,5 @@ jobs:
       - name: Install cargo-public-api
         run: cargo install cargo-public-api --version 0.52.0 --locked
 
-      - name: Check casino_poker 1.0 API snapshot
+      - name: Check casino_poker public API snapshot
         run: scripts/check-casino-poker-public-api.sh
