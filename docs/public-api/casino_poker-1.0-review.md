@@ -66,12 +66,12 @@ Criterion 0.8.2 produced these approximate local release-mode medians after the
 checked, allocation-free evaluator redesign. They were measured on Linux
 `x86_64`, an AMD Ryzen 5 7600X, and Rust 1.96.0:
 
-| Public workload | Median |
-| --- | ---: |
-| `evaluate_five` | 16.28 ns |
+| Public workload                    |    Median |
+| ---------------------------------- | --------: |
+| `evaluate_five`                    |  16.28 ns |
 | `evaluate_holdem` with seven cards | 381.97 ns |
-| `evaluate_omaha` with nine cards | 935.75 ns |
-| Nine-player Hold'em showdown | 3.64 us |
+| `evaluate_omaha` with nine cards   | 935.75 ns |
+| Nine-player Hold'em showdown       |   3.64 us |
 
 These are local reference values, not portable CI thresholds. They establish a
 new baseline for the fallible APIs and should not be compared directly with the
@@ -84,6 +84,16 @@ older infallible return-value benchmarks.
 Rust 1.96.0. CI regenerates the same representation and rejects any difference,
 including changes to derived trait implementations. Intentional API changes
 therefore require an explicit snapshot review and update.
+
+Run the gate locally after changing `casino_poker` public API:
+
+```sh
+scripts/check-casino-poker-public-api.sh
+```
+
+If the diff is intentional, regenerate the snapshot with the pinned
+`cargo-public-api` output and commit the updated
+[`casino_poker-1.0.txt`](casino_poker-1.0.txt) in the same PR.
 
 `casino_poker` depends on `casino_cards = "2"`, so `casino_cards 2.0.0` must be
 published before the final `cargo package` verification and `casino_poker`
