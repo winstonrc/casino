@@ -1,7 +1,9 @@
 use casino_poker::agent::{AgentError, PlayerView, PokerAgent};
 use casino_poker::betting::PlayerAction;
 use casino_poker::casino_cards::card::{Card, Rank, Suit};
+use casino_poker::games::texas_hold_em::SeatView;
 use casino_poker::hand_rankings::{evaluate_holdem, EvaluatedHand, HandCategory};
+use casino_poker::uuid::Uuid;
 
 struct ExternalAgent;
 
@@ -52,4 +54,39 @@ fn external_consumers_can_evaluate_serialize_and_implement_agents() {
     assert_eq!(classify_agent_error(&error), "failure");
     assert_eq!(error.to_string(), "provider unavailable");
     let _: &dyn std::error::Error = &error;
+}
+
+#[test]
+fn external_consumers_can_build_seat_views_for_player_view_tests() {
+    let hero = Uuid::from_u128(1);
+    let villain = Uuid::from_u128(2);
+    let seats = vec![
+        SeatView::builder()
+            .id(hero)
+            .name("Hero")
+            .chips(98)
+            .committed_this_street(2)
+            .contributed_this_hand(2)
+            .build(),
+        SeatView::builder()
+            .id(villain)
+            .name("Villain")
+            .chips(100)
+            .folded(false)
+            .all_in(false)
+            .build(),
+    ];
+
+    let view = PlayerView::builder()
+        .you(hero)
+        .name("Hero")
+        .players_remaining(2)
+        .seats(seats)
+        .button_seat(Some(0))
+        .build();
+
+    assert_eq!(view.seats.len(), 2);
+    assert_eq!(view.seats[0].id, hero);
+    assert_eq!(view.seats[0].committed_this_street, 2);
+    assert_eq!(view.seats[1].name, "Villain");
 }

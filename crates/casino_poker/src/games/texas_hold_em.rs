@@ -357,6 +357,78 @@ pub struct SeatView {
     pub all_in: bool,
 }
 
+impl SeatView {
+    /// Start building a `SeatView` outside the engine, e.g. for an agent unit test
+    /// that needs a complete [`PlayerView`].
+    pub fn builder() -> SeatViewBuilder {
+        SeatViewBuilder {
+            view: SeatView {
+                id: Uuid::nil(),
+                name: String::new(),
+                chips: 0,
+                committed_this_street: 0,
+                contributed_this_hand: 0,
+                folded: false,
+                all_in: false,
+            },
+        }
+    }
+}
+
+/// Builder for [`SeatView`], which is `#[non_exhaustive]`.
+pub struct SeatViewBuilder {
+    view: SeatView,
+}
+
+impl SeatViewBuilder {
+    /// Finish building the [`SeatView`].
+    pub fn build(self) -> SeatView {
+        self.view
+    }
+
+    /// Set the stable player identity.
+    pub fn id(mut self, id: Uuid) -> Self {
+        self.view.id = id;
+        self
+    }
+
+    /// Set the display name.
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.view.name = name.into();
+        self
+    }
+
+    /// Set the chips remaining in the stack.
+    pub fn chips(mut self, chips: u32) -> Self {
+        self.view.chips = chips;
+        self
+    }
+
+    /// Set chips committed on the current street.
+    pub fn committed_this_street(mut self, committed_this_street: u32) -> Self {
+        self.view.committed_this_street = committed_this_street;
+        self
+    }
+
+    /// Set cumulative chips contributed across the current hand.
+    pub fn contributed_this_hand(mut self, contributed_this_hand: u32) -> Self {
+        self.view.contributed_this_hand = contributed_this_hand;
+        self
+    }
+
+    /// Set whether the player has folded this hand.
+    pub fn folded(mut self, folded: bool) -> Self {
+        self.view.folded = folded;
+        self
+    }
+
+    /// Set whether the player has committed their entire stack.
+    pub fn all_in(mut self, all_in: bool) -> Self {
+        self.view.all_in = all_in;
+        self
+    }
+}
+
 /// Everything **one** player's client needs to render and (re)join a game: the
 /// public [`TableView`], that player's own private state, and the hand's narration
 /// so far. Produced by [`TexasHoldEm::client_view`].
