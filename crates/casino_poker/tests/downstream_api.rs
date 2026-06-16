@@ -72,8 +72,9 @@ fn external_consumers_can_build_seat_views_for_player_view_tests() {
             .id(villain)
             .name("Villain")
             .chips(100)
-            .folded(false)
-            .all_in(false)
+            .contributed_this_hand(4)
+            .folded(true)
+            .all_in(true)
             .build(),
     ];
 
@@ -86,7 +87,19 @@ fn external_consumers_can_build_seat_views_for_player_view_tests() {
         .build();
 
     assert_eq!(view.seats.len(), 2);
+    assert_eq!(view.button_seat, Some(0));
     assert_eq!(view.seats[0].id, hero);
+    assert_eq!(view.seats[0].name, "Hero");
+    assert_eq!(view.seats[0].chips, 98);
     assert_eq!(view.seats[0].committed_this_street, 2);
+    assert_eq!(view.seats[0].contributed_this_hand, 2);
+    assert!(!view.seats[0].folded);
+    assert!(!view.seats[0].all_in);
+    assert_eq!(view.seats[1].id, villain);
     assert_eq!(view.seats[1].name, "Villain");
+    assert_eq!(view.seats[1].chips, 100);
+    assert_eq!(view.seats[1].committed_this_street, 0);
+    assert_eq!(view.seats[1].contributed_this_hand, 4);
+    assert!(view.seats[1].folded);
+    assert!(view.seats[1].all_in);
 }
