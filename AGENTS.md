@@ -16,3 +16,9 @@
 
 - Keep formatting-only churn separate from behavioral changes when practical
 - Run the exact failing CI script locally after fixing a CI-only failure
+
+## Publishing
+
+- Never run `cargo publish` without explicit final user approval after package and dry-run checks pass
+- It is fine to run `cargo package` and `cargo publish --dry-run` during release prep
+- Treat the real publish command as the user's final call, even when all checks are green
