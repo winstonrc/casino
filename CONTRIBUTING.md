@@ -20,6 +20,12 @@ source files unless a maintainer explicitly requests them.
 
 ## Set up git hooks (one-time)
 
+Install pinned formatting tools:
+
+```sh
+npm install
+```
+
 This repo ships git hooks in [`.githooks/`](.githooks). They are **not** active
 until you point git at them once per clone:
 
@@ -29,7 +35,8 @@ git config core.hooksPath .githooks
 
 After that:
 
-- **pre-commit** runs `cargo fmt --all` (fast — formatting only).
+- **pre-commit** runs `cargo fmt --all` plus pinned Prettier for staged Markdown
+  files (fast — formatting only).
 - **pre-push** runs clippy + tests (the same gate CI enforces).
 
 Hooks are a convenience, not a substitute for the checks below or for CI — you
@@ -45,8 +52,8 @@ locally first avoids red builds and review round-trips.
 # 1. Format (CI runs this with --check and fails on any diff)
 cargo fmt --all
 
-# 2. Format any touched Markdown files with Prettier
-prettier --write <touched Markdown files>
+# 2. Format Markdown with pinned Prettier
+npm run format:md
 
 # 3. Lint — warnings are treated as errors in CI. clippy is a full compile,
 #    so it also catches anything a plain `cargo build`/`check` would.
@@ -67,8 +74,9 @@ commit. CI runs `cargo fmt --all --check`, which only _checks_ formatting and
 fails on any difference — it does not fix anything for you.
 
 `cargo fmt` does not format Markdown. When you edit Markdown, including
-`CHANGELOG.md`, `README.md`, crate READMEs, or docs under `docs/`, run Prettier
-on the touched files and include any formatting changes in the same commit.
+`CHANGELOG.md`, `README.md`, crate READMEs, or docs under `docs/`, run pinned
+Prettier and include any formatting changes in the same commit. Use
+`npm run check:md` to verify Markdown formatting without rewriting files.
 
 ## Public API snapshots
 

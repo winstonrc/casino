@@ -2,7 +2,7 @@
 
 # casino_poker
 
-A library that provides hand ranking & the backend for poker games. 
+A library that provides hand ranking & the backend for poker games.
 
 **Note:** Since `1.0.0`, the public API follows [SemVer](https://semver.org/)
 around the engine-owned hand lifecycle and checked, transactional state

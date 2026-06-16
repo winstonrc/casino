@@ -3,12 +3,38 @@
 # push — see .githooks/pre-push. Enable with: git config core.hooksPath .githooks
 set -euo pipefail
 
-if cargo fmt --all --check >/dev/null 2>&1; then
+repo_root="$(git rev-parse --show-toplevel)"
+prettier="$repo_root/node_modules/.bin/prettier"
+formatted=0
+staged_markdown="$(mktemp "${TMPDIR:-/tmp}/casino-staged-markdown.XXXXXX")"
+trap 'rm -f "$staged_markdown"' EXIT
+
+if ! cargo fmt --all --check >/dev/null 2>&1; then
+    echo "Rust formatting issues found — running 'cargo fmt --all' to fix them..."
+    cargo fmt --all
+    formatted=1
+fi
+
+git diff --cached --name-only --diff-filter=ACM -z -- '*.md' >"$staged_markdown"
+
+if [ -s "$staged_markdown" ]; then
+    if [ ! -x "$prettier" ]; then
+        echo "Markdown formatter missing: $prettier"
+        echo "Run 'npm install' to install pinned formatting tools."
+        exit 1
+    fi
+
+    if ! xargs -0 "$prettier" --check <"$staged_markdown" >/dev/null 2>&1; then
+        echo "Markdown formatting issues found — running pinned Prettier to fix them..."
+        xargs -0 "$prettier" --write <"$staged_markdown"
+        formatted=1
+    fi
+fi
+
+if [ "$formatted" -eq 0 ]; then
     exit 0
 fi
 
-echo "Formatting issues found — running 'cargo fmt --all' to fix them..."
-cargo fmt --all
 echo
 echo "Files were reformatted. Review the changes, 'git add' them, and commit again."
 exit 1
