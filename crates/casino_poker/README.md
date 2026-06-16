@@ -4,9 +4,9 @@
 
 A library that provides hand ranking & the backend for poker games. 
 
-**Note:** The public API follows [SemVer](https://semver.org/). Version `1.0.0`
-establishes the engine-owned hand lifecycle and checked, transactional state
-transitions as the stable API.
+**Note:** Since `1.0.0`, the public API follows [SemVer](https://semver.org/)
+around the engine-owned hand lifecycle and checked, transactional state
+transitions.
 
 ## Usage
 
@@ -148,9 +148,10 @@ stack/call sizes in big blinds — so a UI can render correct numbers without
 re-deriving them. `PlayerView` also carries `seats` (the public per-seat roster as
 `SeatView`s — id, stack, this-street commitment, fold/all-in status) and `button_seat`,
 so an agent sees the same objective table state a spectator does and can map a stored
-opponent model onto who is actually at the table. `PlayerView` is `#[non_exhaustive]`
-(the engine builds it; use `PlayerView::builder()` to construct one in your own agent
-tests), and both it and `HandMetrics` can gain fields in a minor release.
+opponent model onto who is actually at the table. `PlayerView` and `SeatView` are
+`#[non_exhaustive]`; use `PlayerView::builder()` and `SeatView::builder()` to
+construct them in your own agent tests. `PlayerView`, `SeatView`, and `HandMetrics`
+can gain fields in a minor release.
 
 ### Observing a hand
 
