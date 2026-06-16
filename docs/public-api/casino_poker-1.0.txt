@@ -580,6 +580,8 @@ pub casino_poker::games::texas_hold_em::SeatView::contributed_this_hand: u32
 pub casino_poker::games::texas_hold_em::SeatView::folded: bool
 pub casino_poker::games::texas_hold_em::SeatView::id: uuid::Uuid
 pub casino_poker::games::texas_hold_em::SeatView::name: alloc::string::String
+impl casino_poker::games::texas_hold_em::SeatView
+pub fn casino_poker::games::texas_hold_em::SeatView::builder() -> casino_poker::games::texas_hold_em::SeatViewBuilder
 impl core::clone::Clone for casino_poker::games::texas_hold_em::SeatView
 pub fn casino_poker::games::texas_hold_em::SeatView::clone(&self) -> casino_poker::games::texas_hold_em::SeatView
 impl core::fmt::Debug for casino_poker::games::texas_hold_em::SeatView
@@ -588,6 +590,16 @@ impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::SeatView
 pub fn casino_poker::games::texas_hold_em::SeatView::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::SeatView
 pub fn casino_poker::games::texas_hold_em::SeatView::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct casino_poker::games::texas_hold_em::SeatViewBuilder
+impl casino_poker::games::texas_hold_em::SeatViewBuilder
+pub fn casino_poker::games::texas_hold_em::SeatViewBuilder::all_in(self, bool) -> Self
+pub fn casino_poker::games::texas_hold_em::SeatViewBuilder::build(self) -> casino_poker::games::texas_hold_em::SeatView
+pub fn casino_poker::games::texas_hold_em::SeatViewBuilder::chips(self, u32) -> Self
+pub fn casino_poker::games::texas_hold_em::SeatViewBuilder::committed_this_street(self, u32) -> Self
+pub fn casino_poker::games::texas_hold_em::SeatViewBuilder::contributed_this_hand(self, u32) -> Self
+pub fn casino_poker::games::texas_hold_em::SeatViewBuilder::folded(self, bool) -> Self
+pub fn casino_poker::games::texas_hold_em::SeatViewBuilder::id(self, uuid::Uuid) -> Self
+pub fn casino_poker::games::texas_hold_em::SeatViewBuilder::name(self, impl core::convert::Into<alloc::string::String>) -> Self
 #[non_exhaustive] pub struct casino_poker::games::texas_hold_em::TableView
 pub casino_poker::games::texas_hold_em::TableView::board: alloc::vec::Vec<casino_cards::card::Card>
 pub casino_poker::games::texas_hold_em::TableView::button_seat: core::option::Option<usize>

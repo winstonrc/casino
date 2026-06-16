@@ -6,6 +6,18 @@ crate follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## 2026-06-16
+
+### casino_poker 1.1.0
+
+#### Added
+
+- `SeatView::builder()` so downstream consumers and agent tests can construct public seat
+  snapshots for `PlayerView::builder().seats(...)` without relying on struct
+  literals for a `#[non_exhaustive]` type.
+
+---
+
 ## 2026-06-15
 
 ### casino_poker 1.0.0

@@ -1,8 +1,8 @@
-# casino_poker 1.0 Public API
+# casino_poker Public API
 
-This document records the public API decisions for the `casino_poker` 1.0.0
-release. It describes the final supported surface rather than earlier
-pre-release proposals.
+This document records the public API decisions for the stable `casino_poker`
+line. The compatibility snapshot began with the `1.0.0` release and now acts as
+the review gate for intentional public API changes.
 
 ## Supported Surface
 
@@ -20,8 +20,8 @@ pre-release proposals.
 - `casino_cards` and `uuid` are re-exported so consumers can use the exact types
   carried by the API.
 
-`TexasHoldEm` remains directly serializable for 1.0. Restored state is validated
-before transitions or awards proceed. Nonblocking transitions are the preferred
+`TexasHoldEm` remains directly serializable. Restored state is validated before
+transitions or awards proceed. Nonblocking transitions are the preferred
 integration for servers and asynchronous applications; the blocking wrappers
 remain supported for terminal games and simulations.
 
@@ -66,12 +66,12 @@ Criterion 0.8.2 produced these approximate local release-mode medians after the
 checked, allocation-free evaluator redesign. They were measured on Linux
 `x86_64`, an AMD Ryzen 5 7600X, and Rust 1.96.0:
 
-| Public workload | Median |
-| --- | ---: |
-| `evaluate_five` | 16.28 ns |
+| Public workload                    |    Median |
+| ---------------------------------- | --------: |
+| `evaluate_five`                    |  16.28 ns |
 | `evaluate_holdem` with seven cards | 381.97 ns |
-| `evaluate_omaha` with nine cards | 935.75 ns |
-| Nine-player Hold'em showdown | 3.64 us |
+| `evaluate_omaha` with nine cards   | 935.75 ns |
+| Nine-player Hold'em showdown       |   3.64 us |
 
 These are local reference values, not portable CI thresholds. They establish a
 new baseline for the fallible APIs and should not be compared directly with the
@@ -80,10 +80,20 @@ older infallible return-value benchmarks.
 ## Compatibility Gate
 
 [`casino_poker-1.0.txt`](casino_poker-1.0.txt) is the simplified
-`cargo-public-api 0.52.0` snapshot for the supported 1.0 surface, generated with
-Rust 1.96.0. CI regenerates the same representation and rejects any difference,
-including changes to derived trait implementations. Intentional API changes
-therefore require an explicit snapshot review and update.
+`cargo-public-api 0.52.0` snapshot for the stable public API surface, generated
+with Rust 1.96.0. CI regenerates the same representation and rejects any
+difference, including changes to derived trait implementations. Intentional API
+changes therefore require an explicit snapshot review and update.
+
+Run the gate locally after changing `casino_poker` public API:
+
+```sh
+scripts/check-casino-poker-public-api.sh
+```
+
+If the diff is intentional, regenerate the snapshot with the pinned
+`cargo-public-api` output and commit the updated
+[`casino_poker-1.0.txt`](casino_poker-1.0.txt) in the same PR.
 
 `casino_poker` depends on `casino_cards = "2"`, so `casino_cards 2.0.0` must be
 published before the final `cargo package` verification and `casino_poker`
