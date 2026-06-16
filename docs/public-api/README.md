@@ -1,8 +1,8 @@
-# casino_poker 1.0 Public API
+# casino_poker Public API
 
-This document records the public API decisions for the `casino_poker` 1.0.0
-release. It describes the final supported surface rather than earlier
-pre-release proposals.
+This document records the public API decisions for the stable `casino_poker`
+line. The compatibility snapshot began with the `1.0.0` release and now acts as
+the review gate for intentional public API changes.
 
 ## Supported Surface
 
@@ -20,8 +20,8 @@ pre-release proposals.
 - `casino_cards` and `uuid` are re-exported so consumers can use the exact types
   carried by the API.
 
-`TexasHoldEm` remains directly serializable for 1.0. Restored state is validated
-before transitions or awards proceed. Nonblocking transitions are the preferred
+`TexasHoldEm` remains directly serializable. Restored state is validated before
+transitions or awards proceed. Nonblocking transitions are the preferred
 integration for servers and asynchronous applications; the blocking wrappers
 remain supported for terminal games and simulations.
 
@@ -80,10 +80,10 @@ older infallible return-value benchmarks.
 ## Compatibility Gate
 
 [`casino_poker-1.0.txt`](casino_poker-1.0.txt) is the simplified
-`cargo-public-api 0.52.0` snapshot for the supported 1.0 surface, generated with
-Rust 1.96.0. CI regenerates the same representation and rejects any difference,
-including changes to derived trait implementations. Intentional API changes
-therefore require an explicit snapshot review and update.
+`cargo-public-api 0.52.0` snapshot for the stable public API surface, generated
+with Rust 1.96.0. CI regenerates the same representation and rejects any
+difference, including changes to derived trait implementations. Intentional API
+changes therefore require an explicit snapshot review and update.
 
 Run the gate locally after changing `casino_poker` public API:
 
