@@ -6,9 +6,9 @@ crate follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## Unreleased
+## 2026-06-16
 
-### casino_poker
+### casino_poker 1.0.1
 
 #### Added
 

@@ -3445,6 +3445,37 @@ mod tests {
     }
 
     #[test]
+    fn seat_view_builder_sets_every_public_field() {
+        let id = Uuid::from_u128(42);
+        let default = SeatView::builder().build();
+        assert_eq!(default.id, Uuid::nil());
+        assert_eq!(default.name, "");
+        assert_eq!(default.chips, 0);
+        assert_eq!(default.committed_this_street, 0);
+        assert_eq!(default.contributed_this_hand, 0);
+        assert!(!default.folded);
+        assert!(!default.all_in);
+
+        let seat = SeatView::builder()
+            .id(id)
+            .name("Ada")
+            .chips(90)
+            .committed_this_street(10)
+            .contributed_this_hand(35)
+            .folded(true)
+            .all_in(true)
+            .build();
+
+        assert_eq!(seat.id, id);
+        assert_eq!(seat.name, "Ada");
+        assert_eq!(seat.chips, 90);
+        assert_eq!(seat.committed_this_street, 10);
+        assert_eq!(seat.contributed_this_hand, 35);
+        assert!(seat.folded);
+        assert!(seat.all_in);
+    }
+
+    #[test]
     fn seat_view_contributed_this_hand_accumulates_across_streets() {
         // `contributed_this_hand` is the seat's running stake in the live pot; it
         // must grow across streets, while `committed_this_street` resets each street.
