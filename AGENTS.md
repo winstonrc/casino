@@ -22,3 +22,11 @@
 - Never run `cargo publish` without explicit final user approval after package and dry-run checks pass
 - It is fine to run `cargo package` and `cargo publish --dry-run` during release prep
 - Treat the real publish command as the user's final call, even when all checks are green
+
+## Agent Review Gates
+
+- Run focused agent review after each implementation piece when the user requests it
+- Surface blocked reviewer permissions immediately instead of waiting silently
+- Close completed agents once their findings have been handled
+- For GitHub PR reviews, use `gh api graphql` to fetch review threads and inline comments when `gh pr view` does not expose enough review context
+- Read the PR's body for additional context that might be relevant for reviewing
