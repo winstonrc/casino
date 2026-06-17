@@ -34,6 +34,20 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const marker = '<!-- casino-pr-description: generated -->';
+            const existingBody = context.payload.pull_request.body || '';
+            const legacyGeneratedBodyPattern = /^# Contents\n\n(?:- .+(?:\n|$))*$/;
+
+            const shouldUpdateBody =
+              existingBody.trim() === '' ||
+              existingBody.includes(marker) ||
+              legacyGeneratedBodyPattern.test(existingBody);
+
+            if (!shouldUpdateBody) {
+              core.info('Skipping PR description update because the body appears to have been manually edited.');
+              return;
+            }
+
             const commits = await github.rest.pulls.listCommits({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -48,5 +62,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.payload.pull_request.number,
-              body: `# Contents\n\n${items}`
+              body: `${marker}\n# Contents\n\n${items}`
             });
