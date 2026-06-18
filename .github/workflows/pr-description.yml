@@ -36,12 +36,10 @@ jobs:
           script: |
             const marker = '<!-- pr-description: generated -->';
             const existingBody = context.payload.pull_request.body || '';
-            const legacyGeneratedBodyPattern = /^# Contents\n\n(?:- .+(?:\n|$))*$/;
 
             const shouldUpdateBody =
               existingBody.trim() === '' ||
-              existingBody.includes(marker) ||
-              legacyGeneratedBodyPattern.test(existingBody);
+              existingBody.includes(marker);
 
             if (!shouldUpdateBody) {
               core.info('Skipping PR description update because the body appears to have been manually edited.');
