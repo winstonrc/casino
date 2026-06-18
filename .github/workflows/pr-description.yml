@@ -39,7 +39,7 @@ jobs:
 
             const shouldUpdateBody =
               existingBody.trim() === '' ||
-              existingBody.includes(marker)
+              existingBody.includes(marker);
 
             if (!shouldUpdateBody) {
               core.info('Skipping PR description update because the body appears to have been manually edited.');
