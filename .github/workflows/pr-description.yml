@@ -34,7 +34,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const marker = '<!-- casino-pr-description: generated -->';
+            const marker = '<!-- pr-description: generated -->';
             const existingBody = context.payload.pull_request.body || '';
             const legacyGeneratedBodyPattern = /^# Contents\n\n(?:- .+(?:\n|$))*$/;
 
