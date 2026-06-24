@@ -126,6 +126,78 @@ The same identified submission contract exists one street down through
 `abort_betting_round()` refunds its contributions, returns its cards to the deck,
 and leaves the table ready for a new hand without emitting `HandComplete`.
 
+When a UI or network server needs each public event separately, use the
+fine-grained progress API. `HandEventCursor` is serializable and lives outside the
+engine, so you can persist it beside `TexasHoldEm`. If you store cursor fields
+instead of serializing the cursor directly, persist `hand_number()`,
+`next_event()`, and `terminal_reported()`, then rebuild with
+`HandEventCursor::from_parts`. `drive_hand_progress` yields
+`HandProgressStep::Event` for one public/redacted event at a time. When it yields
+`AwaitingPlayer`, that value is safe to broadcast because it carries only the
+acting player and `DecisionId`; it deliberately does not include the private
+`PlayerView`.
+
+Fetch the private prompt only for the actor with `pending_action()` or
+`client_view(player_id)`, then submit through `submit_hand_progress_action`:
+
+```rust
+use casino_poker::agent::LegalAction;
+use casino_poker::betting::PlayerAction;
+use casino_poker::events::GameEvent;
+use casino_poker::games::texas_hold_em::{HandEventCursor, HandProgressStep, TexasHoldEm};
+
+fn choose_action(legal_actions: &[LegalAction]) -> PlayerAction {
+    if legal_actions.iter().any(|a| matches!(a, LegalAction::Check)) {
+        PlayerAction::Check
+    } else if legal_actions.iter().any(|a| matches!(a, LegalAction::Call(_))) {
+        PlayerAction::Call
+    } else {
+        PlayerAction::Fold
+    }
+}
+
+fn drive_public_progress(game: &mut TexasHoldEm, cursor: &mut HandEventCursor) {
+    let mut step = game.drive_hand_progress(cursor);
+    loop {
+        match step {
+            HandProgressStep::Event(event) => {
+                let hand_complete = matches!(event, GameEvent::HandComplete);
+                // Broadcast or persist `event`; it is redacted like `public_events()`.
+                step = game.drive_hand_progress(cursor);
+                if hand_complete {
+                    assert!(matches!(step, HandProgressStep::HandComplete));
+                    return;
+                }
+            }
+            HandProgressStep::AwaitingPlayer { player, decision_id } => {
+                // Private: send only to `player`, never to the whole table.
+                let pending = game
+                    .client_view(player)
+                    .pending_action
+                    .expect("the actor can see their own pending prompt");
+                let action = choose_action(&pending.view.legal_actions);
+
+                step = game
+                    .submit_hand_progress_action(cursor, player, decision_id, action)
+                    .expect("the decision is still current");
+            }
+            HandProgressStep::HandComplete | HandProgressStep::CannotStart(_) => return,
+            _ => return,
+        }
+    }
+}
+```
+
+Hidden-information rule of thumb: `HandProgressStep::Event`, `table()`, and
+`public_events()` are suitable for shared streams. `PendingAction` and the
+`pending_action` field inside `ClientView` contain the actor's private decision
+context, including their hole cards, and should only be delivered to that player.
+When betting is locked before the board is complete and all remaining live
+players are committed to showdown, the progress stream emits
+`HoleCardsExposed` before the remaining `StreetDealt` events. That event carries
+only public hole cards; final made-hand values remain reserved for
+`ShowdownReveal` after the full board is known.
+
 For **save/resume and reconnection**, `TexasHoldEm` is `serde`-serializable: persist
 it mid-hand and restore it to continue from the exact spot (re-attach an observer
 with `set_observer`, then `replay_log()` to re-narrate the hand so far). For a
@@ -178,14 +250,18 @@ impl GameObserver for Printer {
 Notable events:
 
 - Player-bearing events (`BlindPosted`, `ActionTaken`, `UncalledBetReturned`,
-  `ShowdownReveal`, `PotAwarded`) identify the player by a `PlayerRef` (stable `id` +
-  `name`); `PlayerRef` renders as its name, so it interpolates directly in display.
+  `HoleCardsExposed`, `ShowdownReveal`, `PotAwarded`) identify the player by a
+  `PlayerRef` (stable `id` + `name`); `PlayerRef` renders as its name, so it
+  interpolates directly in display.
 - `HandStarted` carries the seat roster (`SeatInfo` with a `PlayerRef` + starting
   stack), the button seat, and the blinds — the data a hand-history header needs.
 - `HoleCardsDealt` marks the start of betting; its `hero` field carries the
   perspective player (`PlayerRef`) and cards (when a hero is set), else `None`.
 - `ActionTaken` carries the `Street` and an `ActionView`; `Raised { by, to }`
   gives both the raise increment and the new total (PokerStars "raises by to to").
+- `HoleCardsExposed` carries a live player's `hole` cards once betting is locked
+  and all remaining players are committed to showdown. It intentionally does not
+  include a final hand value, because more board cards may still be coming.
 - `Showdown` is emitted once before the reveals when two or more players reach a
   showdown, carrying the final `board` and `pot`.
 - `ShowdownReveal` carries the player's `hole` cards and their `hand` (a

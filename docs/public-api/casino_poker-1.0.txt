@@ -312,6 +312,9 @@ pub casino_poker::events::GameEvent::HandStarted::seats: alloc::vec::Vec<casino_
 pub casino_poker::events::GameEvent::HandStarted::small_blind: u32
 pub casino_poker::events::GameEvent::HoleCardsDealt
 pub casino_poker::events::GameEvent::HoleCardsDealt::hero: core::option::Option<(casino_poker::player::PlayerRef, alloc::vec::Vec<casino_cards::card::Card>)>
+pub casino_poker::events::GameEvent::HoleCardsExposed
+pub casino_poker::events::GameEvent::HoleCardsExposed::hole: alloc::vec::Vec<casino_cards::card::Card>
+pub casino_poker::events::GameEvent::HoleCardsExposed::player: casino_poker::player::PlayerRef
 pub casino_poker::events::GameEvent::PotAwarded
 pub casino_poker::events::GameEvent::PotAwarded::amount: u32
 pub casino_poker::events::GameEvent::PotAwarded::hand: core::option::Option<casino_poker::hand_rankings::ComparableHand>
@@ -447,6 +450,23 @@ impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::HandOutc
 pub fn casino_poker::games::texas_hold_em::HandOutcome::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::HandOutcome
 pub fn casino_poker::games::texas_hold_em::HandOutcome::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub enum casino_poker::games::texas_hold_em::HandProgressStep
+pub casino_poker::games::texas_hold_em::HandProgressStep::AwaitingPlayer
+pub casino_poker::games::texas_hold_em::HandProgressStep::AwaitingPlayer::decision_id: casino_poker::games::texas_hold_em::DecisionId
+pub casino_poker::games::texas_hold_em::HandProgressStep::AwaitingPlayer::player: uuid::Uuid
+pub casino_poker::games::texas_hold_em::HandProgressStep::CannotStart(casino_poker::games::texas_hold_em::HandStartError)
+pub casino_poker::games::texas_hold_em::HandProgressStep::Event(casino_poker::events::GameEvent)
+pub casino_poker::games::texas_hold_em::HandProgressStep::HandComplete
+impl core::clone::Clone for casino_poker::games::texas_hold_em::HandProgressStep
+pub fn casino_poker::games::texas_hold_em::HandProgressStep::clone(&self) -> casino_poker::games::texas_hold_em::HandProgressStep
+impl core::convert::From<casino_poker::games::texas_hold_em::HandStep> for casino_poker::games::texas_hold_em::HandProgressStep
+pub fn casino_poker::games::texas_hold_em::HandProgressStep::from(casino_poker::games::texas_hold_em::HandStep) -> Self
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::HandProgressStep
+pub fn casino_poker::games::texas_hold_em::HandProgressStep::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::HandProgressStep
+pub fn casino_poker::games::texas_hold_em::HandProgressStep::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::HandProgressStep
+pub fn casino_poker::games::texas_hold_em::HandProgressStep::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 #[non_exhaustive] pub enum casino_poker::games::texas_hold_em::HandStartError
 pub casino_poker::games::texas_hold_em::HandStartError::ChipTotalTooLarge
 pub casino_poker::games::texas_hold_em::HandStartError::DuplicateCards
@@ -483,6 +503,8 @@ pub casino_poker::games::texas_hold_em::HandStep::CannotStart(casino_poker::game
 pub casino_poker::games::texas_hold_em::HandStep::HandComplete
 impl core::clone::Clone for casino_poker::games::texas_hold_em::HandStep
 pub fn casino_poker::games::texas_hold_em::HandStep::clone(&self) -> casino_poker::games::texas_hold_em::HandStep
+impl core::convert::From<casino_poker::games::texas_hold_em::HandStep> for casino_poker::games::texas_hold_em::HandProgressStep
+pub fn casino_poker::games::texas_hold_em::HandProgressStep::from(casino_poker::games::texas_hold_em::HandStep) -> Self
 impl core::fmt::Debug for casino_poker::games::texas_hold_em::HandStep
 pub fn casino_poker::games::texas_hold_em::HandStep::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::HandStep
@@ -560,6 +582,30 @@ impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::Decision
 pub fn casino_poker::games::texas_hold_em::DecisionId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::DecisionId
 pub fn casino_poker::games::texas_hold_em::DecisionId::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct casino_poker::games::texas_hold_em::HandEventCursor
+impl casino_poker::games::texas_hold_em::HandEventCursor
+pub fn casino_poker::games::texas_hold_em::HandEventCursor::from_parts(core::option::Option<u32>, u64, bool) -> Self
+pub fn casino_poker::games::texas_hold_em::HandEventCursor::hand_number(&self) -> core::option::Option<u32>
+pub fn casino_poker::games::texas_hold_em::HandEventCursor::new() -> Self
+pub fn casino_poker::games::texas_hold_em::HandEventCursor::next_event(&self) -> u64
+pub fn casino_poker::games::texas_hold_em::HandEventCursor::terminal_reported(&self) -> bool
+impl core::clone::Clone for casino_poker::games::texas_hold_em::HandEventCursor
+pub fn casino_poker::games::texas_hold_em::HandEventCursor::clone(&self) -> casino_poker::games::texas_hold_em::HandEventCursor
+impl core::cmp::Eq for casino_poker::games::texas_hold_em::HandEventCursor
+impl core::cmp::PartialEq for casino_poker::games::texas_hold_em::HandEventCursor
+pub fn casino_poker::games::texas_hold_em::HandEventCursor::eq(&self, &casino_poker::games::texas_hold_em::HandEventCursor) -> bool
+impl core::default::Default for casino_poker::games::texas_hold_em::HandEventCursor
+pub fn casino_poker::games::texas_hold_em::HandEventCursor::default() -> Self
+impl core::fmt::Debug for casino_poker::games::texas_hold_em::HandEventCursor
+pub fn casino_poker::games::texas_hold_em::HandEventCursor::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for casino_poker::games::texas_hold_em::HandEventCursor
+pub fn casino_poker::games::texas_hold_em::HandEventCursor::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for casino_poker::games::texas_hold_em::HandEventCursor
+impl core::marker::StructuralPartialEq for casino_poker::games::texas_hold_em::HandEventCursor
+impl serde_core::ser::Serialize for casino_poker::games::texas_hold_em::HandEventCursor
+pub fn casino_poker::games::texas_hold_em::HandEventCursor::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for casino_poker::games::texas_hold_em::HandEventCursor
+pub fn casino_poker::games::texas_hold_em::HandEventCursor::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub struct casino_poker::games::texas_hold_em::PendingAction
 pub casino_poker::games::texas_hold_em::PendingAction::decision_id: casino_poker::games::texas_hold_em::DecisionId
 pub casino_poker::games::texas_hold_em::PendingAction::player: uuid::Uuid
@@ -634,12 +680,14 @@ pub fn casino_poker::games::texas_hold_em::TexasHoldEm::current_bet(&self) -> u3
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::current_street(&self) -> core::option::Option<casino_poker::agent::Street>
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::dealer(&self) -> core::option::Option<uuid::Uuid>
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::drive_hand(&mut self) -> casino_poker::games::texas_hold_em::HandStep
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::drive_hand_progress(&mut self, &mut casino_poker::games::texas_hold_em::HandEventCursor) -> casino_poker::games::texas_hold_em::HandProgressStep
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::end_game(&mut self)
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::get_big_blind_amount(&self) -> u32
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::get_big_blind_seat_index(&self) -> usize
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::get_small_blind_amount(&self) -> u32
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::get_small_blind_seat_index(&self) -> usize
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::get_under_the_gun_seat_index(&self) -> usize
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::hand_event_cursor(&self) -> casino_poker::games::texas_hold_em::HandEventCursor
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::hand_in_progress(&self) -> bool
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::has_folded(&self, &uuid::Uuid) -> bool
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::is_all_in(&self, &uuid::Uuid) -> bool
@@ -669,6 +717,7 @@ pub fn casino_poker::games::texas_hold_em::TexasHoldEm::set_min_buy_in(&mut self
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::set_observer(&mut self, alloc::boxed::Box<dyn casino_poker::events::GameObserver>)
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::submit_action(&mut self, uuid::Uuid, casino_poker::games::texas_hold_em::DecisionId, casino_poker::betting::PlayerAction) -> core::result::Result<casino_poker::games::texas_hold_em::BettingStep, casino_poker::games::texas_hold_em::ActionSubmissionError>
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::submit_hand_action(&mut self, uuid::Uuid, casino_poker::games::texas_hold_em::DecisionId, casino_poker::betting::PlayerAction) -> core::result::Result<casino_poker::games::texas_hold_em::HandStep, casino_poker::games::texas_hold_em::ActionSubmissionError>
+pub fn casino_poker::games::texas_hold_em::TexasHoldEm::submit_hand_progress_action(&mut self, &mut casino_poker::games::texas_hold_em::HandEventCursor, uuid::Uuid, casino_poker::games::texas_hold_em::DecisionId, casino_poker::betting::PlayerAction) -> core::result::Result<casino_poker::games::texas_hold_em::HandProgressStep, casino_poker::games::texas_hold_em::ActionSubmissionError>
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::table(&self) -> casino_poker::games::texas_hold_em::TableView
 pub fn casino_poker::games::texas_hold_em::TexasHoldEm::to_act(&self) -> core::option::Option<uuid::Uuid>
 impl core::default::Default for casino_poker::games::texas_hold_em::TexasHoldEm

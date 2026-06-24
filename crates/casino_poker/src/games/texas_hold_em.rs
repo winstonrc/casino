@@ -122,6 +122,10 @@ pub enum RoundOutcome {
 pub struct DecisionId(u64);
 
 /// One identified player decision yielded by either state machine.
+///
+/// The [`PlayerView`] belongs only to `player`: it includes that player's private
+/// hole cards and other actor-specific decision context. Do not broadcast a
+/// `PendingAction` to the table.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PendingAction {
     /// Stable identity for this decision.
@@ -274,6 +278,101 @@ pub enum HandStep {
     HandComplete,
     /// A fresh hand could not start; the engine was not mutated.
     CannotStart(HandStartError),
+}
+
+/// External position in a hand's event stream.
+///
+/// Keep this alongside the serialized engine state when consuming
+/// [`HandProgressStep`]s. The cursor is intentionally external so
+/// [`TexasHoldEm`]'s serialized layout is unchanged.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub struct HandEventCursor {
+    /// Hand whose event log this cursor is positioned in.
+    hand_number: Option<u32>,
+    /// Index of the next event to yield from the current hand's event log.
+    next_event: u64,
+    /// Whether the terminal hand-complete boundary has already been yielded.
+    #[serde(default)]
+    terminal_reported: bool,
+}
+
+impl Default for HandEventCursor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HandEventCursor {
+    /// Return a cursor positioned at the beginning of the next observed hand log.
+    pub fn new() -> Self {
+        Self {
+            hand_number: None,
+            next_event: 0,
+            terminal_reported: false,
+        }
+    }
+
+    /// Rebuild a cursor from durable parts.
+    pub fn from_parts(hand_number: Option<u32>, next_event: u64, terminal_reported: bool) -> Self {
+        Self {
+            hand_number,
+            next_event,
+            terminal_reported,
+        }
+    }
+
+    /// Hand marker this cursor is currently associated with.
+    pub fn hand_number(&self) -> Option<u32> {
+        self.hand_number
+    }
+
+    /// Durable event offset within the current hand's event log.
+    pub fn next_event(&self) -> u64 {
+        self.next_event
+    }
+
+    /// Whether the terminal hand-complete boundary has already been yielded.
+    pub fn terminal_reported(&self) -> bool {
+        self.terminal_reported
+    }
+}
+
+/// One fine-grained hand progression item.
+///
+/// `Event` values are public/broadcast-safe and match [`public_events`](TexasHoldEm::public_events)
+/// redaction: private hole-card payloads are omitted, while showdown reveals remain
+/// public. `AwaitingPlayer` identifies the pending decision without carrying the
+/// acting player's private prompt; retrieve that prompt through
+/// [`TexasHoldEm::pending_action`] or [`TexasHoldEm::client_view`].
+#[non_exhaustive]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum HandProgressStep {
+    /// One newly emitted public hand event.
+    Event(GameEvent),
+    /// Paused on one identified player decision.
+    AwaitingPlayer {
+        /// Player expected to act.
+        player: Uuid,
+        /// Stable identity for this decision.
+        decision_id: DecisionId,
+    },
+    /// The hand is fully played, awarded, and ended.
+    HandComplete,
+    /// A fresh hand could not start; the engine was not mutated.
+    CannotStart(HandStartError),
+}
+
+impl From<HandStep> for HandProgressStep {
+    fn from(step: HandStep) -> Self {
+        match step {
+            HandStep::AwaitingAction(pending) => Self::AwaitingPlayer {
+                player: pending.player,
+                decision_id: pending.decision_id,
+            },
+            HandStep::HandComplete => Self::HandComplete,
+            HandStep::CannotStart(error) => Self::CannotStart(error),
+        }
+    }
 }
 
 /// The result of driving a whole hand with [`play_hand`](TexasHoldEm::play_hand):
@@ -486,6 +585,10 @@ pub struct TexasHoldEm {
     folded: HashSet<Uuid>,
     /// Players who are all-in this hand.
     all_in: HashSet<Uuid>,
+    /// Live players whose hole cards have already been publicly exposed after all
+    /// remaining action became locked.
+    #[serde(default)]
+    exposed_hole_cards: HashSet<Uuid>,
     /// Each player's two hole cards for the current hand.
     player_hands: HashMap<Uuid, Hand>,
     /// The shared community cards.
@@ -559,6 +662,7 @@ impl TexasHoldEm {
             contributed: HashMap::new(),
             folded: HashSet::new(),
             all_in: HashSet::new(),
+            exposed_hole_cards: HashSet::new(),
             player_hands: HashMap::new(),
             board: Hand::new(),
             burned: Hand::new(),
@@ -663,6 +767,52 @@ impl TexasHoldEm {
                 event => event,
             })
             .collect()
+    }
+
+    fn public_event_at(&self, index: usize) -> Option<GameEvent> {
+        self.events_for(None).into_iter().nth(index)
+    }
+
+    fn current_progress_hand_number(&self) -> Option<u32> {
+        self.event_log.first().and_then(|event| match event {
+            GameEvent::HandStarted { hand_number, .. } => Some(*hand_number),
+            _ => None,
+        })
+    }
+
+    fn next_progress_event(&self, cursor: &mut HandEventCursor) -> Option<GameEvent> {
+        let hand_number = self.current_progress_hand_number();
+        if cursor.hand_number != hand_number {
+            cursor.hand_number = hand_number;
+            cursor.next_event = 0;
+            cursor.terminal_reported = false;
+        }
+        let index = match usize::try_from(cursor.next_event) {
+            Ok(index) if index <= self.event_log.len() => index,
+            _ => {
+                cursor.next_event = 0;
+                cursor.terminal_reported = false;
+                0
+            }
+        };
+        let event = self.public_event_at(index)?;
+        cursor.next_event += 1;
+        cursor.terminal_reported = false;
+        Some(event)
+    }
+
+    fn terminal_progress_step(&self, cursor: &mut HandEventCursor) -> Option<HandProgressStep> {
+        let hand_number = self.current_progress_hand_number()?;
+        if cursor.hand_number != Some(hand_number)
+            || cursor.terminal_reported
+            || self.hand_in_progress()
+            || !matches!(self.event_log.last(), Some(GameEvent::HandComplete))
+            || cursor.next_event != u64::try_from(self.event_log.len()).unwrap_or(u64::MAX)
+        {
+            return None;
+        }
+        cursor.terminal_reported = true;
+        Some(HandProgressStep::HandComplete)
     }
 
     /// Create a new player with zero chips.
@@ -1145,6 +1295,7 @@ impl TexasHoldEm {
             || !self.contributed.is_empty()
             || !self.folded.is_empty()
             || !self.all_in.is_empty()
+            || !self.exposed_hole_cards.is_empty()
         {
             return Err(HandStartError::InvalidHandState);
         }
@@ -1200,6 +1351,7 @@ impl TexasHoldEm {
             .keys()
             .chain(self.folded.iter())
             .chain(self.all_in.iter())
+            .chain(self.exposed_hole_cards.iter())
             .chain(self.player_hands.keys())
             .all(|id| seated.contains(id));
         if !state_ids_are_seated {
@@ -1306,6 +1458,7 @@ impl TexasHoldEm {
         // hand. (Resume goes through `drive_hand`, not here, so it keeps the log.)
         self.event_log.clear();
         self.completed_betting_street = None;
+        self.exposed_hole_cards.clear();
         self.hand_number += 1;
         // Emitted before blinds are posted, so the seat stacks are pre-blind.
         let seats: Vec<SeatInfo> = self
@@ -1559,6 +1712,53 @@ impl TexasHoldEm {
         self.drive_hand_from(street, step)
     }
 
+    /// Return a cursor positioned after the events currently recorded for this
+    /// hand.
+    ///
+    /// Store the cursor outside the engine and pass it back to
+    /// [`drive_hand_progress`](Self::drive_hand_progress) or
+    /// [`submit_hand_progress_action`](Self::submit_hand_progress_action). If a
+    /// new hand clears the internal event log, the progress methods notice the
+    /// hand marker change and reset the cursor to the start of the new log.
+    pub fn hand_event_cursor(&self) -> HandEventCursor {
+        let terminal_reported = matches!(self.event_log.last(), Some(GameEvent::HandComplete));
+        HandEventCursor::from_parts(
+            self.current_progress_hand_number(),
+            u64::try_from(self.event_log.len()).unwrap_or(u64::MAX),
+            terminal_reported,
+        )
+    }
+
+    /// Drive a whole hand one progression item at a time.
+    ///
+    /// Events are yielded from the hand's real event log in order and are
+    /// public/redacted. `AwaitingPlayer` contains only the acting player and
+    /// decision identity; use [`pending_action`](Self::pending_action) or
+    /// [`client_view`](Self::client_view) to retrieve the private prompt. This
+    /// method does not replay the log or notify observers itself, so it does not
+    /// duplicate observer notifications emitted by normal engine advancement.
+    /// After the final public [`GameEvent::HandComplete`] event has been drained,
+    /// the next call returns [`HandProgressStep::HandComplete`]. A subsequent call
+    /// follows [`drive_hand`](Self::drive_hand) by starting a fresh hand when
+    /// possible.
+    pub fn drive_hand_progress(&mut self, cursor: &mut HandEventCursor) -> HandProgressStep {
+        if let Some(event) = self.next_progress_event(cursor) {
+            return HandProgressStep::Event(event);
+        }
+        if let Some(step) = self.terminal_progress_step(cursor) {
+            return step;
+        }
+
+        let step = self.drive_hand();
+        if let Some(event) = self.next_progress_event(cursor) {
+            return HandProgressStep::Event(event);
+        }
+        if let Some(step) = self.terminal_progress_step(cursor) {
+            return step;
+        }
+        step.into()
+    }
+
     /// Submit the player, decision identity, and action yielded by
     /// [`drive_hand`](Self::drive_hand), returning the next [`HandStep`].
     ///
@@ -1578,6 +1778,80 @@ impl TexasHoldEm {
             .ok_or(ActionSubmissionError::NoActionPending)?;
         let step = self.submit_action(player, decision_id, action)?;
         Ok(self.drive_hand_from(street, step))
+    }
+
+    fn validate_action_submission(
+        &self,
+        player: Uuid,
+        decision_id: DecisionId,
+        action: PlayerAction,
+    ) -> Result<(), ActionSubmissionError> {
+        self.validate_roster_and_bankroll()
+            .map_err(ActionSubmissionError::InvalidState)?;
+        let active = self
+            .betting
+            .as_ref()
+            .ok_or(ActionSubmissionError::NoActionPending)?;
+        let (expected_player, expected_decision) = active
+            .awaiting
+            .ok_or(ActionSubmissionError::NoActionPending)?;
+        if decision_id != expected_decision {
+            return Err(ActionSubmissionError::StaleDecision {
+                expected: expected_decision,
+                submitted: decision_id,
+            });
+        }
+        if player != expected_player {
+            return Err(ActionSubmissionError::WrongPlayer {
+                expected: expected_player,
+                submitted: player,
+            });
+        }
+
+        let chips = self.players.get(&player).map_or(0, |p| p.chips);
+        let resolved = resolve_action(
+            action,
+            chips,
+            active.round.committed(player),
+            active.round.current_bet,
+            active.round.last_raise_increment,
+        )
+        .map_err(ActionSubmissionError::IllegalAction)?;
+        if resolved.raised_to.is_some() && !active.round.may_raise(player) {
+            return Err(ActionSubmissionError::IllegalAction(
+                ActionError::RaiseNotAllowed,
+            ));
+        }
+        Ok(())
+    }
+
+    /// Submit an action for a pending [`HandProgressStep::AwaitingPlayer`] and
+    /// return the next progression item.
+    ///
+    /// The submitted player, decision identity, and action are validated before
+    /// any mutation or event drainage. If `cursor` still has an undrained public
+    /// event, a valid submission returns that event without applying the action.
+    /// Callers should drain it first, then resubmit the same player, decision
+    /// identity, and action. This keeps public events ordered before any mutation
+    /// caused by the action. Returned `Event` payloads are public/redacted. A
+    /// returned `AwaitingPlayer` identifies the next acting player without
+    /// exposing their private prompt.
+    pub fn submit_hand_progress_action(
+        &mut self,
+        cursor: &mut HandEventCursor,
+        player: Uuid,
+        decision_id: DecisionId,
+        action: PlayerAction,
+    ) -> Result<HandProgressStep, ActionSubmissionError> {
+        self.validate_action_submission(player, decision_id, action)?;
+        if let Some(event) = self.next_progress_event(cursor) {
+            return Ok(HandProgressStep::Event(event));
+        }
+        let step = self.submit_hand_action(player, decision_id, action)?;
+        if let Some(event) = self.next_progress_event(cursor) {
+            return Ok(HandProgressStep::Event(event));
+        }
+        Ok(step.into())
     }
 
     /// Blocking convenience over [`Self::drive_hand`]/[`Self::submit_hand_action`]:
@@ -1667,6 +1941,39 @@ impl TexasHoldEm {
                 },
                 BettingStep::CannotStart(error) => return HandStep::CannotStart(error),
             }
+        }
+    }
+
+    fn expose_locked_showdown_holes(&mut self) {
+        if self.board.cards.len() >= 5 {
+            return;
+        }
+
+        let live: Vec<Uuid> = self
+            .seats
+            .iter()
+            .copied()
+            .filter(|id| !self.folded.contains(id))
+            .collect();
+        if live.len() <= 1 {
+            return;
+        }
+        let actionable_live_count = live.iter().filter(|id| !self.all_in.contains(id)).count();
+        if actionable_live_count > 1 {
+            return;
+        }
+
+        for id in live {
+            if !self.exposed_hole_cards.insert(id) {
+                continue;
+            }
+            let Some(player) = self.players.get(&id).map(Player::to_ref) else {
+                continue;
+            };
+            let Some(hole) = self.player_hands.get(&id).map(|hand| hand.cards.clone()) else {
+                continue;
+            };
+            self.emit(GameEvent::HoleCardsExposed { player, hole });
         }
     }
 
@@ -1910,6 +2217,7 @@ impl TexasHoldEm {
                 || (actionable.len() == 1 && active.round.owed(actionable[0]) == 0)
             {
                 self.completed_betting_street = Some(active.street);
+                self.expose_locked_showdown_holes();
                 return BettingStep::RoundComplete(RoundOutcome::Continue);
             }
             if active.round.is_closed() {
@@ -2238,6 +2546,7 @@ impl TexasHoldEm {
         self.contributed.clear();
         self.folded.clear();
         self.all_in.clear();
+        self.exposed_hole_cards.clear();
         self.betting = None;
         self.completed_betting_street = None;
     }
@@ -3927,6 +4236,343 @@ mod tests {
     }
 
     #[test]
+    fn run_betting_round_exposes_locked_showdown_holes() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 50, 75]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        let mut agents = agents_all(&game, || Box::new(ShoveAgent));
+
+        game.begin_hand().unwrap();
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut agents),
+            Ok(RoundOutcome::Continue)
+        );
+
+        let events = log.borrow();
+        let first_exposed = events
+            .iter()
+            .position(|event| matches!(event, GameEvent::HoleCardsExposed { .. }))
+            .expect("locked all-in players expose hole cards before the run-out");
+        assert!(
+            events[first_exposed..]
+                .iter()
+                .all(|event| !matches!(event, GameEvent::StreetDealt { .. })),
+            "manual round driving emits exposure before the caller deals more board cards"
+        );
+    }
+
+    #[test]
+    fn restored_locked_showdown_does_not_repeat_hole_exposure() {
+        let original_log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 17);
+        seat_players(&mut game, &[100, 50, 75]);
+        game.set_observer(Box::new(RecordingObserver {
+            log: original_log.clone(),
+        }));
+        let mut agents = agents_all(&game, || Box::new(ShoveAgent));
+
+        game.begin_hand().unwrap();
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut agents),
+            Ok(RoundOutcome::Continue)
+        );
+        assert_eq!(
+            original_log
+                .borrow()
+                .iter()
+                .filter(|event| matches!(event, GameEvent::HoleCardsExposed { .. }))
+                .count(),
+            3,
+            "locked showdown holes are exposed before save"
+        );
+
+        let json = serde_json::to_string(&game).unwrap();
+        let mut restored: TexasHoldEm = serde_json::from_str(&json).unwrap();
+        let restored_log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        restored.set_observer(Box::new(RecordingObserver {
+            log: restored_log.clone(),
+        }));
+
+        let mut step = restored.drive_hand();
+        while let HandStep::AwaitingAction(pending) = step {
+            let action = ShoveAgent.decide(&pending.view).unwrap();
+            step = restored
+                .submit_hand_action(pending.player, pending.decision_id, action)
+                .unwrap();
+        }
+        assert!(matches!(step, HandStep::HandComplete));
+
+        assert_eq!(
+            restored_log
+                .borrow()
+                .iter()
+                .filter(|event| matches!(event, GameEvent::HoleCardsExposed { .. }))
+                .count(),
+            0,
+            "restored run-out must not repeat exposure events already serialized"
+        );
+        assert!(
+            restored_log
+                .borrow()
+                .iter()
+                .any(|event| matches!(event, GameEvent::StreetDealt { .. })),
+            "restored hand still runs out the remaining board"
+        );
+    }
+
+    #[test]
+    fn run_betting_round_exposes_when_covering_stack_has_chips_behind() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 2, 1]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        let mut agents = agents_all(&game, || Box::new(CallingAgent));
+
+        game.begin_hand().unwrap();
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut agents),
+            Ok(RoundOutcome::Continue)
+        );
+
+        assert!(
+            !game.is_all_in(&ids[0]),
+            "the covering stack keeps chips behind after matching the short all-ins"
+        );
+        assert!(game.is_all_in(&ids[1]));
+        assert!(game.is_all_in(&ids[2]));
+        let events = log.borrow();
+        let exposed = events
+            .iter()
+            .filter(|event| matches!(event, GameEvent::HoleCardsExposed { .. }))
+            .count();
+        assert_eq!(
+            exposed, 3,
+            "all live players expose once betting is locked with one covering stack"
+        );
+    }
+
+    #[test]
+    fn run_betting_round_keeps_holes_hidden_when_live_players_can_still_bet() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 100, 1]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        let mut agents = agents_all(&game, || Box::new(CallingAgent));
+
+        game.begin_hand().unwrap();
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut agents),
+            Ok(RoundOutcome::Continue)
+        );
+
+        assert!(!game.is_all_in(&ids[0]));
+        assert!(!game.is_all_in(&ids[1]));
+        assert!(game.is_all_in(&ids[2]));
+        assert!(
+            log.borrow()
+                .iter()
+                .all(|event| !matches!(event, GameEvent::HoleCardsExposed { .. })),
+            "one short all-in does not expose cards while multiple live players can bet future streets"
+        );
+    }
+
+    #[test]
+    fn full_board_showdown_does_not_emit_early_hole_exposure() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 100]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        game.board = Hand::new_from_cards(vec![
+            card(Rank::Ace, Suit::Spade),
+            card(Rank::King, Suit::Heart),
+            card(Rank::Queen, Suit::Club),
+            card(Rank::Jack, Suit::Diamond),
+            card(Rank::Ten, Suit::Spade),
+        ]);
+        game.player_hands.insert(
+            ids[0],
+            Hand::new_from_cards(vec![
+                card(Rank::Ace, Suit::Heart),
+                card(Rank::King, Suit::Club),
+            ]),
+        );
+        game.player_hands.insert(
+            ids[1],
+            Hand::new_from_cards(vec![
+                card(Rank::Queen, Suit::Diamond),
+                card(Rank::Queen, Suit::Heart),
+            ]),
+        );
+        game.all_in.extend(ids);
+
+        game.expose_locked_showdown_holes();
+
+        assert!(
+            log.borrow()
+                .iter()
+                .all(|event| !matches!(event, GameEvent::HoleCardsExposed { .. })),
+            "after the river there is no early run-out exposure to emit"
+        );
+    }
+
+    #[test]
+    fn exposed_hole_card_state_must_reference_seated_players() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
+        game.exposed_hole_cards.insert(Uuid::nil());
+
+        assert!(matches!(
+            game.drive_hand(),
+            HandStep::CannotStart(HandStartError::InvalidRoster)
+        ));
+    }
+
+    #[test]
+    fn hand_progress_yields_all_in_runout_events_one_at_a_time() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 50, 75]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        let mut cursor = HandEventCursor::default();
+        let mut events = Vec::new();
+        let mut next = Some(game.drive_hand_progress(&mut cursor));
+
+        loop {
+            match next.take().unwrap() {
+                HandProgressStep::Event(event) => {
+                    let hand_complete = matches!(event, GameEvent::HandComplete);
+                    events.push(event);
+                    if hand_complete {
+                        break;
+                    }
+                    next = Some(game.drive_hand_progress(&mut cursor));
+                }
+                HandProgressStep::AwaitingPlayer {
+                    player,
+                    decision_id,
+                } => {
+                    let pending = game.pending_action().expect("private prompt is available");
+                    assert_eq!(pending.player, player);
+                    assert_eq!(pending.decision_id, decision_id);
+                    let action = ShoveAgent.decide(&pending.view).unwrap();
+                    next = Some(
+                        game.submit_hand_progress_action(&mut cursor, player, decision_id, action)
+                            .unwrap(),
+                    );
+                }
+                HandProgressStep::HandComplete => {
+                    panic!("progress should yield the public HandComplete event")
+                }
+                HandProgressStep::CannotStart(error) => {
+                    panic!("hand should start and finish: {error}")
+                }
+            }
+        }
+
+        assert_eq!(
+            events,
+            *log.borrow(),
+            "progress drains the real event log without duplicate observer notifications"
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::StreetDealt { .. }))
+                .count(),
+            3,
+            "flop, turn, and river are yielded as separate events"
+        );
+        let position = |pred: fn(&GameEvent) -> bool| events.iter().position(pred).unwrap();
+        let last = |pred: fn(&GameEvent) -> bool| events.iter().rposition(pred).unwrap();
+        let first_exposed = position(|event| matches!(event, GameEvent::HoleCardsExposed { .. }));
+        let last_exposed = last(|event| matches!(event, GameEvent::HoleCardsExposed { .. }));
+        let first_street = position(|event| matches!(event, GameEvent::StreetDealt { .. }));
+        let last_street = last(|event| matches!(event, GameEvent::StreetDealt { .. }));
+        let showdown = position(|event| matches!(event, GameEvent::Showdown { .. }));
+        let first_reveal = position(|event| matches!(event, GameEvent::ShowdownReveal { .. }));
+        let first_award = position(|event| matches!(event, GameEvent::PotAwarded { .. }));
+        let complete = position(|event| matches!(event, GameEvent::HandComplete));
+
+        assert!(first_exposed < last_exposed);
+        assert!(last_exposed < first_street);
+        assert!(first_street < last_street);
+        assert!(last_street < showdown);
+        assert!(showdown < first_reveal);
+        assert!(first_reveal < first_award);
+        assert!(first_award < complete);
+        assert!(matches!(events.last(), Some(GameEvent::HandComplete)));
+    }
+
+    #[test]
+    fn hand_progress_reports_terminal_step_after_final_event_is_drained() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 31);
+        seat_players(&mut game, &[100, 100, 100]);
+        let mut cursor = HandEventCursor::default();
+
+        let mut step = game.drive_hand_progress(&mut cursor);
+        let first_hand_number = loop {
+            match step {
+                HandProgressStep::Event(GameEvent::HandStarted { hand_number, .. }) => {
+                    break hand_number;
+                }
+                HandProgressStep::Event(_) => {
+                    step = game.drive_hand_progress(&mut cursor);
+                }
+                HandProgressStep::AwaitingPlayer { .. } => {
+                    panic!("hand should emit its start before awaiting action")
+                }
+                HandProgressStep::HandComplete => panic!("hand completed before it started"),
+                HandProgressStep::CannotStart(error) => panic!("hand should start: {error}"),
+            }
+        };
+
+        loop {
+            match step {
+                HandProgressStep::Event(GameEvent::HandComplete) => break,
+                HandProgressStep::Event(_) => {
+                    step = game.drive_hand_progress(&mut cursor);
+                }
+                HandProgressStep::AwaitingPlayer {
+                    player,
+                    decision_id,
+                } => {
+                    let view = game.client_view(player);
+                    let pending = view
+                        .pending_action
+                        .expect("acting player's private prompt is available");
+                    assert_eq!(pending.decision_id, decision_id);
+                    let action = ShoveAgent.decide(&pending.view).unwrap();
+                    step = game
+                        .submit_hand_progress_action(&mut cursor, player, decision_id, action)
+                        .unwrap();
+                }
+                HandProgressStep::HandComplete => {
+                    panic!("final HandComplete event should be yielded before terminal step")
+                }
+                HandProgressStep::CannotStart(error) => {
+                    panic!("hand should finish cleanly: {error}")
+                }
+            }
+        }
+
+        assert!(!game.hand_in_progress(), "first hand is fully resolved");
+
+        assert!(matches!(
+            game.drive_hand_progress(&mut cursor),
+            HandProgressStep::HandComplete
+        ));
+
+        match game.drive_hand_progress(&mut cursor) {
+            HandProgressStep::Event(GameEvent::HandStarted { hand_number, .. }) => {
+                assert_eq!(hand_number, first_hand_number + 1);
+            }
+            other => panic!("expected next hand to start after draining completion, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn play_hand_awards_without_flop_when_all_fold_preflop() {
         let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
@@ -4026,6 +4672,240 @@ mod tests {
         );
         assert_eq!(game.board().cards, board_before, "no re-deal");
         assert_eq!(game.deck_len(), deck_before, "no cards drawn");
+    }
+
+    #[test]
+    fn hand_progress_cursor_round_trips_through_json() {
+        let cursor = HandEventCursor::from_parts(Some(3), 7, true);
+        let json = serde_json::to_string(&cursor).unwrap();
+        let restored: HandEventCursor = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored, cursor);
+        assert_eq!(restored.hand_number(), Some(3));
+        assert_eq!(restored.next_event(), 7);
+        assert!(restored.terminal_reported());
+    }
+
+    #[test]
+    fn hand_progress_cursor_parts_preserve_terminal_boundary() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 31);
+        seat_players(&mut game, &[100, 100, 100]);
+        let mut cursor = HandEventCursor::default();
+        let mut first_hand_number = None;
+
+        loop {
+            match game.drive_hand_progress(&mut cursor) {
+                HandProgressStep::Event(GameEvent::HandStarted { hand_number, .. }) => {
+                    first_hand_number = Some(hand_number);
+                }
+                HandProgressStep::Event(GameEvent::HandComplete) => {
+                    break;
+                }
+                HandProgressStep::Event(_) => {}
+                HandProgressStep::AwaitingPlayer {
+                    player,
+                    decision_id,
+                } => {
+                    let pending = game.pending_action().unwrap();
+                    let action = ShoveAgent.decide(&pending.view).unwrap();
+                    game.submit_hand_progress_action(&mut cursor, player, decision_id, action)
+                        .unwrap();
+                }
+                HandProgressStep::HandComplete => panic!("terminal step precedes final event"),
+                HandProgressStep::CannotStart(error) => panic!("hand should start: {error}"),
+            }
+        }
+        assert!(matches!(
+            game.drive_hand_progress(&mut cursor),
+            HandProgressStep::HandComplete
+        ));
+        assert!(cursor.terminal_reported());
+
+        let mut rebuilt = HandEventCursor::from_parts(
+            cursor.hand_number(),
+            cursor.next_event(),
+            cursor.terminal_reported(),
+        );
+        let first_hand_number = first_hand_number.expect("hand start was yielded");
+        match game.drive_hand_progress(&mut rebuilt) {
+            HandProgressStep::Event(GameEvent::HandStarted { hand_number, .. }) => {
+                assert_eq!(hand_number, first_hand_number + 1);
+            }
+            other => panic!("rebuilt cursor should advance to next hand, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hand_event_cursor_after_completed_log_starts_after_terminal_boundary() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 31);
+        seat_players(&mut game, &[100, 100, 100]);
+        let mut cursor = HandEventCursor::default();
+        let mut first_hand_number = None;
+
+        loop {
+            match game.drive_hand_progress(&mut cursor) {
+                HandProgressStep::Event(GameEvent::HandStarted { hand_number, .. }) => {
+                    first_hand_number = Some(hand_number);
+                }
+                HandProgressStep::Event(GameEvent::HandComplete) => break,
+                HandProgressStep::Event(_) => {}
+                HandProgressStep::AwaitingPlayer {
+                    player,
+                    decision_id,
+                } => {
+                    let pending = game.pending_action().unwrap();
+                    let action = ShoveAgent.decide(&pending.view).unwrap();
+                    game.submit_hand_progress_action(&mut cursor, player, decision_id, action)
+                        .unwrap();
+                }
+                HandProgressStep::HandComplete => panic!("terminal step precedes final event"),
+                HandProgressStep::CannotStart(error) => panic!("hand should start: {error}"),
+            }
+        }
+
+        let mut cursor = game.hand_event_cursor();
+        assert!(cursor.terminal_reported());
+
+        let first_hand_number = first_hand_number.expect("hand start was yielded");
+        match game.drive_hand_progress(&mut cursor) {
+            HandProgressStep::Event(GameEvent::HandStarted { hand_number, .. }) => {
+                assert_eq!(hand_number, first_hand_number + 1);
+            }
+            other => panic!("cursor should start the next hand, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hand_progress_events_use_public_redaction() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 23);
+        let ids = seat_players(&mut game, &[100, 100, 100]);
+        game.set_hero(ids[0]);
+        let mut cursor = HandEventCursor::default();
+
+        loop {
+            match game.drive_hand_progress(&mut cursor) {
+                HandProgressStep::Event(GameEvent::HoleCardsDealt { hero }) => {
+                    assert_eq!(hero, None);
+                    break;
+                }
+                HandProgressStep::Event(_) => {}
+                HandProgressStep::AwaitingPlayer { .. } => {
+                    panic!("hole-card event should be yielded before the first action")
+                }
+                HandProgressStep::HandComplete => panic!("hand completed before hole-card event"),
+                HandProgressStep::CannotStart(error) => panic!("hand should start: {error}"),
+            }
+        }
+    }
+
+    #[test]
+    fn hand_progress_awaiting_player_is_public_safe_marker() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 29);
+        seat_players(&mut game, &[100, 100]);
+        let mut cursor = HandEventCursor::default();
+
+        loop {
+            match game.drive_hand_progress(&mut cursor) {
+                HandProgressStep::Event(_) => {}
+                HandProgressStep::AwaitingPlayer {
+                    player,
+                    decision_id,
+                } => {
+                    let pending = game
+                        .pending_action()
+                        .expect("private prompt remains available");
+                    assert_eq!(pending.player, player);
+                    assert_eq!(pending.decision_id, decision_id);
+                    assert!(game.client_view(player).pending_action.is_some());
+                    break;
+                }
+                HandProgressStep::HandComplete => panic!("hand completed before action"),
+                HandProgressStep::CannotStart(error) => panic!("hand should start: {error}"),
+            }
+        }
+    }
+
+    #[test]
+    fn submit_hand_progress_action_drains_pending_event_before_mutating() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 29);
+        seat_players(&mut game, &[100, 100]);
+        let mut cursor = HandEventCursor::default();
+        let HandStep::AwaitingAction(pending) = game.drive_hand() else {
+            panic!("expected a pending action");
+        };
+        assert_eq!(
+            cursor.next_event(),
+            0,
+            "cursor has not drained hand-start event"
+        );
+
+        let before = serde_json::to_string(&game).unwrap();
+        let step = game
+            .submit_hand_progress_action(
+                &mut cursor,
+                pending.player,
+                pending.decision_id,
+                PlayerAction::Call,
+            )
+            .unwrap();
+
+        assert!(matches!(
+            step,
+            HandProgressStep::Event(GameEvent::HandStarted { .. })
+        ));
+        assert_eq!(
+            serde_json::to_string(&game).unwrap(),
+            before,
+            "action is not applied until earlier events are drained"
+        );
+        assert!(game.pending_action().is_some());
+    }
+
+    #[test]
+    fn submit_hand_progress_action_validates_before_draining_pending_event() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 29);
+        let ids = seat_players(&mut game, &[100, 100]);
+        let mut cursor = HandEventCursor::default();
+        let HandStep::AwaitingAction(pending) = game.drive_hand() else {
+            panic!("expected a pending action");
+        };
+        let other = *ids.iter().find(|&&id| id != pending.player).unwrap();
+
+        let before = serde_json::to_string(&game).unwrap();
+        let error = game
+            .submit_hand_progress_action(
+                &mut cursor,
+                other,
+                pending.decision_id,
+                PlayerAction::Call,
+            )
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ActionSubmissionError::WrongPlayer {
+                expected,
+                submitted
+            } if expected == pending.player && submitted == other
+        ));
+        assert_eq!(cursor.next_event(), 0, "lagging cursor was not drained");
+        assert_eq!(
+            serde_json::to_string(&game).unwrap(),
+            before,
+            "invalid submission is rejected without mutation"
+        );
+    }
+
+    #[test]
+    fn drive_hand_behavior_is_unchanged_after_progress_api_addition() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 29);
+        seat_players(&mut game, &[100, 100]);
+        let HandStep::AwaitingAction(pending) = game.drive_hand() else {
+            panic!("drive_hand should still yield an action boundary");
+        };
+        assert!(matches!(
+            game.submit_hand_action(pending.player, pending.decision_id, PlayerAction::Call),
+            Ok(HandStep::AwaitingAction(_))
+        ));
     }
 
     #[test]
