@@ -585,6 +585,10 @@ pub struct TexasHoldEm {
     folded: HashSet<Uuid>,
     /// Players who are all-in this hand.
     all_in: HashSet<Uuid>,
+    /// Live players whose hole cards have already been publicly exposed after all
+    /// remaining action became locked.
+    #[serde(default)]
+    exposed_hole_cards: HashSet<Uuid>,
     /// Each player's two hole cards for the current hand.
     player_hands: HashMap<Uuid, Hand>,
     /// The shared community cards.
@@ -658,6 +662,7 @@ impl TexasHoldEm {
             contributed: HashMap::new(),
             folded: HashSet::new(),
             all_in: HashSet::new(),
+            exposed_hole_cards: HashSet::new(),
             player_hands: HashMap::new(),
             board: Hand::new(),
             burned: Hand::new(),
@@ -1290,6 +1295,7 @@ impl TexasHoldEm {
             || !self.contributed.is_empty()
             || !self.folded.is_empty()
             || !self.all_in.is_empty()
+            || !self.exposed_hole_cards.is_empty()
         {
             return Err(HandStartError::InvalidHandState);
         }
@@ -1345,6 +1351,7 @@ impl TexasHoldEm {
             .keys()
             .chain(self.folded.iter())
             .chain(self.all_in.iter())
+            .chain(self.exposed_hole_cards.iter())
             .chain(self.player_hands.keys())
             .all(|id| seated.contains(id));
         if !state_ids_are_seated {
@@ -1451,6 +1458,7 @@ impl TexasHoldEm {
         // hand. (Resume goes through `drive_hand`, not here, so it keeps the log.)
         self.event_log.clear();
         self.completed_betting_street = None;
+        self.exposed_hole_cards.clear();
         self.hand_number += 1;
         // Emitted before blinds are posted, so the seat stacks are pre-blind.
         let seats: Vec<SeatInfo> = self
@@ -1936,6 +1944,39 @@ impl TexasHoldEm {
         }
     }
 
+    fn expose_locked_showdown_holes(&mut self) {
+        if self.board.cards.len() >= 5 {
+            return;
+        }
+
+        let live: Vec<Uuid> = self
+            .seats
+            .iter()
+            .copied()
+            .filter(|id| !self.folded.contains(id))
+            .collect();
+        if live.len() <= 1 {
+            return;
+        }
+        let actionable_live_count = live.iter().filter(|id| !self.all_in.contains(id)).count();
+        if actionable_live_count > 1 {
+            return;
+        }
+
+        for id in live {
+            if !self.exposed_hole_cards.insert(id) {
+                continue;
+            }
+            let Some(player) = self.players.get(&id).map(Player::to_ref) else {
+                continue;
+            };
+            let Some(hole) = self.player_hands.get(&id).map(|hand| hand.cards.clone()) else {
+                continue;
+            };
+            self.emit(GameEvent::HoleCardsExposed { player, hole });
+        }
+    }
+
     /// The street whose betting an in-progress hand should (re)open, inferred from
     /// the community cards already dealt. Only used on the defensive resume path in
     /// [`drive_hand`] (a hand in progress with no active betting round).
@@ -2176,6 +2217,7 @@ impl TexasHoldEm {
                 || (actionable.len() == 1 && active.round.owed(actionable[0]) == 0)
             {
                 self.completed_betting_street = Some(active.street);
+                self.expose_locked_showdown_holes();
                 return BettingStep::RoundComplete(RoundOutcome::Continue);
             }
             if active.round.is_closed() {
@@ -2504,6 +2546,7 @@ impl TexasHoldEm {
         self.contributed.clear();
         self.folded.clear();
         self.all_in.clear();
+        self.exposed_hole_cards.clear();
         self.betting = None;
         self.completed_betting_street = None;
     }
@@ -4193,6 +4236,141 @@ mod tests {
     }
 
     #[test]
+    fn run_betting_round_exposes_locked_showdown_holes() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 50, 75]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        let mut agents = agents_all(&game, || Box::new(ShoveAgent));
+
+        game.begin_hand().unwrap();
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut agents),
+            Ok(RoundOutcome::Continue)
+        );
+
+        let events = log.borrow();
+        let first_exposed = events
+            .iter()
+            .position(|event| matches!(event, GameEvent::HoleCardsExposed { .. }))
+            .expect("locked all-in players expose hole cards before the run-out");
+        assert!(
+            events[first_exposed..]
+                .iter()
+                .all(|event| !matches!(event, GameEvent::StreetDealt { .. })),
+            "manual round driving emits exposure before the caller deals more board cards"
+        );
+    }
+
+    #[test]
+    fn run_betting_round_exposes_when_covering_stack_has_chips_behind() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 2, 1]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        let mut agents = agents_all(&game, || Box::new(CallingAgent));
+
+        game.begin_hand().unwrap();
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut agents),
+            Ok(RoundOutcome::Continue)
+        );
+
+        assert!(
+            !game.is_all_in(&ids[0]),
+            "the covering stack keeps chips behind after matching the short all-ins"
+        );
+        assert!(game.is_all_in(&ids[1]));
+        assert!(game.is_all_in(&ids[2]));
+        let events = log.borrow();
+        let exposed = events
+            .iter()
+            .filter(|event| matches!(event, GameEvent::HoleCardsExposed { .. }))
+            .count();
+        assert_eq!(
+            exposed, 3,
+            "all live players expose once betting is locked with one covering stack"
+        );
+    }
+
+    #[test]
+    fn run_betting_round_keeps_holes_hidden_when_live_players_can_still_bet() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 100, 1]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        let mut agents = agents_all(&game, || Box::new(CallingAgent));
+
+        game.begin_hand().unwrap();
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut agents),
+            Ok(RoundOutcome::Continue)
+        );
+
+        assert!(!game.is_all_in(&ids[0]));
+        assert!(!game.is_all_in(&ids[1]));
+        assert!(game.is_all_in(&ids[2]));
+        assert!(
+            log.borrow()
+                .iter()
+                .all(|event| !matches!(event, GameEvent::HoleCardsExposed { .. })),
+            "one short all-in does not expose cards while multiple live players can bet future streets"
+        );
+    }
+
+    #[test]
+    fn full_board_showdown_does_not_emit_early_hole_exposure() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        let ids = seat_players(&mut game, &[100, 100]);
+        game.set_observer(Box::new(RecordingObserver { log: log.clone() }));
+        game.board = Hand::new_from_cards(vec![
+            card(Rank::Ace, Suit::Spade),
+            card(Rank::King, Suit::Heart),
+            card(Rank::Queen, Suit::Club),
+            card(Rank::Jack, Suit::Diamond),
+            card(Rank::Ten, Suit::Spade),
+        ]);
+        game.player_hands.insert(
+            ids[0],
+            Hand::new_from_cards(vec![
+                card(Rank::Ace, Suit::Heart),
+                card(Rank::King, Suit::Club),
+            ]),
+        );
+        game.player_hands.insert(
+            ids[1],
+            Hand::new_from_cards(vec![
+                card(Rank::Queen, Suit::Diamond),
+                card(Rank::Queen, Suit::Heart),
+            ]),
+        );
+        game.all_in.extend(ids);
+
+        game.expose_locked_showdown_holes();
+
+        assert!(
+            log.borrow()
+                .iter()
+                .all(|event| !matches!(event, GameEvent::HoleCardsExposed { .. })),
+            "after the river there is no early run-out exposure to emit"
+        );
+    }
+
+    #[test]
+    fn exposed_hole_card_state_must_reference_seated_players() {
+        let mut game = TexasHoldEm::new(0, 10, 1, 2);
+        seat_players(&mut game, &[100, 100]);
+        game.begin_hand().unwrap();
+        game.exposed_hole_cards.insert(Uuid::nil());
+
+        assert!(matches!(
+            game.drive_hand(),
+            HandStep::CannotStart(HandStartError::InvalidRoster)
+        ));
+    }
+
+    #[test]
     fn hand_progress_yields_all_in_runout_events_one_at_a_time() {
         let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
@@ -4249,6 +4427,8 @@ mod tests {
         );
         let position = |pred: fn(&GameEvent) -> bool| events.iter().position(pred).unwrap();
         let last = |pred: fn(&GameEvent) -> bool| events.iter().rposition(pred).unwrap();
+        let first_exposed = position(|event| matches!(event, GameEvent::HoleCardsExposed { .. }));
+        let last_exposed = last(|event| matches!(event, GameEvent::HoleCardsExposed { .. }));
         let first_street = position(|event| matches!(event, GameEvent::StreetDealt { .. }));
         let last_street = last(|event| matches!(event, GameEvent::StreetDealt { .. }));
         let showdown = position(|event| matches!(event, GameEvent::Showdown { .. }));
@@ -4256,6 +4436,8 @@ mod tests {
         let first_award = position(|event| matches!(event, GameEvent::PotAwarded { .. }));
         let complete = position(|event| matches!(event, GameEvent::HandComplete));
 
+        assert!(first_exposed < last_exposed);
+        assert!(last_exposed < first_street);
         assert!(first_street < last_street);
         assert!(last_street < showdown);
         assert!(showdown < first_reveal);

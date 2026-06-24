@@ -154,6 +154,16 @@ pub enum GameEvent {
         /// Chips returned.
         amount: u32,
     },
+    /// A live player's hole cards were exposed because betting is locked and the
+    /// remaining players are committed to showdown. This can happen before the
+    /// remaining board cards are dealt, so it intentionally carries no final hand
+    /// value.
+    HoleCardsExposed {
+        /// Player exposing their hand.
+        player: PlayerRef,
+        /// The player's two hole cards.
+        hole: Vec<Card>,
+    },
     /// Two or more players reached a showdown. Emitted once, after the final
     /// betting round and before any [`ShowdownReveal`](GameEvent::ShowdownReveal),
     /// carrying the final board and pot so a front-end can re-show the table the
@@ -346,6 +356,13 @@ mod tests {
                     to: 10,
                     all_in: true,
                 },
+            },
+            GameEvent::HoleCardsExposed {
+                player: pref("Bob"),
+                hole: vec![
+                    Card::new(Rank::Ace, Suit::Spade),
+                    Card::new(Rank::King, Suit::Heart),
+                ],
             },
             GameEvent::Showdown {
                 board: vec![

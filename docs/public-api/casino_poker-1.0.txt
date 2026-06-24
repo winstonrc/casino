@@ -312,6 +312,9 @@ pub casino_poker::events::GameEvent::HandStarted::seats: alloc::vec::Vec<casino_
 pub casino_poker::events::GameEvent::HandStarted::small_blind: u32
 pub casino_poker::events::GameEvent::HoleCardsDealt
 pub casino_poker::events::GameEvent::HoleCardsDealt::hero: core::option::Option<(casino_poker::player::PlayerRef, alloc::vec::Vec<casino_cards::card::Card>)>
+pub casino_poker::events::GameEvent::HoleCardsExposed
+pub casino_poker::events::GameEvent::HoleCardsExposed::hole: alloc::vec::Vec<casino_cards::card::Card>
+pub casino_poker::events::GameEvent::HoleCardsExposed::player: casino_poker::player::PlayerRef
 pub casino_poker::events::GameEvent::PotAwarded
 pub casino_poker::events::GameEvent::PotAwarded::amount: u32
 pub casino_poker::events::GameEvent::PotAwarded::hand: core::option::Option<casino_poker::hand_rankings::ComparableHand>

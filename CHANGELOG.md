@@ -16,6 +16,10 @@ crate follows [Semantic Versioning](https://semver.org/).
   `drive_hand_progress`, `HandProgressStep::Event`, and
   `submit_hand_progress_action`, allowing downstream consumers to drain one
   public/redacted event at a time while keeping a durable external event cursor.
+- `GameEvent::HoleCardsExposed`, emitted when all remaining live players are
+  committed to showdown before the board has fully run out. It reveals only hole
+  cards, not final hand strength, so UIs can show exposed hands at the real
+  all-in moment without spoiling future board cards.
 - Public-safe action prompts through `HandProgressStep::AwaitingPlayer`, which
   exposes only the acting player and `DecisionId`. Retrieve the private
   `PendingAction` prompt through `pending_action()` or

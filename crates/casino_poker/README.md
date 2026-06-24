@@ -192,6 +192,10 @@ Hidden-information rule of thumb: `HandProgressStep::Event`, `table()`, and
 `public_events()` are suitable for shared streams. `PendingAction` and the
 `pending_action` field inside `ClientView` contain the actor's private decision
 context, including their hole cards, and should only be delivered to that player.
+When all remaining live players are all-in before the board is complete, the
+progress stream emits `HoleCardsExposed` before the remaining `StreetDealt`
+events. That event carries only public hole cards; final made-hand values remain
+reserved for `ShowdownReveal` after the full board is known.
 
 For **save/resume and reconnection**, `TexasHoldEm` is `serde`-serializable: persist
 it mid-hand and restore it to continue from the exact spot (re-attach an observer
@@ -245,14 +249,18 @@ impl GameObserver for Printer {
 Notable events:
 
 - Player-bearing events (`BlindPosted`, `ActionTaken`, `UncalledBetReturned`,
-  `ShowdownReveal`, `PotAwarded`) identify the player by a `PlayerRef` (stable `id` +
-  `name`); `PlayerRef` renders as its name, so it interpolates directly in display.
+  `HoleCardsExposed`, `ShowdownReveal`, `PotAwarded`) identify the player by a
+  `PlayerRef` (stable `id` + `name`); `PlayerRef` renders as its name, so it
+  interpolates directly in display.
 - `HandStarted` carries the seat roster (`SeatInfo` with a `PlayerRef` + starting
   stack), the button seat, and the blinds — the data a hand-history header needs.
 - `HoleCardsDealt` marks the start of betting; its `hero` field carries the
   perspective player (`PlayerRef`) and cards (when a hero is set), else `None`.
 - `ActionTaken` carries the `Street` and an `ActionView`; `Raised { by, to }`
   gives both the raise increment and the new total (PokerStars "raises by to to").
+- `HoleCardsExposed` carries a live player's `hole` cards once betting is locked
+  and all remaining players are committed to showdown. It intentionally does not
+  include a final hand value, because more board cards may still be coming.
 - `Showdown` is emitted once before the reveals when two or more players reach a
   showdown, carrying the final `board` and `pot`.
 - `ShowdownReveal` carries the player's `hole` cards and their `hand` (a
