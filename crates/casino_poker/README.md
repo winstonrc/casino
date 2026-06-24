@@ -192,10 +192,11 @@ Hidden-information rule of thumb: `HandProgressStep::Event`, `table()`, and
 `public_events()` are suitable for shared streams. `PendingAction` and the
 `pending_action` field inside `ClientView` contain the actor's private decision
 context, including their hole cards, and should only be delivered to that player.
-When all remaining live players are all-in before the board is complete, the
-progress stream emits `HoleCardsExposed` before the remaining `StreetDealt`
-events. That event carries only public hole cards; final made-hand values remain
-reserved for `ShowdownReveal` after the full board is known.
+When betting is locked before the board is complete and all remaining live
+players are committed to showdown, the progress stream emits
+`HoleCardsExposed` before the remaining `StreetDealt` events. That event carries
+only public hole cards; final made-hand values remain reserved for
+`ShowdownReveal` after the full board is known.
 
 For **save/resume and reconnection**, `TexasHoldEm` is `serde`-serializable: persist
 it mid-hand and restore it to continue from the exact spot (re-attach an observer

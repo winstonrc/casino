@@ -4263,6 +4263,65 @@ mod tests {
     }
 
     #[test]
+    fn restored_locked_showdown_does_not_repeat_hole_exposure() {
+        let original_log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 17);
+        seat_players(&mut game, &[100, 50, 75]);
+        game.set_observer(Box::new(RecordingObserver {
+            log: original_log.clone(),
+        }));
+        let mut agents = agents_all(&game, || Box::new(ShoveAgent));
+
+        game.begin_hand().unwrap();
+        assert_eq!(
+            game.run_betting_round(Street::Preflop, &mut agents),
+            Ok(RoundOutcome::Continue)
+        );
+        assert_eq!(
+            original_log
+                .borrow()
+                .iter()
+                .filter(|event| matches!(event, GameEvent::HoleCardsExposed { .. }))
+                .count(),
+            3,
+            "locked showdown holes are exposed before save"
+        );
+
+        let json = serde_json::to_string(&game).unwrap();
+        let mut restored: TexasHoldEm = serde_json::from_str(&json).unwrap();
+        let restored_log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        restored.set_observer(Box::new(RecordingObserver {
+            log: restored_log.clone(),
+        }));
+
+        let mut step = restored.drive_hand();
+        while let HandStep::AwaitingAction(pending) = step {
+            let action = ShoveAgent.decide(&pending.view).unwrap();
+            step = restored
+                .submit_hand_action(pending.player, pending.decision_id, action)
+                .unwrap();
+        }
+        assert!(matches!(step, HandStep::HandComplete));
+
+        assert_eq!(
+            restored_log
+                .borrow()
+                .iter()
+                .filter(|event| matches!(event, GameEvent::HoleCardsExposed { .. }))
+                .count(),
+            0,
+            "restored run-out must not repeat exposure events already serialized"
+        );
+        assert!(
+            restored_log
+                .borrow()
+                .iter()
+                .any(|event| matches!(event, GameEvent::StreetDealt { .. })),
+            "restored hand still runs out the remaining board"
+        );
+    }
+
+    #[test]
     fn run_betting_round_exposes_when_covering_stack_has_chips_behind() {
         let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let mut game = TexasHoldEm::new(0, 10, 1, 2);
