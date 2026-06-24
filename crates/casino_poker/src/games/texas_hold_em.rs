@@ -1713,10 +1713,11 @@ impl TexasHoldEm {
     /// new hand clears the internal event log, the progress methods notice the
     /// hand marker change and reset the cursor to the start of the new log.
     pub fn hand_event_cursor(&self) -> HandEventCursor {
+        let terminal_reported = matches!(self.event_log.last(), Some(GameEvent::HandComplete));
         HandEventCursor::from_parts(
             self.current_progress_hand_number(),
             u64::try_from(self.event_log.len()).unwrap_or(u64::MAX),
-            false,
+            terminal_reported,
         )
     }
 
@@ -4489,6 +4490,46 @@ mod tests {
                 assert_eq!(hand_number, first_hand_number + 1);
             }
             other => panic!("rebuilt cursor should advance to next hand, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hand_event_cursor_after_completed_log_starts_after_terminal_boundary() {
+        let mut game = TexasHoldEm::new_seeded(0, 10, 1, 2, 31);
+        seat_players(&mut game, &[100, 100, 100]);
+        let mut cursor = HandEventCursor::default();
+        let mut first_hand_number = None;
+
+        loop {
+            match game.drive_hand_progress(&mut cursor) {
+                HandProgressStep::Event(GameEvent::HandStarted { hand_number, .. }) => {
+                    first_hand_number = Some(hand_number);
+                }
+                HandProgressStep::Event(GameEvent::HandComplete) => break,
+                HandProgressStep::Event(_) => {}
+                HandProgressStep::AwaitingPlayer {
+                    player,
+                    decision_id,
+                } => {
+                    let pending = game.pending_action().unwrap();
+                    let action = ShoveAgent.decide(&pending.view).unwrap();
+                    game.submit_hand_progress_action(&mut cursor, player, decision_id, action)
+                        .unwrap();
+                }
+                HandProgressStep::HandComplete => panic!("terminal step precedes final event"),
+                HandProgressStep::CannotStart(error) => panic!("hand should start: {error}"),
+            }
+        }
+
+        let mut cursor = game.hand_event_cursor();
+        assert!(cursor.terminal_reported());
+
+        let first_hand_number = first_hand_number.expect("hand start was yielded");
+        match game.drive_hand_progress(&mut cursor) {
+            HandProgressStep::Event(GameEvent::HandStarted { hand_number, .. }) => {
+                assert_eq!(hand_number, first_hand_number + 1);
+            }
+            other => panic!("cursor should start the next hand, got {other:?}"),
         }
     }
 
