@@ -128,7 +128,10 @@ and leaves the table ready for a new hand without emitting `HandComplete`.
 
 When a UI or network server needs each public event separately, use the
 fine-grained progress API. `HandEventCursor` is serializable and lives outside the
-engine, so you can persist it beside `TexasHoldEm`. `drive_hand_progress` yields
+engine, so you can persist it beside `TexasHoldEm`. If you store cursor fields
+instead of serializing the cursor directly, persist `hand_number()`,
+`next_event()`, and `terminal_reported()`, then rebuild with
+`HandEventCursor::from_parts`. `drive_hand_progress` yields
 `HandProgressStep::Event` for one public/redacted event at a time. When it yields
 `AwaitingPlayer`, that value is safe to broadcast because it carries only the
 acting player and `DecisionId`; it deliberately does not include the private
@@ -140,6 +143,7 @@ Fetch the private prompt only for the actor with `pending_action()` or
 ```rust
 use casino_poker::agent::LegalAction;
 use casino_poker::betting::PlayerAction;
+use casino_poker::events::GameEvent;
 use casino_poker::games::texas_hold_em::{HandEventCursor, HandProgressStep, TexasHoldEm};
 
 fn choose_action(legal_actions: &[LegalAction]) -> PlayerAction {
@@ -157,8 +161,13 @@ fn drive_public_progress(game: &mut TexasHoldEm, cursor: &mut HandEventCursor) {
     loop {
         match step {
             HandProgressStep::Event(event) => {
+                let hand_complete = matches!(event, GameEvent::HandComplete);
                 // Broadcast or persist `event`; it is redacted like `public_events()`.
                 step = game.drive_hand_progress(cursor);
+                if hand_complete {
+                    assert!(matches!(step, HandProgressStep::HandComplete));
+                    return;
+                }
             }
             HandProgressStep::AwaitingPlayer { player, decision_id } => {
                 // Private: send only to `player`, never to the whole table.
