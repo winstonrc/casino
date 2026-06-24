@@ -6,6 +6,24 @@ crate follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## 2026-06-24
+
+### casino_poker 1.2.0
+
+#### Added
+
+- Fine-grained hand progression through `HandEventCursor`,
+  `drive_hand_progress`, `HandProgressStep::Event`, and
+  `submit_hand_progress_action`, allowing downstream consumers to drain one
+  public/redacted event at a time while keeping a durable external event cursor.
+- Public-safe action prompts through `HandProgressStep::AwaitingPlayer`, which
+  exposes only the acting player and `DecisionId`. Retrieve the private
+  `PendingAction` prompt through `pending_action()` or
+  `client_view(player_id)` so shared event streams cannot leak hidden
+  information.
+
+---
+
 ## 2026-06-16
 
 ### casino_poker 1.1.0
